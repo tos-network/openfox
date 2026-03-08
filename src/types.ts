@@ -40,12 +40,14 @@ export interface AgentDiscoveryEndpointConfig {
   kind: AgentDiscoveryEndpointKind;
   url: string;
   viaGateway?: string;
+  role?: string;
 }
 
 export interface AgentDiscoveryCapabilityConfig {
   name: string;
   mode: AgentDiscoveryCapabilityMode;
   policyRef?: string;
+  policy?: Record<string, unknown>;
   rateLimit?: string;
   maxAmount?: string;
   priceModel?: string;
@@ -79,6 +81,23 @@ export interface AgentDiscoveryObservationServerConfig {
 export interface AgentGatewayBootnodeConfig {
   agentId: string;
   url: string;
+  payToAddress?: `0x${string}`;
+  paymentDirection?: "provider_pays" | "requester_pays" | "split";
+  sessionFeeWei?: string;
+  perRequestFeeWei?: string;
+}
+
+export interface AgentGatewaySignedBootnodeListPayload {
+  version: number;
+  networkId: number;
+  entries: AgentGatewayBootnodeConfig[];
+  issuedAt: number;
+}
+
+export interface AgentGatewaySignedBootnodeList
+  extends AgentGatewaySignedBootnodeListPayload {
+  signer: Address;
+  signature: `0x${string}`;
 }
 
 export interface AgentGatewayServerConfig {
@@ -95,6 +114,20 @@ export interface AgentGatewayServerConfig {
   requestTimeoutMs: number;
   maxRoutesPerSession: number;
   maxRequestBodyBytes: number;
+  relayPaymentEnabled?: boolean;
+  relayPriceWei?: string;
+  relayPaymentDescription?: string;
+  relayPaymentRequiredDeadlineSeconds?: number;
+  registerCapabilityOnStartup?: boolean;
+  grantCapabilityBit?: number;
+  paymentDirection?: "provider_pays" | "requester_pays" | "split";
+  sessionFeeWei?: string;
+  perRequestFeeWei?: string;
+  maxSessions?: number;
+  maxBandwidthKbps?: number;
+  supportedTransports?: string[];
+  latencySloMs?: number;
+  availabilitySlo?: string;
 }
 
 export interface AgentGatewayClientRouteConfig {
@@ -102,6 +135,17 @@ export interface AgentGatewayClientRouteConfig {
   capability: string;
   mode: AgentDiscoveryCapabilityMode;
   targetUrl: string;
+  stream?: boolean;
+}
+
+export interface AgentGatewayFeedbackConfig {
+  enabled: boolean;
+  successDelta: string;
+  failureDelta: string;
+  timeoutDelta: string;
+  malformedDelta: string;
+  gas: string;
+  reasonPrefix: string;
 }
 
 export interface AgentGatewayClientConfig {
@@ -109,8 +153,13 @@ export interface AgentGatewayClientConfig {
   gatewayAgentId?: string;
   gatewayUrl?: string;
   gatewayBootnodes: AgentGatewayBootnodeConfig[];
+  gatewayBootnodeList?: AgentGatewaySignedBootnodeList;
+  requireSignedBootnodeList?: boolean;
   sessionTtlSeconds: number;
   requestTimeoutMs: number;
+  maxGatewaySessions: number;
+  enableE2E?: boolean;
+  feedback?: AgentGatewayFeedbackConfig;
   routes: AgentGatewayClientRouteConfig[];
 }
 
@@ -198,6 +247,30 @@ export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {
   requestTimeoutMs: 15_000,
   maxRoutesPerSession: 16,
   maxRequestBodyBytes: 131072,
+  relayPaymentEnabled: false,
+  relayPriceWei: "1000000000000000",
+  relayPaymentDescription: "OpenFox gateway relay payment",
+  relayPaymentRequiredDeadlineSeconds: 300,
+  registerCapabilityOnStartup: false,
+  grantCapabilityBit: undefined,
+  paymentDirection: "requester_pays",
+  sessionFeeWei: "0",
+  perRequestFeeWei: "0",
+  maxSessions: 200,
+  maxBandwidthKbps: 10000,
+  supportedTransports: ["wss"],
+  latencySloMs: 1000,
+  availabilitySlo: "best-effort",
+};
+
+export const DEFAULT_AGENT_GATEWAY_FEEDBACK_CONFIG: AgentGatewayFeedbackConfig = {
+  enabled: false,
+  successDelta: "1",
+  failureDelta: "-1",
+  timeoutDelta: "-2",
+  malformedDelta: "-2",
+  gas: "120000",
+  reasonPrefix: "agent-gateway",
 };
 
 export const DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG: AgentGatewayClientConfig = {
@@ -205,8 +278,13 @@ export const DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG: AgentGatewayClientConfig = {
   gatewayAgentId: undefined,
   gatewayUrl: undefined,
   gatewayBootnodes: [],
+  gatewayBootnodeList: undefined,
+  requireSignedBootnodeList: false,
   sessionTtlSeconds: 3600,
   requestTimeoutMs: 15_000,
+  maxGatewaySessions: 1,
+  enableE2E: false,
+  feedback: DEFAULT_AGENT_GATEWAY_FEEDBACK_CONFIG,
   routes: [],
 };
 

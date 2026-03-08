@@ -23,6 +23,7 @@ import {
   DEFAULT_SOUL_CONFIG,
   DEFAULT_AGENT_DISCOVERY_CONFIG,
   DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
+  DEFAULT_AGENT_GATEWAY_FEEDBACK_CONFIG,
   DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
   DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
@@ -346,14 +347,108 @@ export function loadConfig(): OpenFoxConfig | null {
       )
         ? ((((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
             | JsonRecord
-            | undefined)?.gatewayBootnodes as unknown[]) ?? []).filter(
-            (value): value is NonNullable<AgentDiscoveryConfig["gatewayClient"]>["gatewayBootnodes"][number] =>
-              typeof value === "object" &&
-              value !== null &&
-              typeof (value as JsonRecord).agentId === "string" &&
-              typeof (value as JsonRecord).url === "string",
-          )
+            | undefined)?.gatewayBootnodes as unknown[]) ?? [])
+            .filter(
+              (value): value is JsonRecord =>
+                typeof value === "object" &&
+                value !== null &&
+                typeof (value as JsonRecord).agentId === "string" &&
+                typeof (value as JsonRecord).url === "string",
+            )
+            .map((value) => ({
+              agentId: value.agentId as string,
+              url: value.url as string,
+              ...(typeof value.payToAddress === "string"
+                ? { payToAddress: value.payToAddress as `0x${string}` }
+                : {}),
+              ...(typeof value.paymentDirection === "string"
+                ? {
+                    paymentDirection: value.paymentDirection as
+                      | "provider_pays"
+                      | "requester_pays"
+                      | "split",
+                  }
+                : {}),
+              ...(typeof value.sessionFeeWei === "string"
+                ? { sessionFeeWei: value.sessionFeeWei as string }
+                : {}),
+              ...(typeof value.perRequestFeeWei === "string"
+                ? { perRequestFeeWei: value.perRequestFeeWei as string }
+                : {}),
+            }))
         : DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG.gatewayBootnodes,
+      gatewayBootnodeList:
+        typeof (raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient ===
+          "object" &&
+        (raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient !== null &&
+        typeof (
+          ((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as JsonRecord)
+            .gatewayBootnodeList
+        ) === "object" &&
+        ((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as JsonRecord)
+          .gatewayBootnodeList !== null
+          ? ((((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+              JsonRecord).gatewayBootnodeList as JsonRecord) &&
+              (() => {
+                const value = (((raw?.agentDiscovery as JsonRecord | undefined)
+                  ?.gatewayClient as JsonRecord).gatewayBootnodeList as JsonRecord);
+                if (
+                  typeof value.version !== "number" ||
+                  typeof value.networkId !== "number" ||
+                  typeof value.issuedAt !== "number" ||
+                  typeof value.signer !== "string" ||
+                  typeof value.signature !== "string" ||
+                  !Array.isArray(value.entries)
+                ) {
+                  return undefined;
+                }
+                const entries = (value.entries as unknown[])
+                  .filter(
+                    (entry): entry is JsonRecord =>
+                      typeof entry === "object" &&
+                      entry !== null &&
+                      typeof (entry as JsonRecord).agentId === "string" &&
+                      typeof (entry as JsonRecord).url === "string",
+                  )
+                  .map((entry) => ({
+                    agentId: entry.agentId as string,
+                    url: entry.url as string,
+                    ...(typeof entry.payToAddress === "string"
+                      ? { payToAddress: entry.payToAddress as `0x${string}` }
+                      : {}),
+                    ...(typeof entry.paymentDirection === "string"
+                      ? {
+                          paymentDirection: entry.paymentDirection as
+                            | "provider_pays"
+                            | "requester_pays"
+                            | "split",
+                        }
+                      : {}),
+                    ...(typeof entry.sessionFeeWei === "string"
+                      ? { sessionFeeWei: entry.sessionFeeWei as string }
+                      : {}),
+                    ...(typeof entry.perRequestFeeWei === "string"
+                      ? { perRequestFeeWei: entry.perRequestFeeWei as string }
+                      : {}),
+                  }));
+                return {
+                  version: value.version,
+                  networkId: value.networkId,
+                  entries,
+                  issuedAt: value.issuedAt,
+                  signer: value.signer as `0x${string}`,
+                  signature: value.signature as `0x${string}`,
+                };
+              })())
+          : DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG.gatewayBootnodeList,
+      requireSignedBootnodeList:
+        typeof (((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+          | JsonRecord
+          | undefined)?.requireSignedBootnodeList) === "boolean"
+          ? ((((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+              | JsonRecord
+              | undefined)?.requireSignedBootnodeList as boolean) ?? false)
+          : DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG.requireSignedBootnodeList,
       routes: Array.isArray(
         (raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient &&
           ((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as JsonRecord)
@@ -371,6 +466,12 @@ export function loadConfig(): OpenFoxConfig | null {
               typeof (value as JsonRecord).targetUrl === "string",
           )
         : DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG.routes,
+      feedback: {
+        ...DEFAULT_AGENT_GATEWAY_FEEDBACK_CONFIG,
+        ...((((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+          | JsonRecord
+          | undefined)?.feedback as JsonRecord | undefined) ?? {}),
+      },
     },
   };
 

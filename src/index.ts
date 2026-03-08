@@ -31,17 +31,21 @@ import type { OpenFoxIdentity, AgentState, Skill, SocialClientInterface } from "
 import { DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel } from "./observability/logger.js";
 import { bootstrapTopup } from "./runtime/topup.js";
-import { publishLocalAgentDiscoveryCard } from "./agent-discovery/client.js";
+import {
+  clearLocalAgentDiscoveryCard,
+  publishLocalAgentDiscoveryCard,
+} from "./agent-discovery/client.js";
 import { startAgentDiscoveryFaucetServer } from "./agent-discovery/faucet-server.js";
 import { startAgentDiscoveryObservationServer } from "./agent-discovery/observation-server.js";
 import { normalizeAgentDiscoveryConfig } from "./agent-discovery/types.js";
 import { startAgentGatewayServer } from "./agent-gateway/server.js";
-import { startAgentGatewayProviderSession } from "./agent-gateway/client.js";
+import { startAgentGatewayProviderSessions } from "./agent-gateway/client.js";
 import {
   buildGatewayProviderRoutes,
   buildPublishedAgentDiscoveryConfig,
 } from "./agent-gateway/publish.js";
 import { deriveTOSAddressFromPrivateKey } from "./tos/address.js";
+import { grantTOSCapability, registerTOSCapabilityName } from "./tos/client.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "viem";
 
@@ -264,9 +268,12 @@ async function run(): Promise<void> {
   let gatewayServer:
     | Awaited<ReturnType<typeof startAgentGatewayServer>>
     | undefined;
-  let gatewayProviderSession:
-    | Awaited<ReturnType<typeof startAgentGatewayProviderSession>>
+  let gatewayProviderSessions:
+    | Awaited<ReturnType<typeof startAgentGatewayProviderSessions>>
     | undefined;
+  let liveGatewayProviderSessions: NonNullable<
+    Awaited<ReturnType<typeof startAgentGatewayProviderSessions>>
+  >["sessions"] = [];
 
   if (config.agentDiscovery?.faucetServer?.enabled) {
     try {
@@ -305,8 +312,44 @@ async function run(): Promise<void> {
 
   if (config.agentDiscovery?.gatewayServer?.enabled) {
     try {
+      if (
+        config.agentDiscovery.gatewayServer.registerCapabilityOnStartup &&
+        config.tosRpcUrl
+      ) {
+        try {
+          await registerTOSCapabilityName({
+            rpcUrl: config.tosRpcUrl,
+            privateKey,
+            name: config.agentDiscovery.gatewayServer.capability,
+            waitForReceipt: false,
+          });
+        } catch (error) {
+          logger.warn(
+            `Gateway capability registration skipped: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
+      if (
+        config.agentDiscovery.gatewayServer.grantCapabilityBit !== undefined &&
+        config.tosRpcUrl
+      ) {
+        try {
+          await grantTOSCapability({
+            rpcUrl: config.tosRpcUrl,
+            privateKey,
+            target: tosAddress,
+            bit: config.agentDiscovery.gatewayServer.grantCapabilityBit,
+            waitForReceipt: false,
+          });
+        } catch (error) {
+          logger.warn(
+            `Gateway capability grant skipped: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+      }
       gatewayServer = await startAgentGatewayServer({
         identity,
+        config,
         db,
         gatewayConfig: config.agentDiscovery.gatewayServer,
       });
@@ -318,7 +361,7 @@ async function run(): Promise<void> {
     }
   }
 
-  let publishedAgentDiscoveryConfig =
+  const basePublishedAgentDiscoveryConfig =
     normalizeAgentDiscoveryConfig(config.agentDiscovery) ??
     (config.agentDiscovery?.enabled &&
     config.agentDiscovery.publishCard &&
@@ -336,6 +379,63 @@ async function run(): Promise<void> {
         }
       : null);
 
+  const buildCurrentPublishedAgentDiscoveryConfig = () => {
+    let current = basePublishedAgentDiscoveryConfig;
+    if (liveGatewayProviderSessions.length && current) {
+      const routes = buildGatewayProviderRoutes({
+        config,
+        faucetUrl: faucetServer?.url,
+        observationUrl: observationServer?.url,
+      });
+      current = buildPublishedAgentDiscoveryConfig({
+        baseConfig: current,
+        gatewayServer,
+        gatewayServerConfig: config.agentDiscovery?.gatewayServer,
+        providerSessions: liveGatewayProviderSessions,
+        providerRoutes: routes,
+      });
+    } else if (current && gatewayServer) {
+      current = buildPublishedAgentDiscoveryConfig({
+        baseConfig: current,
+        gatewayServer,
+        gatewayServerConfig: config.agentDiscovery?.gatewayServer,
+      });
+    }
+    return current;
+  };
+
+  const syncPublishedAgentDiscoveryCard = async (reason: string) => {
+    if (!(config.agentDiscovery?.enabled && config.agentDiscovery.publishCard)) {
+      return;
+    }
+    const publishedAgentDiscoveryConfig = buildCurrentPublishedAgentDiscoveryConfig();
+    if (
+      !publishedAgentDiscoveryConfig ||
+      !publishedAgentDiscoveryConfig.endpoints.length ||
+      !publishedAgentDiscoveryConfig.capabilities.length
+    ) {
+      await clearLocalAgentDiscoveryCard({
+        config,
+        db,
+      });
+      logger.info(`Cleared Agent Discovery card because ${reason}`);
+      return;
+    }
+    const published = await publishLocalAgentDiscoveryCard({
+      identity,
+      config,
+      tosAddress,
+      db,
+      agentDiscoveryOverride: publishedAgentDiscoveryConfig,
+      overrideIsNormalized: true,
+    });
+    if (published) {
+      logger.info(
+        `Published Agent Discovery card seq=${published.card.card_seq} on ${published.info.nodeId || "local node"} (${reason})`,
+      );
+    }
+  };
+
   if (config.agentDiscovery?.gatewayClient?.enabled) {
     try {
       const routes = buildGatewayProviderRoutes({
@@ -348,23 +448,36 @@ async function run(): Promise<void> {
           "Agent Gateway client enabled but no local provider routes were available",
         );
       } else {
-        gatewayProviderSession = await startAgentGatewayProviderSession({
+        gatewayProviderSessions = await startAgentGatewayProviderSessions({
           identity,
           config,
           tosAddress,
           routes,
           db,
+          privateKey,
         });
         logger.info(
-          `Agent Gateway provider session opened via ${gatewayProviderSession.gatewayUrl}`,
+          `Agent Gateway provider sessions opened via ${gatewayProviderSessions.sessions
+            .map((session) => session.gatewayUrl)
+            .join(", ")}`,
         );
-        if (publishedAgentDiscoveryConfig) {
-          publishedAgentDiscoveryConfig = buildPublishedAgentDiscoveryConfig({
-            baseConfig: publishedAgentDiscoveryConfig,
-            gatewayServer,
-            gatewayServerConfig: config.agentDiscovery.gatewayServer,
-            providerSession: gatewayProviderSession,
-            providerRoutes: routes,
+        liveGatewayProviderSessions = [...gatewayProviderSessions.sessions];
+        for (const session of gatewayProviderSessions.sessions) {
+          void session.closed.then(async () => {
+            liveGatewayProviderSessions = liveGatewayProviderSessions.filter(
+              (entry) => entry !== session,
+            );
+            try {
+              await syncPublishedAgentDiscoveryCard(
+                liveGatewayProviderSessions.length
+                  ? "gateway session changed"
+                  : "all gateway sessions closed",
+              );
+            } catch (error) {
+              logger.warn(
+                `Agent Discovery sync after gateway session close failed: ${error instanceof Error ? error.message : String(error)}`,
+              );
+            }
           });
         }
       }
@@ -373,29 +486,11 @@ async function run(): Promise<void> {
         `Agent Gateway provider session failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-  } else if (publishedAgentDiscoveryConfig && gatewayServer) {
-    publishedAgentDiscoveryConfig = buildPublishedAgentDiscoveryConfig({
-      baseConfig: publishedAgentDiscoveryConfig,
-      gatewayServer,
-      gatewayServerConfig: config.agentDiscovery?.gatewayServer,
-    });
   }
 
   if (config.agentDiscovery?.enabled && config.agentDiscovery.publishCard) {
     try {
-      const published = await publishLocalAgentDiscoveryCard({
-        identity,
-        config,
-        tosAddress,
-        db,
-        agentDiscoveryOverride: publishedAgentDiscoveryConfig ?? undefined,
-        overrideIsNormalized: true,
-      });
-      if (published) {
-        logger.info(
-          `Published Agent Discovery card seq=${published.card.card_seq} on ${published.info.nodeId || "local node"}`,
-        );
-      }
+      await syncPublishedAgentDiscoveryCard("startup");
     } catch (error) {
       logger.warn(
         `Agent Discovery publish skipped: ${error instanceof Error ? error.message : String(error)}`,
@@ -549,7 +644,7 @@ async function run(): Promise<void> {
     heartbeat.stop();
     db.setAgentState("sleeping");
     Promise.allSettled([
-      gatewayProviderSession?.close(),
+      gatewayProviderSessions?.close(),
       gatewayServer?.close(),
       faucetServer?.close(),
       observationServer?.close(),

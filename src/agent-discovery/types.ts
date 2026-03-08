@@ -28,12 +28,14 @@ export interface AgentDiscoveryEndpoint {
   kind: AgentDiscoveryEndpointConfig["kind"];
   url: string;
   via_gateway?: string;
+  role?: string;
 }
 
 export interface AgentDiscoveryCapability {
   name: string;
   mode: AgentDiscoveryCapabilityMode;
   policy_ref?: string;
+  policy?: Record<string, unknown>;
   rate_limit?: string;
   max_amount?: string;
   price_model?: string;
@@ -52,6 +54,7 @@ export interface AgentDiscoveryCardPayload {
   endpoints: AgentDiscoveryEndpoint[];
   capabilities: AgentDiscoveryCapability[];
   reputation_refs: string[];
+  relay_encryption_pubkey?: `0x${string}`;
   metadata_signer: {
     kind: "eip191";
     address: string;
@@ -179,6 +182,7 @@ export function capabilityFromConfig(
     name: capability.name.trim().toLowerCase(),
     mode: capability.mode,
     policy_ref: capability.policyRef,
+    policy: capability.policy,
     rate_limit: capability.rateLimit,
     max_amount: capability.maxAmount,
     price_model: capability.priceModel,
@@ -208,6 +212,7 @@ export function normalizeAgentDiscoveryConfig(
       endpoints.push({
         kind: "http",
         url: faucetUrl,
+        role: "requester_invocation",
       });
     }
     if (!capabilities.some((entry) => entry.name === faucetServer.capability)) {
@@ -226,6 +231,7 @@ export function normalizeAgentDiscoveryConfig(
       endpoints.push({
         kind: "http",
         url: observationUrl,
+        role: "requester_invocation",
       });
     }
     if (
@@ -250,6 +256,7 @@ export function normalizeAgentDiscoveryConfig(
       mode: entry.mode,
       policyRef: entry.policy_ref,
       rateLimit: entry.rate_limit,
+      policy: entry.policy,
       maxAmount: entry.max_amount,
       priceModel: entry.price_model,
       description: entry.description,

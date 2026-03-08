@@ -4,7 +4,9 @@ import {
   normalizeTOSAddress,
 } from "../tos/address.js";
 import {
+  grantTOSCapability,
   recordTOSReputationScore,
+  registerTOSCapabilityName,
   signTOSNativeTransfer,
   TOS_SYSTEM_ACTION_ADDRESS,
 } from "../tos/client.js";
@@ -108,6 +110,116 @@ describe("TOS signer tx", () => {
       expect(result.signed.data.startsWith("0x")).toBe(true);
       expect(result.txHash).toBe(
         "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("builds and submits a capability register system action", async () => {
+    const originalFetch = global.fetch;
+    const methods: string[] = [];
+    global.fetch = vi.fn(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        id: number;
+        method: string;
+        params: unknown[];
+      };
+      methods.push(body.method);
+      switch (body.method) {
+        case "tos_chainId":
+          return new Response(
+            JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0x539" }),
+            { status: 200 },
+          );
+        case "tos_getTransactionCount":
+          return new Response(
+            JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0x1" }),
+            { status: 200 },
+          );
+        case "tos_sendRawTransaction":
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: body.id,
+              result:
+                "0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd",
+            }),
+            { status: 200 },
+          );
+        default:
+          throw new Error(`unexpected rpc method ${body.method}`);
+      }
+    }) as typeof fetch;
+
+    try {
+      const result = await registerTOSCapabilityName({
+        rpcUrl: "http://127.0.0.1:8545",
+        privateKey: TEST_PRIVATE_KEY,
+        name: "gateway.relay",
+        waitForReceipt: false,
+      });
+
+      expect(methods).toEqual([
+        "tos_chainId",
+        "tos_getTransactionCount",
+        "tos_sendRawTransaction",
+      ]);
+      expect(result.signed.to).toBe(TOS_SYSTEM_ACTION_ADDRESS);
+      expect(result.signed.value).toBe(0n);
+      expect(Buffer.from(result.signed.data.slice(2), "hex").toString("utf8")).toContain(
+        '"action":"CAPABILITY_REGISTER"',
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("builds and submits a capability grant system action", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn(async (_input, init) => {
+      const body = JSON.parse(String(init?.body ?? "{}")) as {
+        id: number;
+        method: string;
+      };
+      switch (body.method) {
+        case "tos_chainId":
+          return new Response(
+            JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0x539" }),
+            { status: 200 },
+          );
+        case "tos_getTransactionCount":
+          return new Response(
+            JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0x7" }),
+            { status: 200 },
+          );
+        case "tos_sendRawTransaction":
+          return new Response(
+            JSON.stringify({
+              jsonrpc: "2.0",
+              id: body.id,
+              result:
+                "0x9999999999999999999999999999999999999999999999999999999999999999",
+            }),
+            { status: 200 },
+          );
+        default:
+          throw new Error(`unexpected rpc method ${body.method}`);
+      }
+    }) as typeof fetch;
+
+    try {
+      const result = await grantTOSCapability({
+        rpcUrl: "http://127.0.0.1:8545",
+        privateKey: TEST_PRIVATE_KEY,
+        target: normalizeTOSAddress("0x42"),
+        bit: 7,
+        waitForReceipt: false,
+      });
+
+      expect(result.signed.to).toBe(TOS_SYSTEM_ACTION_ADDRESS);
+      expect(Buffer.from(result.signed.data.slice(2), "hex").toString("utf8")).toContain(
+        '"action":"CAPABILITY_GRANT"',
       );
     } finally {
       global.fetch = originalFetch;

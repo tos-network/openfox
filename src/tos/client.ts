@@ -407,6 +407,62 @@ export async function recordTOSReputationScore(params: {
   });
 }
 
+export async function registerTOSCapabilityName(params: {
+  rpcUrl: string;
+  privateKey: HexString;
+  name: string;
+  gas?: bigint;
+  waitForReceipt?: boolean;
+  receiptTimeoutMs?: number;
+  pollIntervalMs?: number;
+}): Promise<{
+  signed: TOSSignedTransaction;
+  txHash: HexString;
+  receipt?: Record<string, unknown> | null;
+}> {
+  return sendTOSSystemAction({
+    rpcUrl: params.rpcUrl,
+    privateKey: params.privateKey,
+    action: "CAPABILITY_REGISTER",
+    payload: {
+      name: params.name.trim().toLowerCase(),
+    },
+    gas: params.gas,
+    waitForReceipt: params.waitForReceipt,
+    receiptTimeoutMs: params.receiptTimeoutMs,
+    pollIntervalMs: params.pollIntervalMs,
+  });
+}
+
+export async function grantTOSCapability(params: {
+  rpcUrl: string;
+  privateKey: HexString;
+  target: TOSAddress | string;
+  bit: number;
+  gas?: bigint;
+  waitForReceipt?: boolean;
+  receiptTimeoutMs?: number;
+  pollIntervalMs?: number;
+}): Promise<{
+  signed: TOSSignedTransaction;
+  txHash: HexString;
+  receipt?: Record<string, unknown> | null;
+}> {
+  return sendTOSSystemAction({
+    rpcUrl: params.rpcUrl,
+    privateKey: params.privateKey,
+    action: "CAPABILITY_GRANT",
+    payload: {
+      target: normalizeTOSAddress(params.target),
+      bit: params.bit,
+    },
+    gas: params.gas,
+    waitForReceipt: params.waitForReceipt,
+    receiptTimeoutMs: params.receiptTimeoutMs,
+    pollIntervalMs: params.pollIntervalMs,
+  });
+}
+
 export async function buildTOSX402Payment(params: {
   privateKey: HexString;
   requirement: TOSX402Requirement;

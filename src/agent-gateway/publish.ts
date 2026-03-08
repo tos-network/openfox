@@ -1,5 +1,9 @@
 import type { AgentDiscoveryConfig, OpenFoxConfig } from "../types.js";
-import type { StartedAgentGatewayServer, StartedAgentGatewayProviderSession, AgentGatewayProviderRoute } from "./types.js";
+import type {
+  StartedAgentGatewayServer,
+  StartedAgentGatewayProviderSession,
+  AgentGatewayProviderRoute,
+} from "./types.js";
 
 function endpointKindFromUrl(url: string): "http" | "https" | "ws" {
   if (url.startsWith("https://")) return "https";
@@ -64,6 +68,7 @@ export function buildPublishedAgentDiscoveryConfig(params: {
   gatewayServer?: StartedAgentGatewayServer;
   gatewayServerConfig?: NonNullable<OpenFoxConfig["agentDiscovery"]>["gatewayServer"];
   providerSession?: StartedAgentGatewayProviderSession;
+  providerSessions?: StartedAgentGatewayProviderSession[];
   providerRoutes?: AgentGatewayProviderRoute[];
 }): AgentDiscoveryConfig {
   const endpoints = [...params.baseConfig.endpoints];
@@ -76,13 +81,20 @@ export function buildPublishedAgentDiscoveryConfig(params: {
     (entry) => !hiddenLocalTargets.has(entry.url),
   );
 
-  if (params.providerSession && params.providerRoutes?.length) {
-    for (const allocation of params.providerSession.allocatedEndpoints) {
-      publishedEndpoints.push({
-        kind: endpointKindFromUrl(allocation.public_url),
-        url: allocation.public_url,
-        viaGateway: params.providerSession.gatewayAgentId,
-      });
+  const sessions = params.providerSessions?.length
+    ? params.providerSessions
+    : params.providerSession
+      ? [params.providerSession]
+      : [];
+  if (sessions.length && params.providerRoutes?.length) {
+    for (const session of sessions) {
+      for (const allocation of session.allocatedEndpoints) {
+        publishedEndpoints.push({
+          kind: endpointKindFromUrl(allocation.public_url),
+          url: allocation.public_url,
+          viaGateway: session.gatewayAgentId,
+        });
+      }
     }
   }
 
@@ -97,11 +109,29 @@ export function buildPublishedAgentDiscoveryConfig(params: {
         mode: params.gatewayServerConfig.mode,
         priceModel: params.gatewayServerConfig.priceModel,
         description: "Agent Gateway relay capability",
+        policy: {
+          payment_direction: params.gatewayServerConfig.paymentDirection,
+          session_fee_tos: params.gatewayServerConfig.sessionFeeWei,
+          per_request_fee_tos: params.gatewayServerConfig.perRequestFeeWei,
+          max_sessions: params.gatewayServerConfig.maxSessions,
+          max_bandwidth_kbps: params.gatewayServerConfig.maxBandwidthKbps,
+          max_routes_per_session: params.gatewayServerConfig.maxRoutesPerSession,
+          supported_transports: params.gatewayServerConfig.supportedTransports,
+          session_ttl_seconds: params.gatewayServerConfig.sessionTtlSeconds,
+          latency_slo_ms: params.gatewayServerConfig.latencySloMs,
+          availability_slo: params.gatewayServerConfig.availabilitySlo,
+        },
       });
     }
     publishedEndpoints.push({
       kind: "ws",
       url: params.gatewayServer.sessionUrl,
+      role: "provider_relay",
+    });
+    publishedEndpoints.push({
+      kind: endpointKindFromUrl(params.gatewayServer.publicBaseUrl),
+      url: params.gatewayServer.publicBaseUrl,
+      role: "requester_invocation",
     });
   }
 
@@ -109,7 +139,8 @@ export function buildPublishedAgentDiscoveryConfig(params: {
     ...params.baseConfig,
     endpoints: uniqueByName(
       publishedEndpoints,
-      (entry) => `${entry.kind}:${entry.url}:${entry.viaGateway || ""}`,
+      (entry) =>
+        `${entry.kind}:${entry.url}:${entry.viaGateway || ""}:${entry.role || ""}`,
     ),
     capabilities: uniqueByName(
       capabilities,

@@ -2,6 +2,12 @@ import { randomBytes } from "crypto";
 import { loadWalletPrivateKey } from "../identity/wallet.js";
 import { checkX402, x402Fetch } from "../runtime/x402.js";
 import { recordTOSReputationScore, TOSRpcClient } from "../tos/client.js";
+import {
+  AGENT_GATEWAY_E2E_HEADER,
+  AGENT_GATEWAY_E2E_SCHEME,
+  maybeDecryptAgentGatewayResponse,
+  prepareAgentGatewayEncryptedRequest,
+} from "../agent-gateway/e2e.js";
 import type {
   OpenFoxConfig,
   OpenFoxDatabase,
@@ -77,6 +83,10 @@ class AgentDiscoveryRpcClient {
     return this.request("tos_agentDiscoveryPublish", [args]);
   }
 
+  clear(): Promise<AgentDiscoveryInfo> {
+    return this.request("tos_agentDiscoveryClear", []);
+  }
+
   search(
     capability: string,
     limit: number,
@@ -123,7 +133,15 @@ function deriveConnectionModes(agentDiscovery: AgentDiscoveryConfig): string[] {
 
 function getInvokableEndpoint(
   card: AgentDiscoveryCard,
+  capability?: string,
 ): VerifiedAgentProvider["endpoint"] | null {
+  if (capability === "gateway.relay") {
+    return (
+      card.endpoints.find((endpoint) => endpoint.role === "provider_relay") ??
+      card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
+      null
+    );
+  }
   return (
     card.endpoints.find((endpoint) => endpoint.kind === "https") ??
     card.endpoints.find((endpoint) => endpoint.kind === "http") ??
@@ -252,6 +270,7 @@ function recordProviderFeedback(params: {
   capability: string;
   outcome: "success" | "failure" | "timeout" | "malformed";
   requestNonce?: string;
+  skipReputationUpdate?: boolean;
 }): void {
   let current: AgentDiscoveryLocalFeedback = {
     successCount: 0,
@@ -289,7 +308,21 @@ function recordProviderFeedback(params: {
       JSON.stringify(current),
     );
   }
-  submitReputationUpdate(params).catch(() => undefined);
+  if (!params.skipReputationUpdate) {
+    submitReputationUpdate(params).catch(() => undefined);
+  }
+}
+
+export function recordAgentDiscoveryProviderFeedback(params: {
+  db?: OpenFoxDatabase;
+  config: OpenFoxConfig;
+  provider: VerifiedAgentProvider;
+  capability: string;
+  outcome: "success" | "failure" | "timeout" | "malformed";
+  requestNonce?: string;
+  skipReputationUpdate?: boolean;
+}): void {
+  recordProviderFeedback(params);
 }
 
 function classifyInvocationError(
@@ -539,6 +572,51 @@ async function endpointSupportsDeclaredMode(
   );
 }
 
+async function invokeProviderCapability(params: {
+  provider: VerifiedAgentProvider;
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  requestBody: string;
+  maxPaymentCents?: number;
+}): Promise<{ success: boolean; response?: unknown; error?: string; status?: number }> {
+  const headers: Record<string, string> = { Accept: "application/json" };
+  let body = params.requestBody;
+  let responsePrivateKey: `0x${string}` | undefined;
+  const wantsGatewayE2E =
+    params.config.agentDiscovery?.gatewayClient?.enableE2E &&
+    Boolean(params.provider.endpoint.via_gateway) &&
+    Boolean(params.provider.card.relay_encryption_pubkey);
+
+  if (wantsGatewayE2E && params.provider.card.relay_encryption_pubkey) {
+    const prepared = prepareAgentGatewayEncryptedRequest({
+      plaintext: Buffer.from(body, "utf8"),
+      recipientPublicKey: params.provider.card.relay_encryption_pubkey,
+    });
+    body = JSON.stringify(prepared.envelope);
+    headers[AGENT_GATEWAY_E2E_HEADER] = AGENT_GATEWAY_E2E_SCHEME;
+    responsePrivateKey = prepared.responsePrivateKey;
+  }
+
+  const result = await x402Fetch(
+    params.provider.endpoint.url,
+    params.identity.account,
+    "POST",
+    body,
+    headers,
+    params.maxPaymentCents,
+  );
+  if (!result.success) {
+    return result;
+  }
+  return {
+    ...result,
+    response: maybeDecryptAgentGatewayResponse({
+      value: result.response,
+      responsePrivateKey,
+    }),
+  };
+}
+
 export async function publishLocalAgentDiscoveryCard(params: {
   identity: OpenFoxIdentity;
   config: OpenFoxConfig;
@@ -592,6 +670,19 @@ export async function publishLocalAgentDiscoveryCard(params: {
   return { info: published, card };
 }
 
+export async function clearLocalAgentDiscoveryCard(params: {
+  config: OpenFoxConfig;
+  db?: OpenFoxDatabase;
+}): Promise<AgentDiscoveryInfo> {
+  const rpc = requireDiscoveryRpc(params.config);
+  const cleared = await rpc.clear();
+  params.db?.setKV(
+    "agent_discovery:last_cleared_at",
+    new Date().toISOString(),
+  );
+  return cleared;
+}
+
 export async function discoverCapabilityProviders(params: {
   config: OpenFoxConfig;
   capability: string;
@@ -619,7 +710,7 @@ export async function discoverCapabilityProviders(params: {
       const matchedCapability = card.capabilities.find(
         (capability) => capability.name === params.capability,
       );
-      const endpoint = getInvokableEndpoint(card);
+      const endpoint = getInvokableEndpoint(card, params.capability);
       if (!matchedCapability || !endpoint) {
         continue;
       }
@@ -705,13 +796,12 @@ export async function requestTestnetFaucet(params: {
 
   let response: FaucetInvocationResponse;
   try {
-    const result = await x402Fetch(
-      provider.endpoint.url,
-      params.identity.account,
-      "POST",
-      JSON.stringify(request),
-      { Accept: "application/json" },
-    );
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
     if (!result.success) {
       throw new Error(
         result.error || `Provider request failed with status ${result.status}`,
@@ -832,13 +922,12 @@ export async function requestObservationOnce(params: {
 
   let response: ObservationInvocationResponse;
   try {
-    const result = await x402Fetch(
-      provider.endpoint.url,
-      params.identity.account,
-      "POST",
-      JSON.stringify(request),
-      { Accept: "application/json" },
-    );
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
     if (!result.success) {
       throw new Error(
         result.error || `Provider request failed with status ${result.status}`,

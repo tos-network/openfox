@@ -57,9 +57,13 @@ export function buildAgentDiscoveryCardPayload(params: {
       kind: endpoint.kind,
       url: endpoint.url.trim(),
       via_gateway: endpoint.viaGateway?.trim() || undefined,
+      role: endpoint.role?.trim() || undefined,
     })),
     capabilities,
     reputation_refs: [],
+    relay_encryption_pubkey: params.identity.account.publicKey?.toLowerCase() as
+      | `0x${string}`
+      | undefined,
     metadata_signer: {
       kind: "eip191",
       address: params.identity.address.toLowerCase(),
@@ -102,6 +106,23 @@ export async function verifyAgentDiscoveryCard(
   if (!Array.isArray(card.capabilities) || card.capabilities.length === 0) return false;
   if (!Array.isArray(card.endpoints) || card.endpoints.length === 0) return false;
   if (typeof card.signature !== "string" || !card.signature.startsWith("0x")) return false;
+  if (
+    card.relay_encryption_pubkey !== undefined &&
+    (typeof card.relay_encryption_pubkey !== "string" ||
+      !card.relay_encryption_pubkey.startsWith("0x"))
+  ) {
+    return false;
+  }
+  for (const capability of card.capabilities) {
+    if (
+      capability.policy !== undefined &&
+      (typeof capability.policy !== "object" ||
+        capability.policy === null ||
+        Array.isArray(capability.policy))
+    ) {
+      return false;
+    }
+  }
   if (typeof card.expires_at !== "number" || card.expires_at <= Math.floor(Date.now() / 1000)) {
     return false;
   }
@@ -111,6 +132,8 @@ export async function verifyAgentDiscoveryCard(
       typeof endpoint.url !== "string" ||
       !endpoint.url.trim() ||
       !["http", "https", "ws"].includes(String(endpoint.kind)) ||
+      (endpoint.role !== undefined &&
+        (typeof endpoint.role !== "string" || !endpoint.role.trim())) ||
       (endpoint.via_gateway !== undefined &&
         (typeof endpoint.via_gateway !== "string" || !endpoint.via_gateway.trim()))
     ) {
