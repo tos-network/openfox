@@ -31,6 +31,10 @@ export interface ProvisionResult {
 
 export type AgentDiscoveryCapabilityMode = "paid" | "sponsored" | "hybrid";
 export type AgentDiscoveryEndpointKind = "http" | "https" | "ws";
+export type AgentDiscoveryOnchainCapabilityMode =
+  | "off"
+  | "prefer_onchain"
+  | "require_onchain";
 
 export interface AgentDiscoveryEndpointConfig {
   kind: AgentDiscoveryEndpointKind;
@@ -74,11 +78,17 @@ export interface AgentDiscoveryObservationServerConfig {
 export interface AgentDiscoverySelectionPolicy {
   requireRegistered: boolean;
   excludeSuspended: boolean;
-  requireOnchainCapability: boolean;
+  onchainCapabilityMode: AgentDiscoveryOnchainCapabilityMode;
   minimumStakeWei: string;
   minimumReputation: string;
   preferHigherStake: boolean;
   preferHigherReputation: boolean;
+}
+
+export interface AgentDiscoveryPolicyProfiles {
+  sponsor: AgentDiscoverySelectionPolicy;
+  observation: AgentDiscoverySelectionPolicy;
+  oracle: AgentDiscoverySelectionPolicy;
 }
 
 export interface AgentDiscoveryConfig {
@@ -90,6 +100,7 @@ export interface AgentDiscoveryConfig {
   capabilities: AgentDiscoveryCapabilityConfig[];
   directoryNodeRecords?: string[];
   selectionPolicy?: AgentDiscoverySelectionPolicy;
+  policyProfiles?: Partial<AgentDiscoveryPolicyProfiles>;
   faucetServer?: AgentDiscoveryFaucetServerConfig;
   observationServer?: AgentDiscoveryObservationServerConfig;
 }
@@ -124,11 +135,31 @@ export const DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY: AgentDiscoverySelectionPo
   {
     requireRegistered: true,
     excludeSuspended: true,
-    requireOnchainCapability: false,
+    onchainCapabilityMode: "off",
     minimumStakeWei: "0",
     minimumReputation: "0",
     preferHigherStake: true,
     preferHigherReputation: true,
+  };
+
+export const DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES: AgentDiscoveryPolicyProfiles =
+  {
+    sponsor: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      onchainCapabilityMode: "prefer_onchain",
+    },
+    observation: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      onchainCapabilityMode: "prefer_onchain",
+    },
+    oracle: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      minimumReputation: "1",
+      onchainCapabilityMode: "require_onchain",
+    },
   };
 
 export const DEFAULT_AGENT_DISCOVERY_CONFIG: AgentDiscoveryConfig = {
@@ -139,6 +170,7 @@ export const DEFAULT_AGENT_DISCOVERY_CONFIG: AgentDiscoveryConfig = {
   capabilities: [],
   directoryNodeRecords: [],
   selectionPolicy: DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+  policyProfiles: DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES,
   faucetServer: DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
   observationServer: DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
 };

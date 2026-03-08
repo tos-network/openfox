@@ -546,7 +546,7 @@ describe("agent discovery", () => {
                     ratingCount: "1",
                     capabilityRegistered: true,
                     capabilityBit: 11,
-                    hasOnchainCapability: true,
+                    hasOnchainCapability: false,
                   },
                 },
                 {
@@ -632,6 +632,19 @@ describe("agent discovery", () => {
     expect(providers.map((provider) => provider.search.nodeId)).toEqual([
       "node-high",
       "node-low",
+    ]);
+
+    const strictProviders = await discoverCapabilityProviders({
+      config,
+      capability: "sponsor.topup.testnet",
+      limit: 10,
+      selectionPolicy: {
+        onchainCapabilityMode: "require_onchain",
+      },
+    });
+
+    expect(strictProviders.map((provider) => provider.search.nodeId)).toEqual([
+      "node-high",
     ]);
   });
 });

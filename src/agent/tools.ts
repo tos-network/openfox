@@ -1555,6 +1555,7 @@ Model: ${ctx.inference.getDefaultModel()}
           config: ctx.config,
           capability,
           limit,
+          db: ctx.db,
         });
         if (!providers.length) {
           return `No providers found for capability ${capability}.`;
@@ -1573,8 +1574,12 @@ Mode: ${provider.matchedCapability.mode}
 Registered: ${provider.search.trust?.registered ?? "unknown"}
 Suspended: ${provider.search.trust?.suspended ?? "unknown"}
 Stake: ${provider.search.trust?.stake ?? "unknown"}
+Stake Bucket: ${provider.search.trust?.stakeBucket ?? "unknown"}
 Reputation: ${provider.search.trust?.reputation ?? "unknown"}
+Reputation Bucket: ${provider.search.trust?.reputationBucket ?? "unknown"}
 On-chain Capability: ${provider.search.trust?.hasOnchainCapability ?? "unknown"}
+Directory Rank: ${provider.search.trust?.localRankScore ?? "unknown"} (${provider.search.trust?.localRankReason ?? "n/a"})
+Local Feedback Score: ${provider.localFeedback?.localScore ?? 0}
 Max Amount: ${provider.matchedCapability.max_amount || "n/a"}
 Rate Limit: ${provider.matchedCapability.rate_limit || "n/a"}`,
           )

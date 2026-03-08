@@ -5,6 +5,7 @@ import type {
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
   AgentDiscoveryObservationServerConfig,
+  AgentDiscoveryPolicyProfiles,
   AgentDiscoverySelectionPolicy,
 } from "../types.js";
 
@@ -14,6 +15,7 @@ export type {
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
   AgentDiscoveryObservationServerConfig,
+  AgentDiscoveryPolicyProfiles,
   AgentDiscoverySelectionPolicy,
 };
 
@@ -86,11 +88,24 @@ export interface AgentDiscoveryTrustSummary {
   registered: boolean;
   suspended: boolean;
   stake: string;
+  stakeBucket?: string;
   reputation: string;
+  reputationBucket?: string;
   ratingCount: string;
   capabilityRegistered: boolean;
   capabilityBit?: number;
   hasOnchainCapability: boolean;
+  localRankScore?: number;
+  localRankReason?: string;
+}
+
+export interface AgentDiscoveryLocalFeedback {
+  successCount: number;
+  failureCount: number;
+  timeoutCount: number;
+  malformedCount: number;
+  lastOutcomeAt?: string;
+  localScore: number;
 }
 
 export interface AgentDiscoveryCardResponse {
@@ -104,6 +119,7 @@ export interface VerifiedAgentProvider {
   card: AgentDiscoveryCard;
   matchedCapability: AgentDiscoveryCapability;
   endpoint: AgentDiscoveryEndpoint;
+  localFeedback?: AgentDiscoveryLocalFeedback;
 }
 
 export interface FaucetInvocationRequest {

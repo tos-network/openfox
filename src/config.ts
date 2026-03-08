@@ -24,6 +24,7 @@ import {
   DEFAULT_AGENT_DISCOVERY_CONFIG,
   DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES,
   DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
 } from "./types.js";
 import { getOpenFoxDir } from "./identity/wallet.js";
@@ -273,6 +274,32 @@ export function loadConfig(): OpenFoxConfig | null {
       ...(((raw?.agentDiscovery as JsonRecord | undefined)?.selectionPolicy as
         | JsonRecord
         | undefined) ?? {}),
+    },
+    policyProfiles: {
+      sponsor: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.sponsor,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.sponsor as JsonRecord | undefined) ?? {}),
+      },
+      observation: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.observation,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.observation as JsonRecord | undefined) ?? {}),
+      },
+      oracle: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.oracle,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.oracle as JsonRecord | undefined) ?? {}),
+      },
     },
     faucetServer: {
       ...DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,

@@ -16,6 +16,7 @@ import {
   type AgentDiscoveryCardResponse,
   type AgentDiscoveryConfig,
   type AgentDiscoveryInfo,
+  type AgentDiscoveryLocalFeedback,
   type AgentDiscoverySelectionPolicy,
   type AgentDiscoverySearchResult,
   type FaucetInvocationRequest,
@@ -152,21 +153,155 @@ function buildRequestExpiry(ttlSeconds = 300): number {
   return Math.floor(Date.now() / 1000) + Math.max(30, ttlSeconds);
 }
 
+function capabilityFamily(
+  capability: string,
+): "sponsor" | "observation" | "oracle" | null {
+  if (capability.startsWith("sponsor.")) return "sponsor";
+  if (capability.startsWith("observation.")) return "observation";
+  if (capability.startsWith("oracle.")) return "oracle";
+  return null;
+}
+
 function resolveSelectionPolicy(
   config: OpenFoxConfig,
+  capability: string,
   override?: Partial<AgentDiscoverySelectionPolicy>,
 ): AgentDiscoverySelectionPolicy {
+  const family = capabilityFamily(capability);
+  const profile =
+    family && config.agentDiscovery?.policyProfiles
+      ? config.agentDiscovery.policyProfiles[family]
+      : undefined;
   return {
     requireRegistered: true,
     excludeSuspended: true,
-    requireOnchainCapability: false,
+    onchainCapabilityMode: "off",
     minimumStakeWei: "0",
     minimumReputation: "0",
     preferHigherStake: true,
     preferHigherReputation: true,
     ...(config.agentDiscovery?.selectionPolicy ?? {}),
+    ...(profile ?? {}),
     ...(override ?? {}),
   };
+}
+
+function feedbackKey(nodeId: string, capability: string): string {
+  return `agent_discovery:provider_feedback:${nodeId}:${capability.toLowerCase()}`;
+}
+
+function loadLocalFeedback(
+  db: OpenFoxDatabase | undefined,
+  provider: VerifiedAgentProvider,
+  capability: string,
+): AgentDiscoveryLocalFeedback {
+  if (!db) {
+    return {
+      successCount: 0,
+      failureCount: 0,
+      timeoutCount: 0,
+      malformedCount: 0,
+      localScore: 0,
+    };
+  }
+  const raw = db.getKV(feedbackKey(provider.search.nodeId, capability));
+  if (!raw) {
+    return {
+      successCount: 0,
+      failureCount: 0,
+      timeoutCount: 0,
+      malformedCount: 0,
+      localScore: 0,
+    };
+  }
+  try {
+    const parsed = JSON.parse(raw) as Partial<AgentDiscoveryLocalFeedback>;
+    const successCount = Number(parsed.successCount || 0);
+    const failureCount = Number(parsed.failureCount || 0);
+    const timeoutCount = Number(parsed.timeoutCount || 0);
+    const malformedCount = Number(parsed.malformedCount || 0);
+    return {
+      successCount,
+      failureCount,
+      timeoutCount,
+      malformedCount,
+      lastOutcomeAt: parsed.lastOutcomeAt,
+      localScore:
+        successCount * 20 -
+        failureCount * 10 -
+        timeoutCount * 15 -
+        malformedCount * 12,
+    };
+  } catch {
+    return {
+      successCount: 0,
+      failureCount: 0,
+      timeoutCount: 0,
+      malformedCount: 0,
+      localScore: 0,
+    };
+  }
+}
+
+function recordProviderFeedback(params: {
+  db?: OpenFoxDatabase;
+  provider: VerifiedAgentProvider;
+  capability: string;
+  outcome: "success" | "failure" | "timeout" | "malformed";
+}): void {
+  if (!params.db) {
+    return;
+  }
+  const current = loadLocalFeedback(
+    params.db,
+    params.provider,
+    params.capability,
+  );
+  switch (params.outcome) {
+    case "success":
+      current.successCount += 1;
+      break;
+    case "failure":
+      current.failureCount += 1;
+      break;
+    case "timeout":
+      current.timeoutCount += 1;
+      break;
+    case "malformed":
+      current.malformedCount += 1;
+      break;
+  }
+  current.lastOutcomeAt = new Date().toISOString();
+  current.localScore =
+    current.successCount * 20 -
+    current.failureCount * 10 -
+    current.timeoutCount * 15 -
+    current.malformedCount * 12;
+  params.db.setKV(
+    feedbackKey(params.provider.search.nodeId, params.capability),
+    JSON.stringify(current),
+  );
+}
+
+function classifyInvocationError(
+  error: unknown,
+): "failure" | "timeout" | "malformed" {
+  const message =
+    error instanceof Error
+      ? error.message.toLowerCase()
+      : String(error).toLowerCase();
+  if (message.includes("timeout")) {
+    return "timeout";
+  }
+  if (
+    message.includes("invalid") ||
+    message.includes("malformed") ||
+    message.includes("unsupported capability") ||
+    message.includes("duplicate request nonce")
+  ) {
+    return "malformed";
+  }
+  return "failure";
 }
 
 function providerMatchesSelectionPolicy(
@@ -189,12 +324,10 @@ function providerMatchesSelectionPolicy(
   if (policy.excludeSuspended && trust.suspended) {
     return false;
   }
-  if (
-    policy.requireOnchainCapability &&
-    trust.capabilityRegistered &&
-    !trust.hasOnchainCapability
-  ) {
-    return false;
+  if (policy.onchainCapabilityMode === "require_onchain") {
+    if (!trust.capabilityRegistered || !trust.hasOnchainCapability) {
+      return false;
+    }
   }
   if (
     parseBigIntAmount(policy.minimumStakeWei) > parseBigIntAmount(trust.stake)
@@ -214,6 +347,8 @@ function sortProviders(
   providers: VerifiedAgentProvider[],
   requestedAmount: bigint,
   selectionPolicy: AgentDiscoverySelectionPolicy,
+  db: OpenFoxDatabase | undefined,
+  capability: string,
 ): VerifiedAgentProvider[] {
   const scoreMode = (mode: string): number => {
     switch (mode) {
@@ -229,6 +364,10 @@ function sortProviders(
   };
 
   return providers
+    .map((provider) => ({
+      ...provider,
+      localFeedback: loadLocalFeedback(db, provider, capability),
+    }))
     .filter((provider) =>
       providerMatchesSelectionPolicy(
         provider,
@@ -254,6 +393,19 @@ function sortProviders(
         (rightTrust?.hasOnchainCapability ?? false)
       ) {
         return rightTrust?.hasOnchainCapability ? 1 : -1;
+      }
+      if (selectionPolicy.onchainCapabilityMode === "prefer_onchain") {
+        if (
+          (leftTrust?.capabilityRegistered ?? false) !==
+          (rightTrust?.capabilityRegistered ?? false)
+        ) {
+          return rightTrust?.capabilityRegistered ? 1 : -1;
+        }
+      }
+      const leftLocalScore = left.localFeedback?.localScore ?? 0;
+      const rightLocalScore = right.localFeedback?.localScore ?? 0;
+      if (leftLocalScore !== rightLocalScore) {
+        return rightLocalScore - leftLocalScore;
       }
       if (selectionPolicy.preferHigherReputation) {
         const leftRep = parseSignedBigInt(leftTrust?.reputation);
@@ -388,6 +540,7 @@ export async function discoverCapabilityProviders(params: {
   capability: string;
   limit?: number;
   selectionPolicy?: Partial<AgentDiscoverySelectionPolicy>;
+  db?: OpenFoxDatabase;
 }): Promise<VerifiedAgentProvider[]> {
   const rpc = requireDiscoveryRpc(params.config);
   const searchResults = await collectSearchResults(
@@ -431,7 +584,13 @@ export async function discoverCapabilityProviders(params: {
   return sortProviders(
     providers,
     0n,
-    resolveSelectionPolicy(params.config, params.selectionPolicy),
+    resolveSelectionPolicy(
+      params.config,
+      params.capability,
+      params.selectionPolicy,
+    ),
+    params.db,
+    params.capability,
   );
 }
 
@@ -458,11 +617,14 @@ export async function requestTestnetFaucet(params: {
     capability,
     limit: params.limit ?? 10,
     selectionPolicy: params.selectionPolicy,
+    db: params.db,
   });
   const ranked = sortProviders(
     providers,
     params.requestedAmountWei,
-    resolveSelectionPolicy(params.config, params.selectionPolicy),
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
   );
   if (!ranked.length) {
     throw new Error(`No provider found for capability ${capability}`);
@@ -484,25 +646,36 @@ export async function requestTestnetFaucet(params: {
     reason: params.reason || "bootstrap openfox wallet",
   };
 
-  const result = await x402Fetch(
-    provider.endpoint.url,
-    params.identity.account,
-    "POST",
-    JSON.stringify(request),
-    { Accept: "application/json" },
-  );
-  if (!result.success) {
-    throw new Error(
-      result.error || `Provider request failed with status ${result.status}`,
+  let response: FaucetInvocationResponse;
+  try {
+    const result = await x402Fetch(
+      provider.endpoint.url,
+      params.identity.account,
+      "POST",
+      JSON.stringify(request),
+      { Accept: "application/json" },
     );
-  }
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
 
-  const response =
-    typeof result.response === "string"
-      ? (JSON.parse(result.response) as FaucetInvocationResponse)
-      : (result.response as FaucetInvocationResponse);
-  if (!response || typeof response.status !== "string") {
-    throw new Error("Provider returned an invalid faucet response");
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as FaucetInvocationResponse)
+        : (result.response as FaucetInvocationResponse);
+    if (!response || typeof response.status !== "string") {
+      throw new Error("Provider returned an invalid faucet response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+    });
+    throw error;
   }
 
   let receipt: Record<string, unknown> | null | undefined;
@@ -535,6 +708,12 @@ export async function requestTestnetFaucet(params: {
       receipt,
     }),
   );
+  recordProviderFeedback({
+    db: params.db,
+    provider,
+    capability,
+    outcome: "success",
+  });
 
   return { provider, request, response, receipt };
 }
@@ -560,11 +739,14 @@ export async function requestObservationOnce(params: {
     capability,
     limit: params.limit ?? 10,
     selectionPolicy: params.selectionPolicy,
+    db: params.db,
   });
   const ranked = sortProviders(
     providers,
     0n,
-    resolveSelectionPolicy(params.config, params.selectionPolicy),
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
   );
   if (!ranked.length) {
     throw new Error(`No provider found for capability ${capability}`);
@@ -587,24 +769,35 @@ export async function requestObservationOnce(params: {
     reason: params.reason || "one-shot paid observation",
   };
 
-  const result = await x402Fetch(
-    provider.endpoint.url,
-    params.identity.account,
-    "POST",
-    JSON.stringify(request),
-    { Accept: "application/json" },
-  );
-  if (!result.success) {
-    throw new Error(
-      result.error || `Provider request failed with status ${result.status}`,
+  let response: ObservationInvocationResponse;
+  try {
+    const result = await x402Fetch(
+      provider.endpoint.url,
+      params.identity.account,
+      "POST",
+      JSON.stringify(request),
+      { Accept: "application/json" },
     );
-  }
-  const response =
-    typeof result.response === "string"
-      ? (JSON.parse(result.response) as ObservationInvocationResponse)
-      : (result.response as ObservationInvocationResponse);
-  if (!response || response.status !== "ok") {
-    throw new Error("Provider returned an invalid observation response");
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as ObservationInvocationResponse)
+        : (result.response as ObservationInvocationResponse);
+    if (!response || response.status !== "ok") {
+      throw new Error("Provider returned an invalid observation response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+    });
+    throw error;
   }
   params.db?.setKV(
     "agent_discovery:last_observation_event",
@@ -616,5 +809,11 @@ export async function requestObservationOnce(params: {
       response,
     }),
   );
+  recordProviderFeedback({
+    db: params.db,
+    provider,
+    capability,
+    outcome: "success",
+  });
   return { provider, request, response };
 }
