@@ -39,6 +39,7 @@ export type AgentDiscoveryOnchainCapabilityMode =
 export interface AgentDiscoveryEndpointConfig {
   kind: AgentDiscoveryEndpointKind;
   url: string;
+  viaGateway?: string;
 }
 
 export interface AgentDiscoveryCapabilityConfig {
@@ -75,6 +76,44 @@ export interface AgentDiscoveryObservationServerConfig {
   allowPrivateTargets: boolean;
 }
 
+export interface AgentGatewayBootnodeConfig {
+  agentId: string;
+  url: string;
+}
+
+export interface AgentGatewayServerConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  sessionPath: string;
+  publicPathPrefix: string;
+  publicBaseUrl: string;
+  capability: string;
+  mode: AgentDiscoveryCapabilityMode;
+  priceModel?: string;
+  sessionTtlSeconds: number;
+  requestTimeoutMs: number;
+  maxRoutesPerSession: number;
+  maxRequestBodyBytes: number;
+}
+
+export interface AgentGatewayClientRouteConfig {
+  path: string;
+  capability: string;
+  mode: AgentDiscoveryCapabilityMode;
+  targetUrl: string;
+}
+
+export interface AgentGatewayClientConfig {
+  enabled: boolean;
+  gatewayAgentId?: string;
+  gatewayUrl?: string;
+  gatewayBootnodes: AgentGatewayBootnodeConfig[];
+  sessionTtlSeconds: number;
+  requestTimeoutMs: number;
+  routes: AgentGatewayClientRouteConfig[];
+}
+
 export interface AgentDiscoveryReputationUpdateConfig {
   enabled: boolean;
   successDelta: string;
@@ -99,6 +138,7 @@ export interface AgentDiscoveryPolicyProfiles {
   sponsor: AgentDiscoverySelectionPolicy;
   observation: AgentDiscoverySelectionPolicy;
   oracle: AgentDiscoverySelectionPolicy;
+  gateway: AgentDiscoverySelectionPolicy;
 }
 
 export interface AgentDiscoveryConfig {
@@ -114,6 +154,8 @@ export interface AgentDiscoveryConfig {
   reputationUpdates?: AgentDiscoveryReputationUpdateConfig;
   faucetServer?: AgentDiscoveryFaucetServerConfig;
   observationServer?: AgentDiscoveryObservationServerConfig;
+  gatewayServer?: AgentGatewayServerConfig;
+  gatewayClient?: AgentGatewayClientConfig;
 }
 
 export const DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG: AgentDiscoveryFaucetServerConfig =
@@ -141,6 +183,32 @@ export const DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG: AgentDiscoveryOb
     maxResponseBytes: 131072,
     allowPrivateTargets: false,
   };
+
+export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {
+  enabled: false,
+  bindHost: "127.0.0.1",
+  port: 4880,
+  sessionPath: "/agent-gateway/session",
+  publicPathPrefix: "/a",
+  publicBaseUrl: "http://127.0.0.1:4880",
+  capability: "gateway.relay",
+  mode: "sponsored",
+  priceModel: "sponsored",
+  sessionTtlSeconds: 3600,
+  requestTimeoutMs: 15_000,
+  maxRoutesPerSession: 16,
+  maxRequestBodyBytes: 131072,
+};
+
+export const DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG: AgentGatewayClientConfig = {
+  enabled: false,
+  gatewayAgentId: undefined,
+  gatewayUrl: undefined,
+  gatewayBootnodes: [],
+  sessionTtlSeconds: 3600,
+  requestTimeoutMs: 15_000,
+  routes: [],
+};
 
 export const DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY: AgentDiscoverySelectionPolicy =
   {
@@ -171,6 +239,11 @@ export const DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES: AgentDiscoveryPolicyProfil
       minimumReputation: "1",
       onchainCapabilityMode: "require_onchain",
     },
+    gateway: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      onchainCapabilityMode: "prefer_onchain",
+    },
   };
 
 export const DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG: AgentDiscoveryReputationUpdateConfig =
@@ -196,6 +269,8 @@ export const DEFAULT_AGENT_DISCOVERY_CONFIG: AgentDiscoveryConfig = {
   reputationUpdates: DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
   faucetServer: DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
   observationServer: DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+  gatewayServer: DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
+  gatewayClient: DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
 };
 
 // ─── Configuration ───────────────────────────────────────────────

@@ -27,6 +27,7 @@ export interface AgentDiscoveryIdentityRef {
 export interface AgentDiscoveryEndpoint {
   kind: AgentDiscoveryEndpointConfig["kind"];
   url: string;
+  via_gateway?: string;
 }
 
 export interface AgentDiscoveryCapability {
@@ -187,10 +188,13 @@ export function capabilityFromConfig(
 
 export function normalizeAgentDiscoveryConfig(
   config: AgentDiscoveryConfig | undefined,
+  options?: { includeHostedServerEndpoints?: boolean },
 ): AgentDiscoveryConfig | null {
   if (!config?.enabled || !config.publishCard) {
     return null;
   }
+  const includeHostedServerEndpoints =
+    options?.includeHostedServerEndpoints ?? true;
   const endpoints = config.endpoints.filter(
     (entry) => entry.url.trim().length > 0,
   );
@@ -198,7 +202,7 @@ export function normalizeAgentDiscoveryConfig(
     .map(capabilityFromConfig)
     .filter((entry) => entry.name.length > 0);
   const faucetServer = config.faucetServer;
-  if (faucetServer?.enabled) {
+  if (includeHostedServerEndpoints && faucetServer?.enabled) {
     const faucetUrl = buildFaucetServerUrl(faucetServer);
     if (!endpoints.some((entry) => entry.url === faucetUrl)) {
       endpoints.push({
@@ -216,7 +220,7 @@ export function normalizeAgentDiscoveryConfig(
     }
   }
   const observationServer = config.observationServer;
-  if (observationServer?.enabled) {
+  if (includeHostedServerEndpoints && observationServer?.enabled) {
     const observationUrl = buildObservationServerUrl(observationServer);
     if (!endpoints.some((entry) => entry.url === observationUrl)) {
       endpoints.push({

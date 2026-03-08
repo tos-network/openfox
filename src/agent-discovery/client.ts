@@ -156,10 +156,11 @@ function buildRequestExpiry(ttlSeconds = 300): number {
 
 function capabilityFamily(
   capability: string,
-): "sponsor" | "observation" | "oracle" | null {
+): "sponsor" | "observation" | "oracle" | "gateway" | null {
   if (capability.startsWith("sponsor.")) return "sponsor";
   if (capability.startsWith("observation.")) return "observation";
   if (capability.startsWith("oracle.")) return "oracle";
+  if (capability.startsWith("gateway.")) return "gateway";
   return null;
 }
 
@@ -543,10 +544,14 @@ export async function publishLocalAgentDiscoveryCard(params: {
   config: OpenFoxConfig;
   tosAddress: string;
   db?: OpenFoxDatabase;
+  agentDiscoveryOverride?: AgentDiscoveryConfig;
+  overrideIsNormalized?: boolean;
 }): Promise<{ info: AgentDiscoveryInfo; card: AgentDiscoveryCard } | null> {
-  const agentDiscovery = normalizeAgentDiscoveryConfig(
-    params.config.agentDiscovery,
-  );
+  const agentDiscovery = params.overrideIsNormalized
+    ? params.agentDiscoveryOverride || null
+    : normalizeAgentDiscoveryConfig(
+        params.agentDiscoveryOverride ?? params.config.agentDiscovery,
+      );
   if (!agentDiscovery) {
     return null;
   }

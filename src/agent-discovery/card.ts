@@ -56,6 +56,7 @@ export function buildAgentDiscoveryCardPayload(params: {
     endpoints: params.agentDiscovery.endpoints.map((endpoint) => ({
       kind: endpoint.kind,
       url: endpoint.url.trim(),
+      via_gateway: endpoint.viaGateway?.trim() || undefined,
     })),
     capabilities,
     reputation_refs: [],
@@ -109,7 +110,9 @@ export async function verifyAgentDiscoveryCard(
       !endpoint ||
       typeof endpoint.url !== "string" ||
       !endpoint.url.trim() ||
-      !["http", "https", "ws"].includes(String(endpoint.kind))
+      !["http", "https", "ws"].includes(String(endpoint.kind)) ||
+      (endpoint.via_gateway !== undefined &&
+        (typeof endpoint.via_gateway !== "string" || !endpoint.via_gateway.trim()))
     ) {
       return false;
     }

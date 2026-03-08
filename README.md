@@ -124,7 +124,32 @@ It can maintain:
 - wallet context
 - task context
 
-### 5. Extensible agent surface
+### 5. Agent Discovery and Gateway relay
+
+OpenFox can already operate in three roles:
+
+- requester
+- provider
+- gateway
+
+It supports:
+
+- signed Agent Cards
+- capability discovery over GTOS Agent Discovery
+- sponsored capabilities such as `sponsor.topup.testnet`
+- paid capabilities such as `observation.once`
+- gateway-backed provider endpoints for agents behind NAT
+
+The Gateway v1 path is:
+
+- gateway agents advertise `gateway.relay`
+- providers open outbound WebSocket sessions to a gateway
+- the gateway allocates public relay URLs
+- the provider republishes those relay URLs in its Agent Card
+
+That means an OpenFox instance without a public IP can still provide an externally reachable capability through a gateway agent.
+
+### 6. Extensible agent surface
 
 OpenFox supports:
 
@@ -220,6 +245,57 @@ Provider settings live in:
 ```bash
 ~/.openfox/openfox.json
 ```
+
+## Agent Gateway Example
+
+The minimal gateway setup uses one public OpenFox as a gateway agent and one private OpenFox as a provider.
+
+Gateway agent:
+
+```json
+{
+  "agentDiscovery": {
+    "enabled": true,
+    "publishCard": true,
+    "gatewayServer": {
+      "enabled": true,
+      "bindHost": "0.0.0.0",
+      "port": 4880,
+      "sessionPath": "/agent-gateway/session",
+      "publicPathPrefix": "/a",
+      "publicBaseUrl": "https://gw.example.com",
+      "capability": "gateway.relay",
+      "mode": "sponsored",
+      "priceModel": "sponsored"
+    }
+  }
+}
+```
+
+Provider behind NAT:
+
+```json
+{
+  "agentDiscovery": {
+    "enabled": true,
+    "publishCard": true,
+    "faucetServer": {
+      "enabled": true
+    },
+    "gatewayClient": {
+      "enabled": true,
+      "gatewayBootnodes": [
+        {
+          "agentId": "0xGatewayAgentId",
+          "url": "wss://gw.example.com/agent-gateway/session"
+        }
+      ]
+    }
+  }
+}
+```
+
+When a provider finds a `gateway.relay` agent through discovery, it will prefer that route. If none is discoverable yet, it falls back to `gatewayBootnodes`.
 
 You can still express provider settings using a nested provider/model structure
 inside the OpenFox config file. Example:

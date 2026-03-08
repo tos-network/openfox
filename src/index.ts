@@ -34,6 +34,13 @@ import { bootstrapTopup } from "./runtime/topup.js";
 import { publishLocalAgentDiscoveryCard } from "./agent-discovery/client.js";
 import { startAgentDiscoveryFaucetServer } from "./agent-discovery/faucet-server.js";
 import { startAgentDiscoveryObservationServer } from "./agent-discovery/observation-server.js";
+import { normalizeAgentDiscoveryConfig } from "./agent-discovery/types.js";
+import { startAgentGatewayServer } from "./agent-gateway/server.js";
+import { startAgentGatewayProviderSession } from "./agent-gateway/client.js";
+import {
+  buildGatewayProviderRoutes,
+  buildPublishedAgentDiscoveryConfig,
+} from "./agent-gateway/publish.js";
 import { deriveTOSAddressFromPrivateKey } from "./tos/address.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "viem";
@@ -152,12 +159,20 @@ async function showStatus(): Promise<void> {
   const skills = db.getSkills(true);
   const children = db.getChildren();
   const registry = db.getRegistryEntry();
+  const discovery = config.agentDiscovery;
+  const gatewaySummary = discovery?.gatewayClient?.enabled
+    ? discovery.gatewayClient.gatewayUrl || "discovery/bootnodes"
+    : discovery?.gatewayServer?.enabled
+      ? discovery.gatewayServer.publicBaseUrl
+      : "disabled";
 
   logger.info(`
 === OPENFOX STATUS ===
 Name:       ${config.name}
 Address:    ${config.walletAddress}
 TOS:        ${config.tosWalletAddress || "not configured"}
+Discovery:  ${discovery?.enabled ? "enabled" : "disabled"}
+Gateway:    ${gatewaySummary}
 Creator:    ${config.creatorAddress}
 Sandbox:    ${config.sandboxId}
 State:      ${state}
@@ -240,9 +255,22 @@ async function run(): Promise<void> {
     sandboxId: config.sandboxId,
   });
 
+  let faucetServer:
+    | Awaited<ReturnType<typeof startAgentDiscoveryFaucetServer>>
+    | undefined;
+  let observationServer:
+    | Awaited<ReturnType<typeof startAgentDiscoveryObservationServer>>
+    | undefined;
+  let gatewayServer:
+    | Awaited<ReturnType<typeof startAgentGatewayServer>>
+    | undefined;
+  let gatewayProviderSession:
+    | Awaited<ReturnType<typeof startAgentGatewayProviderSession>>
+    | undefined;
+
   if (config.agentDiscovery?.faucetServer?.enabled) {
     try {
-      const faucetServer = await startAgentDiscoveryFaucetServer({
+      faucetServer = await startAgentDiscoveryFaucetServer({
         identity,
         config,
         tosAddress,
@@ -260,7 +288,7 @@ async function run(): Promise<void> {
 
   if (config.agentDiscovery?.observationServer?.enabled) {
     try {
-      const observationServer = await startAgentDiscoveryObservationServer({
+      observationServer = await startAgentDiscoveryObservationServer({
         identity,
         config,
         tosAddress,
@@ -275,6 +303,84 @@ async function run(): Promise<void> {
     }
   }
 
+  if (config.agentDiscovery?.gatewayServer?.enabled) {
+    try {
+      gatewayServer = await startAgentGatewayServer({
+        identity,
+        db,
+        gatewayConfig: config.agentDiscovery.gatewayServer,
+      });
+      logger.info(`Agent Gateway relay enabled at ${gatewayServer.sessionUrl}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Gateway server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  let publishedAgentDiscoveryConfig =
+    normalizeAgentDiscoveryConfig(config.agentDiscovery) ??
+    (config.agentDiscovery?.enabled &&
+    config.agentDiscovery.publishCard &&
+    config.agentDiscovery.gatewayServer?.enabled
+      ? {
+          ...config.agentDiscovery,
+          endpoints: [],
+          capabilities: [],
+          faucetServer: config.agentDiscovery.faucetServer
+            ? { ...config.agentDiscovery.faucetServer, enabled: false }
+            : undefined,
+          observationServer: config.agentDiscovery.observationServer
+            ? { ...config.agentDiscovery.observationServer, enabled: false }
+            : undefined,
+        }
+      : null);
+
+  if (config.agentDiscovery?.gatewayClient?.enabled) {
+    try {
+      const routes = buildGatewayProviderRoutes({
+        config,
+        faucetUrl: faucetServer?.url,
+        observationUrl: observationServer?.url,
+      });
+      if (!routes.length) {
+        logger.warn(
+          "Agent Gateway client enabled but no local provider routes were available",
+        );
+      } else {
+        gatewayProviderSession = await startAgentGatewayProviderSession({
+          identity,
+          config,
+          tosAddress,
+          routes,
+          db,
+        });
+        logger.info(
+          `Agent Gateway provider session opened via ${gatewayProviderSession.gatewayUrl}`,
+        );
+        if (publishedAgentDiscoveryConfig) {
+          publishedAgentDiscoveryConfig = buildPublishedAgentDiscoveryConfig({
+            baseConfig: publishedAgentDiscoveryConfig,
+            gatewayServer,
+            gatewayServerConfig: config.agentDiscovery.gatewayServer,
+            providerSession: gatewayProviderSession,
+            providerRoutes: routes,
+          });
+        }
+      }
+    } catch (error) {
+      logger.warn(
+        `Agent Gateway provider session failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  } else if (publishedAgentDiscoveryConfig && gatewayServer) {
+    publishedAgentDiscoveryConfig = buildPublishedAgentDiscoveryConfig({
+      baseConfig: publishedAgentDiscoveryConfig,
+      gatewayServer,
+      gatewayServerConfig: config.agentDiscovery?.gatewayServer,
+    });
+  }
+
   if (config.agentDiscovery?.enabled && config.agentDiscovery.publishCard) {
     try {
       const published = await publishLocalAgentDiscoveryCard({
@@ -282,6 +388,8 @@ async function run(): Promise<void> {
         config,
         tosAddress,
         db,
+        agentDiscoveryOverride: publishedAgentDiscoveryConfig ?? undefined,
+        overrideIsNormalized: true,
       });
       if (published) {
         logger.info(
@@ -440,8 +548,15 @@ async function run(): Promise<void> {
     logger.info(`[${new Date().toISOString()}] Shutting down...`);
     heartbeat.stop();
     db.setAgentState("sleeping");
-    db.close();
-    process.exit(0);
+    Promise.allSettled([
+      gatewayProviderSession?.close(),
+      gatewayServer?.close(),
+      faucetServer?.close(),
+      observationServer?.close(),
+    ]).finally(() => {
+      db.close();
+      process.exit(0);
+    });
   };
 
   process.on("SIGTERM", shutdown);

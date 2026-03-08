@@ -23,6 +23,8 @@ import {
   DEFAULT_SOUL_CONFIG,
   DEFAULT_AGENT_DISCOVERY_CONFIG,
   DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
+  DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
+  DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES,
   DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
@@ -301,6 +303,14 @@ export function loadConfig(): OpenFoxConfig | null {
             | undefined
         )?.oracle as JsonRecord | undefined) ?? {}),
       },
+      gateway: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.gateway,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.gateway as JsonRecord | undefined) ?? {}),
+      },
     },
     reputationUpdates: {
       ...DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
@@ -317,6 +327,50 @@ export function loadConfig(): OpenFoxConfig | null {
       ...DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
       ...(((raw?.agentDiscovery as JsonRecord | undefined)
         ?.observationServer as JsonRecord | undefined) ?? {}),
+    },
+    gatewayServer: {
+      ...DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayServer as
+        | JsonRecord
+        | undefined) ?? {}),
+    },
+    gatewayClient: {
+      ...DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+        | JsonRecord
+        | undefined) ?? {}),
+      gatewayBootnodes: Array.isArray(
+        (raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient &&
+          ((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as JsonRecord)
+            .gatewayBootnodes,
+      )
+        ? ((((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+            | JsonRecord
+            | undefined)?.gatewayBootnodes as unknown[]) ?? []).filter(
+            (value): value is NonNullable<AgentDiscoveryConfig["gatewayClient"]>["gatewayBootnodes"][number] =>
+              typeof value === "object" &&
+              value !== null &&
+              typeof (value as JsonRecord).agentId === "string" &&
+              typeof (value as JsonRecord).url === "string",
+          )
+        : DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG.gatewayBootnodes,
+      routes: Array.isArray(
+        (raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient &&
+          ((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as JsonRecord)
+            .routes,
+      )
+        ? ((((raw?.agentDiscovery as JsonRecord | undefined)?.gatewayClient as
+            | JsonRecord
+            | undefined)?.routes as unknown[]) ?? []).filter(
+            (value): value is NonNullable<AgentDiscoveryConfig["gatewayClient"]>["routes"][number] =>
+              typeof value === "object" &&
+              value !== null &&
+              typeof (value as JsonRecord).path === "string" &&
+              typeof (value as JsonRecord).capability === "string" &&
+              typeof (value as JsonRecord).mode === "string" &&
+              typeof (value as JsonRecord).targetUrl === "string",
+          )
+        : DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG.routes,
     },
   };
 
