@@ -59,6 +59,8 @@
   "scripts": {
     "build": "tsc && pnpm -r build",
     "dev": "tsx watch src/index.ts",
+    "openfox": "tsx src/index.ts",
+    "openfox-cli": "tsx packages/cli/src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "test:coverage": "vitest run --coverage",

@@ -192,12 +192,28 @@ The near-term product direction includes:
 ```bash
 git clone https://github.com/tos-network/openfox
 cd openfox
-npm install
-npm run build
-node dist/index.js --run
+corepack enable
+corepack prepare pnpm@10.28.1 --activate
+pnpm install
+pnpm openfox --setup
+pnpm openfox --run
 ```
 
-On first run, OpenFox launches an interactive setup wizard that:
+The preferred command surface is:
+
+```bash
+openfox --setup
+openfox --run
+```
+
+If you are running directly from the source checkout and have not installed the binary globally yet, use:
+
+```bash
+pnpm openfox --setup
+pnpm openfox --run
+```
+
+On first setup, OpenFox launches an interactive wizard that:
 
 - creates a local wallet
 - initializes the local config directory
@@ -206,13 +222,11 @@ On first run, OpenFox launches an interactive setup wizard that:
 - asks for the creator address
 - configures the inference provider
 
-The local state directory is currently:
+The local state directory is:
 
 ```bash
 ~/.openfox/
 ```
-
-That path is still inherited from the earlier runtime and can be renamed later.
 
 ---
 
@@ -337,8 +351,15 @@ Current support includes:
 CLI examples:
 
 ```bash
-node packages/cli/dist/index.js tos-status
-node packages/cli/dist/index.js tos-send 0x... 0.01
+openfox-cli tos-status
+openfox-cli tos-send 0x... 0.01
+```
+
+From the source checkout, you can also run:
+
+```bash
+pnpm openfox-cli tos-status
+pnpm openfox-cli tos-send 0x... 0.01
 ```
 
 This matters because an earning agent cannot just think. It must also be able to:
@@ -355,21 +376,21 @@ This matters because an earning agent cannot just think. It must also be able to
 Show help:
 
 ```bash
-node dist/index.js --help
+openfox --help
 ```
 
 Start the runtime:
 
 ```bash
-node dist/index.js --run
+openfox --run
 ```
 
 Reconfigure:
 
 ```bash
-node dist/index.js --setup
-node dist/index.js --configure
-node dist/index.js --pick-model
+openfox --setup
+openfox --configure
+openfox --pick-model
 ```
 
 ---
