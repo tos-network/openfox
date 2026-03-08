@@ -67,6 +67,7 @@ Environment:
   CONWAY_API_URL           Conway API URL (default: https://api.conway.tech)
   CONWAY_API_KEY           Conway API key (overrides config)
   OLLAMA_BASE_URL          Ollama base URL (overrides config, e.g. http://localhost:11434)
+  TOS_RPC_URL              TOS RPC URL (overrides config for TOS wallet operations)
 `);
     process.exit(0);
   }
@@ -151,6 +152,7 @@ async function showStatus(): Promise<void> {
 === AUTOMATON STATUS ===
 Name:       ${config.name}
 Address:    ${config.walletAddress}
+TOS:        ${config.tosWalletAddress || "not configured"}
 Creator:    ${config.creatorAddress}
 Sandbox:    ${config.sandboxId}
 State:      ${state}

@@ -32,6 +32,7 @@ export function getWalletPath(): string {
  */
 export async function getWallet(): Promise<{
   account: PrivateKeyAccount;
+  privateKey: `0x${string}`;
   isNew: boolean;
 }> {
   if (!fs.existsSync(AUTOMATON_DIR)) {
@@ -43,7 +44,7 @@ export async function getWallet(): Promise<{
       fs.readFileSync(WALLET_FILE, "utf-8"),
     );
     const account = privateKeyToAccount(walletData.privateKey);
-    return { account, isNew: false };
+    return { account, privateKey: walletData.privateKey, isNew: false };
   } else {
     const privateKey = generatePrivateKey();
     const account = privateKeyToAccount(privateKey);
@@ -57,7 +58,7 @@ export async function getWallet(): Promise<{
       mode: 0o600,
     });
 
-    return { account, isNew: true };
+    return { account, privateKey, isNew: true };
   }
 }
 
@@ -88,6 +89,17 @@ export function loadWalletAccount(): PrivateKeyAccount | null {
     fs.readFileSync(WALLET_FILE, "utf-8"),
   );
   return privateKeyToAccount(walletData.privateKey);
+}
+
+export function loadWalletPrivateKey(): `0x${string}` | null {
+  if (!fs.existsSync(WALLET_FILE)) {
+    return null;
+  }
+
+  const walletData: WalletData = JSON.parse(
+    fs.readFileSync(WALLET_FILE, "utf-8"),
+  );
+  return walletData.privateKey;
 }
 
 export function walletExists(): boolean {

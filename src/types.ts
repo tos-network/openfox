@@ -49,6 +49,9 @@ export interface AutomatonConfig {
   dbPath: string;
   logLevel: "debug" | "info" | "warn" | "error";
   walletAddress: Address;
+  tosWalletAddress?: `0x${string}`;
+  tosRpcUrl?: string;
+  tosChainId?: number;
   version: string;
   skillsDir: string;
   agentId?: string;
@@ -79,6 +82,7 @@ export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
   maxTurnsPerCycle: 25,
   childSandboxMemoryMb: 1024,
   socialRelayUrl: "https://social.conway.tech",
+  tosRpcUrl: process.env.TOS_RPC_URL,
 };
 
 // ─── Agent State ─────────────────────────────────────────────────

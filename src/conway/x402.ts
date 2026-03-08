@@ -13,6 +13,10 @@ import {
   type PrivateKeyAccount,
 } from "viem";
 import { base, baseSepolia } from "viem/chains";
+import { loadConfig } from "../config.js";
+import { buildTOSX402Payment } from "../tos/client.js";
+import { normalizeTOSAddress } from "../tos/address.js";
+import { loadWalletPrivateKey } from "../identity/wallet.js";
 import { ResilientHttpClient } from "./http-client.js";
 
 const x402HttpClient = new ResilientHttpClient();
@@ -28,6 +32,7 @@ const CHAINS: Record<string, any> = {
   "eip155:84532": baseSepolia,
 };
 type NetworkId = keyof typeof USDC_ADDRESSES;
+type PaymentNetworkId = NetworkId | `tos:${string}`;
 
 const BALANCE_OF_ABI = [
   {
@@ -41,11 +46,12 @@ const BALANCE_OF_ABI = [
 
 interface PaymentRequirement {
   scheme: string;
-  network: NetworkId;
+  network: PaymentNetworkId;
   maxAmountRequired: string;
-  payToAddress: Address;
+  payToAddress: string;
   requiredDeadlineSeconds: number;
-  usdcAddress: Address;
+  usdcAddress?: Address;
+  asset?: string;
 }
 
 interface PaymentRequiredResponse {
@@ -93,7 +99,7 @@ function parsePositiveInt(value: unknown): number | null {
   return null;
 }
 
-function normalizeNetwork(raw: unknown): NetworkId | null {
+function normalizeNetwork(raw: unknown): PaymentNetworkId | null {
   if (typeof raw !== "string") return null;
   const normalized = raw.trim().toLowerCase();
   if (normalized === "base") return "eip155:8453";
@@ -101,7 +107,27 @@ function normalizeNetwork(raw: unknown): NetworkId | null {
   if (normalized === "eip155:8453" || normalized === "eip155:84532") {
     return normalized;
   }
+  if (/^tos:\d+$/.test(normalized)) {
+    return normalized as PaymentNetworkId;
+  }
   return null;
+}
+
+function isUSDCNetwork(network: PaymentNetworkId): network is NetworkId {
+  return network === "eip155:8453" || network === "eip155:84532";
+}
+
+function isTOSNetwork(network: PaymentNetworkId): network is `tos:${string}` {
+  return network.startsWith("tos:");
+}
+
+function getTOSRpcUrl(): string | undefined {
+  const config = loadConfig();
+  return process.env.TOS_RPC_URL || config?.tosRpcUrl;
+}
+
+function hasTOSPaymentSupport(): boolean {
+  return !!(loadWalletPrivateKey() && getTOSRpcUrl());
 }
 
 function normalizePaymentRequirement(raw: unknown): PaymentRequirement | null {
@@ -124,15 +150,20 @@ function normalizePaymentRequirement(raw: unknown): PaymentRequirement | null {
       : null;
   const usdcAddress = typeof value.usdcAddress === "string"
     ? value.usdcAddress
-    : typeof value.asset === "string"
+    : typeof value.asset === "string" && value.asset.startsWith("0x")
       ? value.asset
-      : USDC_ADDRESSES[network];
+      : isUSDCNetwork(network)
+        ? USDC_ADDRESSES[network]
+        : undefined;
   const requiredDeadlineSeconds =
     parsePositiveInt(value.requiredDeadlineSeconds) ??
     parsePositiveInt(value.maxTimeoutSeconds) ??
     300;
 
-  if (!scheme || !maxAmountRequired || !payToAddress || !usdcAddress) {
+  if (!scheme || !maxAmountRequired || !payToAddress) {
+    return null;
+  }
+  if (isUSDCNetwork(network) && !usdcAddress) {
     return null;
   }
 
@@ -140,9 +171,10 @@ function normalizePaymentRequirement(raw: unknown): PaymentRequirement | null {
     scheme,
     network,
     maxAmountRequired,
-    payToAddress: payToAddress as Address,
+    payToAddress,
     requiredDeadlineSeconds,
-    usdcAddress: usdcAddress as Address,
+    usdcAddress: usdcAddress as Address | undefined,
+    asset: typeof value.asset === "string" ? value.asset : undefined,
   };
 }
 
@@ -176,10 +208,17 @@ function parseMaxAmountRequired(maxAmountRequired: string, x402Version: number):
 }
 
 function selectRequirement(parsed: PaymentRequiredResponse): PaymentRequirement {
-  const exactSupported = parsed.accepts.find(
-    (r) => r.scheme === "exact" && !!CHAINS[r.network],
+  const tosSupported = hasTOSPaymentSupport();
+  if (tosSupported) {
+    const exactTOS = parsed.accepts.find(
+      (r) => r.scheme === "exact" && isTOSNetwork(r.network),
+    );
+    if (exactTOS) return exactTOS;
+  }
+  const exactUSDC = parsed.accepts.find(
+    (r) => r.scheme === "exact" && isUSDCNetwork(r.network),
   );
-  if (exactSupported) return exactSupported;
+  if (exactUSDC) return exactUSDC;
   return parsed.accepts[0];
 }
 
@@ -298,7 +337,7 @@ export async function x402Fetch(
     }
 
     // Check amount against maxPaymentCents BEFORE signing
-    if (maxPaymentCents !== undefined) {
+    if (maxPaymentCents !== undefined && isUSDCNetwork(parsed.requirement.network)) {
       const amountAtomic = parseMaxAmountRequired(
         parsed.requirement.maxAmountRequired,
         parsed.x402Version,
@@ -340,6 +379,7 @@ export async function x402Fetch(
       headers: {
         ...headers,
         "Content-Type": "application/json",
+        "Payment-Signature": paymentHeader,
         "X-Payment": paymentHeader,
       },
       body,
@@ -356,7 +396,9 @@ export async function x402Fetch(
 async function parsePaymentRequired(
   resp: Response,
 ): Promise<ParsedPaymentRequirement | null> {
-  const header = resp.headers.get("X-Payment-Required");
+  const header =
+    resp.headers.get("Payment-Required") ||
+    resp.headers.get("X-Payment-Required");
   if (header) {
     const rawHeader = safeJsonParse(header);
     const normalizedRaw = normalizePaymentRequired(rawHeader);
@@ -399,9 +441,35 @@ async function signPayment(
   requirement: PaymentRequirement,
   x402Version: number,
 ): Promise<any> {
+  if (isTOSNetwork(requirement.network)) {
+    const privateKey = loadWalletPrivateKey();
+    if (!privateKey) {
+      throw new Error("TOS payment requested but no local wallet private key was found");
+    }
+    const rpcUrl = getTOSRpcUrl();
+    if (!rpcUrl) {
+      throw new Error("TOS payment requested but TOS_RPC_URL is not configured");
+    }
+    return await buildTOSX402Payment({
+      privateKey,
+      rpcUrl,
+      requirement: {
+        scheme: "exact",
+        network: requirement.network,
+        maxAmountRequired: requirement.maxAmountRequired,
+        payToAddress: normalizeTOSAddress(requirement.payToAddress),
+        asset: requirement.asset,
+        requiredDeadlineSeconds: requirement.requiredDeadlineSeconds,
+      },
+    });
+  }
+
   const chain = CHAINS[requirement.network];
   if (!chain) {
     throw new Error(`Unsupported network: ${requirement.network}`);
+  }
+  if (!requirement.usdcAddress) {
+    throw new Error(`Missing USDC address for network: ${requirement.network}`);
   }
 
   const nonce = `0x${Buffer.from(
@@ -437,7 +505,7 @@ async function signPayment(
 
   const message = {
     from: account.address,
-    to: requirement.payToAddress,
+    to: requirement.payToAddress as Address,
     value: amount,
     validAfter: BigInt(validAfter),
     validBefore: BigInt(validBefore),

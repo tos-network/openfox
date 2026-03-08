@@ -23,6 +23,12 @@ async function main(): Promise<void> {
     case "send":
       await import("./commands/send.js");
       break;
+    case "tos-status":
+      await import("./commands/tos-status.js");
+      break;
+    case "tos-send":
+      await import("./commands/tos-send.js");
+      break;
     default:
       console.log(`
 Conway Automaton CLI - Creator Tools
@@ -32,6 +38,8 @@ Usage:
   automaton-cli logs [--tail N]     View automaton logs
   automaton-cli fund <amount> [--to 0x...]  Transfer Conway credits
   automaton-cli send <to-address> <message> Send a social message
+  automaton-cli tos-status          Show TOS wallet status
+  automaton-cli tos-send <to> <amount> [--wait]   Send native TOS transfer
 `);
   }
 }

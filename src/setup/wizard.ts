@@ -8,6 +8,7 @@ import { getWallet, getAutomatonDir } from "../identity/wallet.js";
 import { provision } from "../identity/provision.js";
 import { createConfig, saveConfig } from "../config.js";
 import { writeDefaultHeartbeatConfig } from "../heartbeat/config.js";
+import { deriveTOSAddressFromPrivateKey } from "../tos/address.js";
 import { showBanner } from "./banner.js";
 import {
   promptRequired,
@@ -27,12 +28,14 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
 
   // ─── 1. Generate wallet ───────────────────────────────────────
   console.log(chalk.cyan("  [1/6] Generating identity (wallet)..."));
-  const { account, isNew } = await getWallet();
+  const { account, privateKey, isNew } = await getWallet();
+  const tosAddress = deriveTOSAddressFromPrivateKey(privateKey);
   if (isNew) {
     console.log(chalk.green(`  Wallet created: ${account.address}`));
   } else {
     console.log(chalk.green(`  Wallet loaded: ${account.address}`));
   }
+  console.log(chalk.green(`  TOS address derived: ${tosAddress}`));
   console.log(chalk.dim(`  Private key stored at: ${getAutomatonDir()}/wallet.json\n`));
 
   // ─── 2. Provision API key ─────────────────────────────────────
@@ -108,6 +111,14 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
     console.log(chalk.dim("  No provider keys set. Inference will default to Conway.\n"));
   }
 
+  const tosRpcUrlInput = await promptOptional("TOS RPC URL (optional, e.g. http://127.0.0.1:8545)");
+  const tosRpcUrl = tosRpcUrlInput || undefined;
+  if (tosRpcUrl) {
+    console.log(chalk.green(`  TOS RPC saved: ${tosRpcUrl}`));
+  } else {
+    console.log(chalk.dim("  No TOS RPC configured. TOS wallet support will be offline until you set TOS_RPC_URL or update config.\n"));
+  }
+
   // ─── Financial Safety Policy ─────────────────────────────────
   console.log(chalk.cyan("  Financial Safety Policy"));
   console.log(chalk.dim("  These limits protect against unauthorized spending. Press Enter for defaults.\n"));
@@ -153,6 +164,8 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
     registeredWithConway: !!apiKey,
     sandboxId: env.sandboxId,
     walletAddress: account.address,
+    tosWalletAddress: tosAddress,
+    tosRpcUrl,
     apiKey,
     openaiApiKey: openaiApiKey || undefined,
     anthropicApiKey: anthropicApiKey || undefined,
@@ -188,14 +201,14 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
 
   // ─── 6. Funding guidance ──────────────────────────────────────
   console.log(chalk.cyan("  [6/6] Funding\n"));
-  showFundingPanel(account.address);
+  showFundingPanel(account.address, tosAddress);
 
   closePrompts();
 
   return config;
 }
 
-function showFundingPanel(address: string): void {
+function showFundingPanel(address: string, tosAddress: string): void {
   const short = `${address.slice(0, 6)}...${address.slice(-5)}`;
   const w = 58;
   const pad = (s: string, len: number) => s + " ".repeat(Math.max(0, len - s.length));
@@ -204,6 +217,7 @@ function showFundingPanel(address: string): void {
   console.log(chalk.cyan(`  │${pad("  Fund your automaton", w)}│`));
   console.log(chalk.cyan(`  │${" ".repeat(w)}│`));
   console.log(chalk.cyan(`  │${pad(`  Address: ${short}`, w)}│`));
+  console.log(chalk.cyan(`  │${pad(`  TOS:     ${tosAddress.slice(0, 6)}...${tosAddress.slice(-5)}`, w)}│`));
   console.log(chalk.cyan(`  │${" ".repeat(w)}│`));
   console.log(chalk.cyan(`  │${pad("  1. Transfer Conway credits", w)}│`));
   console.log(chalk.cyan(`  │${pad("     conway credits transfer <address> <amount>", w)}│`));

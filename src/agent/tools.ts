@@ -2703,7 +2703,7 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "x402_fetch",
       description:
-        "Fetch a URL with automatic x402 USDC payment. If the server responds with HTTP 402, signs a USDC payment and retries. Use this to access paid APIs and services.",
+        "Fetch a URL with automatic x402 payment. If the server responds with HTTP 402, signs the required payment method supported by the agent, then retries. Use this to access paid APIs and services.",
       category: "financial",
       riskLevel: "dangerous",
       parameters: {

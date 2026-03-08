@@ -64,6 +64,20 @@ export function loadConfig(): AutomatonConfig | null {
     return {
       ...DEFAULT_CONFIG,
       ...raw,
+      tosWalletAddress:
+        typeof raw.tosWalletAddress === "string"
+          ? raw.tosWalletAddress.trim()
+          : DEFAULT_CONFIG.tosWalletAddress,
+      tosRpcUrl:
+        typeof process.env.TOS_RPC_URL === "string" && process.env.TOS_RPC_URL.trim()
+          ? process.env.TOS_RPC_URL.trim()
+          : typeof raw.tosRpcUrl === "string"
+            ? raw.tosRpcUrl.trim()
+            : DEFAULT_CONFIG.tosRpcUrl,
+      tosChainId:
+        typeof raw.tosChainId === "number"
+          ? raw.tosChainId
+          : DEFAULT_CONFIG.tosChainId,
       sandboxId:
         typeof raw.sandboxId === "string"
           ? raw.sandboxId.trim()
@@ -121,6 +135,9 @@ export function createConfig(params: {
   registeredWithConway: boolean;
   sandboxId: string;
   walletAddress: Address;
+  tosWalletAddress?: `0x${string}`;
+  tosRpcUrl?: string;
+  tosChainId?: number;
   apiKey: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
@@ -149,6 +166,9 @@ export function createConfig(params: {
     dbPath: DEFAULT_CONFIG.dbPath || "~/.automaton/state.db",
     logLevel: (DEFAULT_CONFIG.logLevel as AutomatonConfig["logLevel"]) || "info",
     walletAddress: params.walletAddress,
+    tosWalletAddress: params.tosWalletAddress,
+    tosRpcUrl: params.tosRpcUrl,
+    tosChainId: params.tosChainId,
     version: DEFAULT_CONFIG.version || "0.2.1",
     skillsDir: DEFAULT_CONFIG.skillsDir || "~/.automaton/skills",
     maxChildren: DEFAULT_CONFIG.maxChildren || 3,
