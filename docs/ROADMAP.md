@@ -22,6 +22,8 @@ In one sentence:
 - `tos-status` and `tos-send` CLI commands are implemented
 - the `x402` client recognizes `tos:<chainId>` and can construct TOS payments
 - when a service offers both USDC and TOS payment requirements, OpenFox prefers TOS
+- Agent Discovery requester/provider flows are implemented
+- Agent Gateway relay flows are implemented
 
 ### 2.2 On the TOS/GTOS Side ✅
 
@@ -31,6 +33,7 @@ In one sentence:
 - the minimal demo service `cmd/x402demo` is implemented
 - real `TOS x402` end-to-end testing on a local three-node network has been completed
 - the RPC signer inference bug has been fixed so validator-related flows do not incorrectly fall back to `secp256k1`
+- Agent Discovery and Agent Gateway v1 are implemented
 
 ### 2.3 Current Conclusion ✅
 
@@ -38,11 +41,15 @@ The minimum end-to-end path is already working:
 
 `openfox wallet -> TOS native tx signing -> x402 payment -> gtos/x402 verification -> paid endpoint`
 
+And a broader agent-to-agent base is also now working:
+
+`OpenFox wallet -> Agent Discovery -> Agent Gateway -> provider invocation -> TOS payment/reward path`
+
 However, this is still "integrated and testable," not yet "production-ready and scalable."
 
 ## 3. Overall Roadmap
 
-The recommended path is to move in five stages.
+The recommended path is to move in six stages, with one narrow MVP stage inserted between the completed core path and the broader onboarding/productization work.
 
 ### Phase 0: Core Path Working ✅
 
@@ -60,6 +67,83 @@ Deliverables:
 - the `TOS` SDK in `openfox`
 - `gtos/x402`
 - `x402demo`
+
+### Phase 0.5: Testnet Agent-to-Agent Bounty MVP
+
+Status: not complete
+
+Goal:
+
+- prove the first real OpenFox economy loop on testnet before introducing full oracle complexity
+
+This phase should intentionally stay simple.
+
+We run one OpenFox instance as a **Bounty Host Agent**. A user runs another OpenFox instance as a **Solver Agent**. The host agent asks a prediction-style question, the solver submits an answer, and the winning solver receives `TOS` after manual judging.
+
+This phase does **not** require:
+
+- decentralized oracle resolution
+- dispute games
+- zk proofs
+- on-chain truth settlement
+
+For this MVP, judgment is explicitly manual:
+
+- we create the question
+- we decide the answer offline
+- we may use off-chain AI to help judge
+- the payout is then executed by the host OpenFox agent
+
+Suggested capability surface:
+
+- `bounty.prediction.info`
+- `bounty.prediction.submit`
+- `bounty.prediction.result`
+- optional `gateway.relay`
+- optional `sponsor.topup.testnet`
+
+Required work:
+
+- implement one bounty host flow in `openfox`
+- implement one solver flow in `openfox`
+- define a minimal bounty schema:
+  - `bounty_id`
+  - `question`
+  - `question_type`
+  - `reward_wei`
+  - `submission_deadline`
+  - `judge_mode = manual`
+- define a minimal submission schema:
+  - `submission_id`
+  - `bounty_id`
+  - `solver_agent_id`
+  - `solver_tos_address`
+  - `answer_payload`
+  - `submitted_at`
+- define a minimal result schema:
+  - `bounty_id`
+  - `status`
+  - `winning_submission_id`
+  - `judge_note`
+  - `payout_tx_hash`
+- make the host agent discoverable through Agent Discovery
+- optionally make the host reachable through an Agent Gateway if it is not on a public IP
+- pay the winning solver in testnet `TOS`
+
+Acceptance criteria:
+
+- at least one bounty host agent is running
+- at least one solver agent can discover it
+- a real submission can be made before deadline
+- the result can be published later
+- a real testnet `TOS` payout can be sent to the winning solver
+
+Why this phase matters:
+
+- it proves that users can run OpenFox and connect to testnet
+- it proves that one agent can find another agent to solve a problem
+- it proves that useful work can end in a `TOS` reward
+- it gives us a credible "agent-to-agent economy" prototype without needing a full oracle design
 
 ### Phase 1: Wallet and Onboarding Productization
 
@@ -213,9 +297,9 @@ Suggested priority order:
 
 ### P0: Do Immediately
 
-- connect `x402` to a real `paid oracle API`
-- define a minimum result schema
-- add request and payment idempotency on the server side
+- build the `Phase 0.5` prediction bounty MVP inside `openfox`
+- define the bounty, submission, and result schemas
+- run one real testnet bounty end to end
 - stabilize local end-to-end integration scripts
 
 ### P1: Do Next
@@ -241,13 +325,14 @@ The more reasonable strategy for now is:
 
 - `TOS` provides infrastructure
 - `openfox` provides agent runtime integration
-- paid services begin with `oracle + observation`
+- the first product loop begins with `testnet bounty + agent discovery + manual judging`
+- paid services later expand into `oracle + observation`
 
 ## 6. Recommended Next Step
 
 There are only two next steps that matter most:
 
-1. build a real `paid oracle API` inside `gtos`
-2. build a complete example in `openfox`: initialize a wallet and call the paid oracle API
+1. build the `Phase 0.5` prediction bounty MVP in `openfox`
+2. make a new user able to complete `setup -> fund -> discover host agent -> submit answer -> receive TOS reward`
 
-Only after these two steps are complete can `openfox + TOS + x402` be considered beyond "successful integration" and into "usable product prototype."
+Only after these two steps are complete should we expand into broader paid service and oracle-facing phases.
