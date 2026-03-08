@@ -1,6 +1,8 @@
 # 🦊OpenFox
 
-<img src="LOGO.png" alt="OpenFox logo" width="296" />
+<p align="center">
+  <img src="LOGO.png" alt="OpenFox logo" width="296" />
+</p>
 
 **While you sleep, Fox keeps working and brings the coins back.**
 
