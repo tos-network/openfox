@@ -29,6 +29,14 @@
     "./tos/client.js": {
       "types": "./dist/tos/client.d.ts",
       "default": "./dist/tos/client.js"
+    },
+    "./agent-discovery/card.js": {
+      "types": "./dist/agent-discovery/card.d.ts",
+      "default": "./dist/agent-discovery/card.js"
+    },
+    "./agent-discovery/client.js": {
+      "types": "./dist/agent-discovery/client.d.ts",
+      "default": "./dist/agent-discovery/client.js"
     }
   },
   "bin": {

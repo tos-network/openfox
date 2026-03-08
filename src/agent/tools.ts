@@ -310,7 +310,11 @@ export function createBuiltinTools(
           return "Legacy Runtime credits are not configured in local mode.";
         }
 
-        const result = await topupCredits(ctx.config.runtimeApiUrl, ctx.identity.account, amountUsd);
+        const result = await topupCredits(
+          ctx.config.runtimeApiUrl,
+          ctx.identity.account,
+          amountUsd,
+        );
 
         if (!result.success) {
           return `Credit topup failed: ${result.error}`;
@@ -363,7 +367,8 @@ export function createBuiltinTools(
     },
     {
       name: "delete_sandbox",
-      description: "Delete a sandbox. Note: sandbox deletion is currently disabled by the Runtime API.",
+      description:
+        "Delete a sandbox. Note: sandbox deletion is currently disabled by the Runtime API.",
       category: "runtime",
       riskLevel: "dangerous",
       parameters: {
@@ -482,9 +487,14 @@ export function createBuiltinTools(
 
         // Audit log
         const { logModification } = await import("../self-mod/audit-log.js");
-        logModification(ctx.db, "code_revert", `Reverted: ${lastCommit.stdout.trim()}`, {
-          reversible: true,
-        });
+        logModification(
+          ctx.db,
+          "code_revert",
+          `Reverted: ${lastCommit.stdout.trim()}`,
+          {
+            reversible: true,
+          },
+        );
 
         return `Reverted: ${lastCommit.stdout.trim()}. ${build.exitCode === 0 ? "Rebuild succeeded." : "Rebuild failed: " + build.stderr}`;
       },
@@ -531,10 +541,15 @@ export function createBuiltinTools(
 
         // Audit log
         const { logModification } = await import("../self-mod/audit-log.js");
-        logModification(ctx.db, "upstream_reset", "Reset to upstream origin/main", {
-          diff: localCommits.stdout.trim() || "(no local commits)",
-          reversible: false,
-        });
+        logModification(
+          ctx.db,
+          "upstream_reset",
+          "Reset to upstream origin/main",
+          {
+            diff: localCommits.stdout.trim() || "(no local commits)",
+            reversible: false,
+          },
+        );
 
         const discarded = localCommits.stdout.trim();
         return `Reset to upstream. ${discarded ? "Discarded local commits:\n" + discarded : "No local commits lost."} ${build.exitCode === 0 ? "Rebuild succeeded." : "Rebuild failed: " + build.stderr}`;
@@ -1475,7 +1490,14 @@ Model: ${ctx.inference.getDefaultModel()}
         // Phase 3.2: Pass db.raw for agent card caching
         const rpcUrl = ctx.config.rpcUrl;
         const agents = keyword
-          ? await searchAgents(keyword, limit, network, undefined, ctx.db.raw, rpcUrl)
+          ? await searchAgents(
+              keyword,
+              limit,
+              network,
+              undefined,
+              ctx.db.raw,
+              rpcUrl,
+            )
           : await discoverAgents(limit, network, undefined, ctx.db.raw, rpcUrl);
 
         if (agents.length === 0) return "No agents found.";
@@ -1498,6 +1520,205 @@ Model: ${ctx.inference.getDefaultModel()}
               `#${a.agentId} ${a.name || "unnamed"} (${a.owner}): ${a.description || a.agentURI}`,
           )
           .join("\n");
+      },
+    },
+    {
+      name: "discover_capability_providers",
+      description:
+        "Discover live agent providers by Agent Discovery v1 capability.",
+      category: "registry",
+      riskLevel: "safe",
+      parameters: {
+        type: "object",
+        properties: {
+          capability: {
+            type: "string",
+            description:
+              "Capability name, e.g. sponsor.topup.testnet or oracle.resolve",
+          },
+          limit: { type: "number", description: "Max results (default: 10)" },
+          format: {
+            type: "string",
+            description: 'Output format: "text" (default) or "json"',
+          },
+        },
+        required: ["capability"],
+      },
+      execute: async (args, ctx) => {
+        const { discoverCapabilityProviders } =
+          await import("../agent-discovery/client.js");
+        const capability = String(args.capability || "")
+          .trim()
+          .toLowerCase();
+        const limit = Math.max(1, Number(args.limit || 10));
+        const providers = await discoverCapabilityProviders({
+          config: ctx.config,
+          capability,
+          limit,
+        });
+        if (!providers.length) {
+          return `No providers found for capability ${capability}.`;
+        }
+
+        if ((args.format as string)?.toLowerCase() === "json") {
+          return JSON.stringify(providers, null, 2);
+        }
+
+        return providers
+          .map(
+            (provider, index) => `#${index + 1} ${provider.card.display_name}
+Node ID: ${provider.search.nodeId}
+Endpoint: ${provider.endpoint.url}
+Mode: ${provider.matchedCapability.mode}
+Registered: ${provider.search.trust?.registered ?? "unknown"}
+Suspended: ${provider.search.trust?.suspended ?? "unknown"}
+Stake: ${provider.search.trust?.stake ?? "unknown"}
+Reputation: ${provider.search.trust?.reputation ?? "unknown"}
+On-chain Capability: ${provider.search.trust?.hasOnchainCapability ?? "unknown"}
+Max Amount: ${provider.matchedCapability.max_amount || "n/a"}
+Rate Limit: ${provider.matchedCapability.rate_limit || "n/a"}`,
+          )
+          .join("\n\n");
+      },
+    },
+    {
+      name: "request_testnet_faucet",
+      description:
+        "Find a sponsor.topup.testnet provider via Agent Discovery v1 and request a constrained TOS testnet top-up.",
+      category: "financial",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          amount: {
+            type: "string",
+            description: "Requested TOS amount as a decimal string, e.g. 0.01",
+          },
+          capability: {
+            type: "string",
+            description:
+              "Capability to request (default: sponsor.topup.testnet)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the faucet request",
+          },
+        },
+      },
+      execute: async (args, ctx) => {
+        const { requestTestnetFaucet } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { parseTOSAmount } = await import("../tos/client.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const tosAddress =
+          ctx.config.tosWalletAddress ||
+          deriveTOSAddressFromPrivateKey(privateKey);
+        const amount = typeof args.amount === "string" ? args.amount : "0.01";
+        const requestedAmountWei = parseTOSAmount(amount);
+
+        const result = await requestTestnetFaucet({
+          identity: ctx.identity,
+          config: ctx.config,
+          tosAddress,
+          requestedAmountWei,
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "sponsor.topup.testnet",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "bootstrap openfox wallet",
+          waitForReceipt: true,
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            status: result.response.status,
+            reason: result.response.reason || null,
+            txHash: result.response.tx_hash || null,
+            amount: result.response.amount || null,
+            receipt: result.receipt || null,
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
+      name: "request_paid_observation_once",
+      description:
+        "Find an observation.once provider via Agent Discovery v1, pay via x402 if required, and fetch one observation result.",
+      category: "registry",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          targetUrl: {
+            type: "string",
+            description: "HTTP or HTTPS URL to observe once",
+          },
+          capability: {
+            type: "string",
+            description: "Capability to request (default: observation.once)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the observation request",
+          },
+        },
+        required: ["targetUrl"],
+      },
+      execute: async (args, ctx) => {
+        const { requestObservationOnce } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const tosAddress =
+          ctx.config.tosWalletAddress ||
+          deriveTOSAddressFromPrivateKey(privateKey);
+
+        const result = await requestObservationOnce({
+          identity: ctx.identity,
+          config: ctx.config,
+          tosAddress,
+          targetUrl: String(args.targetUrl || ""),
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "observation.once",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "one-shot paid observation",
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            observation: result.response,
+          },
+          null,
+          2,
+        );
       },
     },
     {
@@ -1633,16 +1854,20 @@ Model: ${ctx.inference.getDefaultModel()}
           );
         } catch (err: any) {
           // Auto-topup on 402 insufficient credits and retry once
-          const is402 = err?.status === 402 ||
+          const is402 =
+            err?.status === 402 ||
             err?.message?.includes("INSUFFICIENT_CREDITS");
           if (is402) {
             const COOLDOWN_MS = 60_000;
             const last = ctx.db.getKV("last_sandbox_topup_attempt");
-            const cooldownOk = !last ||
-              Date.now() - new Date(last).getTime() >= COOLDOWN_MS;
+            const cooldownOk =
+              !last || Date.now() - new Date(last).getTime() >= COOLDOWN_MS;
 
             if (cooldownOk) {
-              ctx.db.setKV("last_sandbox_topup_attempt", new Date().toISOString());
+              ctx.db.setKV(
+                "last_sandbox_topup_attempt",
+                new Date().toISOString(),
+              );
               if (!ctx.config.runtimeApiUrl) {
                 return "Sandbox topup is unavailable without legacy Runtime configuration.";
               }
@@ -1654,11 +1879,15 @@ Model: ${ctx.inference.getDefaultModel()}
               });
               if (topup?.success) {
                 const retryLifecycle = new ChildLifecycle(ctx.db.raw);
-                const retryGenesis = generateGenesisConfig(ctx.identity, ctx.config, {
-                  name: args.name as string,
-                  specialization: args.specialization as string | undefined,
-                  message: args.message as string | undefined,
-                });
+                const retryGenesis = generateGenesisConfig(
+                  ctx.identity,
+                  ctx.config,
+                  {
+                    name: args.name as string,
+                    specialization: args.specialization as string | undefined,
+                    message: args.message as string | undefined,
+                  },
+                );
                 child = await spawnChild(
                   ctx.runtime,
                   ctx.identity,
@@ -1677,7 +1906,8 @@ Model: ${ctx.inference.getDefaultModel()}
     },
     {
       name: "list_children",
-      description: "List all spawned child openfox agents with lifecycle state.",
+      description:
+        "List all spawned child openfox agents with lifecycle state.",
       category: "replication",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
@@ -1865,15 +2095,16 @@ Model: ${ctx.inference.getDefaultModel()}
           const msg = error instanceof Error ? error.message : String(error);
           try {
             lifecycle.transition(child.id, "failed", `start failed: ${msg}`);
-          } catch { /* may already be in terminal state */ }
+          } catch {
+            /* may already be in terminal state */
+          }
           return `Failed to start child ${child.name}: ${msg}`;
         }
       },
     },
     {
       name: "message_child",
-      description:
-        "Send a signed message to a child openfox via social relay.",
+      description: "Send a signed message to a child openfox via social relay.",
       category: "replication",
       riskLevel: "caution",
       parameters: {

@@ -12,7 +12,7 @@ function bytesToHex(bytes: Uint8Array): HexString {
   return toHex(bytes) as HexString;
 }
 
-function hexToBytes(value: HexString): Uint8Array {
+export function hexToBytes(value: HexString): Uint8Array {
   const hex = strip0x(value);
   if (hex.length % 2 !== 0) {
     throw new Error(`Invalid hex string length: ${value}`);
@@ -37,7 +37,13 @@ export function normalizeTOSAddress(value: string): TOSAddress {
 
 export function deriveTOSAddressFromPrivateKey(privateKey: HexString): TOSAddress {
   const pubkey = getPublicKey(strip0x(privateKey), false);
-  const digest = keccak256(bytesToHex(pubkey.slice(1)));
+  return deriveTOSAddressFromPublicKey(pubkey);
+}
+
+export function deriveTOSAddressFromPublicKey(publicKey: Uint8Array): TOSAddress {
+  const uncompressed =
+    publicKey.length === 65 && publicKey[0] === 0x04 ? publicKey.slice(1) : publicKey;
+  const digest = keccak256(bytesToHex(uncompressed));
   return normalizeTOSAddress(digest);
 }
 

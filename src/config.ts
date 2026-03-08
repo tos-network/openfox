@@ -13,6 +13,7 @@ import type {
   TreasuryPolicy,
   ModelStrategyConfig,
   SoulConfig,
+  AgentDiscoveryConfig,
 } from "./types.js";
 import type { Address } from "viem";
 import {
@@ -20,6 +21,10 @@ import {
   DEFAULT_TREASURY_POLICY,
   DEFAULT_MODEL_STRATEGY_CONFIG,
   DEFAULT_SOUL_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
 } from "./types.js";
 import { getOpenFoxDir } from "./identity/wallet.js";
 import { loadApiKeyFromConfig } from "./identity/provision.js";
@@ -50,7 +55,9 @@ function readJsonFile(filePath: string): JsonRecord | null {
     const raw = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     return typeof raw === "object" && raw !== null ? (raw as JsonRecord) : null;
   } catch (error) {
-    logger.warn(`Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`);
+    logger.warn(
+      `Invalid JSON in ${filePath}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     return null;
   }
 }
@@ -60,10 +67,15 @@ function getNestedRecord(value: unknown, key: string): JsonRecord | null {
     return null;
   }
   const result = (value as JsonRecord)[key];
-  return typeof result === "object" && result !== null ? (result as JsonRecord) : null;
+  return typeof result === "object" && result !== null
+    ? (result as JsonRecord)
+    : null;
 }
 
-function getNestedString(value: unknown, ...pathParts: string[]): string | undefined {
+function getNestedString(
+  value: unknown,
+  ...pathParts: string[]
+): string | undefined {
   let cursor: unknown = value;
   for (const part of pathParts) {
     if (typeof cursor !== "object" || cursor === null) {
@@ -71,7 +83,9 @@ function getNestedString(value: unknown, ...pathParts: string[]): string | undef
     }
     cursor = (cursor as JsonRecord)[part];
   }
-  return typeof cursor === "string" && cursor.trim() ? cursor.trim() : undefined;
+  return typeof cursor === "string" && cursor.trim()
+    ? cursor.trim()
+    : undefined;
 }
 
 function resolveSecretRef(value: unknown): string | undefined {
@@ -87,13 +101,18 @@ function resolveSecretRef(value: unknown): string | undefined {
   const match = /^\$\{([A-Z0-9_]+)\}$/.exec(trimmed);
   if (match) {
     const envValue = process.env[match[1]];
-    return typeof envValue === "string" && envValue.trim() ? envValue.trim() : undefined;
+    return typeof envValue === "string" && envValue.trim()
+      ? envValue.trim()
+      : undefined;
   }
 
   return trimmed;
 }
 
-function parseModelRef(modelRef: string | undefined): { model?: string; modelRef?: string } {
+function parseModelRef(modelRef: string | undefined): {
+  model?: string;
+  modelRef?: string;
+} {
   if (!modelRef) {
     return {};
   }
@@ -117,14 +136,23 @@ function parseModelRef(modelRef: string | undefined): { model?: string; modelRef
   };
 }
 
-function extractProviderCompatConfig(raw: JsonRecord | null): ProviderConfigCompat {
+function extractProviderCompatConfig(
+  raw: JsonRecord | null,
+): ProviderConfigCompat {
   if (!raw) {
     return {};
   }
 
-  const providerRoot = getNestedRecord(getNestedRecord(raw, "models"), "providers");
-  const openaiProvider = providerRoot ? getNestedRecord(providerRoot, "openai") : null;
-  const anthropicProvider = providerRoot ? getNestedRecord(providerRoot, "anthropic") : null;
+  const providerRoot = getNestedRecord(
+    getNestedRecord(raw, "models"),
+    "providers",
+  );
+  const openaiProvider = providerRoot
+    ? getNestedRecord(providerRoot, "openai")
+    : null;
+  const anthropicProvider = providerRoot
+    ? getNestedRecord(providerRoot, "anthropic")
+    : null;
   const ollamaProvider =
     (providerRoot ? getNestedRecord(providerRoot, "ollama") : null) ||
     (providerRoot ? getNestedRecord(providerRoot, "local") : null);
@@ -165,8 +193,11 @@ export function loadConfig(): OpenFoxConfig | null {
   }
 
   const runtimeApiKey =
-    (typeof process.env.OPENFOX_API_KEY === "string" && process.env.OPENFOX_API_KEY.trim()) ||
-    (raw && typeof raw.runtimeApiKey === "string" && raw.runtimeApiKey.trim()) ||
+    (typeof process.env.OPENFOX_API_KEY === "string" &&
+      process.env.OPENFOX_API_KEY.trim()) ||
+    (raw &&
+      typeof raw.runtimeApiKey === "string" &&
+      raw.runtimeApiKey.trim()) ||
     loadApiKeyFromConfig() ||
     undefined;
 
@@ -179,7 +210,9 @@ export function loadConfig(): OpenFoxConfig | null {
     if (key === "x402AllowedDomains") continue;
     if (typeof value === "number" && (value < 0 || !Number.isFinite(value))) {
       logger.warn(`Invalid treasury value for ${key}: ${value}, using default`);
-      (treasuryPolicy as unknown as JsonRecord)[key] = (DEFAULT_TREASURY_POLICY as unknown as JsonRecord)[key];
+      (treasuryPolicy as unknown as JsonRecord)[key] = (
+        DEFAULT_TREASURY_POLICY as unknown as JsonRecord
+      )[key];
     }
   }
 
@@ -193,8 +226,70 @@ export function loadConfig(): OpenFoxConfig | null {
     ...((raw?.soulConfig as JsonRecord | undefined) ?? {}),
   };
 
+  const agentDiscovery: AgentDiscoveryConfig = {
+    ...DEFAULT_AGENT_DISCOVERY_CONFIG,
+    ...((raw?.agentDiscovery as JsonRecord | undefined) ?? {}),
+    endpoints: Array.isArray(
+      (raw?.agentDiscovery as JsonRecord | undefined)?.endpoints,
+    )
+      ? (
+          (raw?.agentDiscovery as JsonRecord | undefined)
+            ?.endpoints as unknown[]
+        ).filter(
+          (value): value is AgentDiscoveryConfig["endpoints"][number] =>
+            typeof value === "object" &&
+            value !== null &&
+            typeof (value as JsonRecord).kind === "string" &&
+            typeof (value as JsonRecord).url === "string",
+        )
+      : DEFAULT_AGENT_DISCOVERY_CONFIG.endpoints,
+    capabilities: Array.isArray(
+      (raw?.agentDiscovery as JsonRecord | undefined)?.capabilities,
+    )
+      ? (
+          (raw?.agentDiscovery as JsonRecord | undefined)
+            ?.capabilities as unknown[]
+        ).filter(
+          (value): value is AgentDiscoveryConfig["capabilities"][number] =>
+            typeof value === "object" &&
+            value !== null &&
+            typeof (value as JsonRecord).name === "string" &&
+            typeof (value as JsonRecord).mode === "string",
+        )
+      : DEFAULT_AGENT_DISCOVERY_CONFIG.capabilities,
+    directoryNodeRecords: Array.isArray(
+      (raw?.agentDiscovery as JsonRecord | undefined)?.directoryNodeRecords,
+    )
+      ? (
+          (raw?.agentDiscovery as JsonRecord | undefined)
+            ?.directoryNodeRecords as unknown[]
+        ).filter(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
+        )
+      : DEFAULT_AGENT_DISCOVERY_CONFIG.directoryNodeRecords,
+    selectionPolicy: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)?.selectionPolicy as
+        | JsonRecord
+        | undefined) ?? {}),
+    },
+    faucetServer: {
+      ...DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)?.faucetServer as
+        | JsonRecord
+        | undefined) ?? {}),
+    },
+    observationServer: {
+      ...DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)
+        ?.observationServer as JsonRecord | undefined) ?? {}),
+    },
+  };
+
   const modelRef =
-    (typeof raw?.inferenceModelRef === "string" && raw.inferenceModelRef.trim()) ||
+    (typeof raw?.inferenceModelRef === "string" &&
+      raw.inferenceModelRef.trim()) ||
     compat.modelRef;
   const parsedModelRef = parseModelRef(modelRef);
   const inferenceModel =
@@ -217,22 +312,27 @@ export function loadConfig(): OpenFoxConfig | null {
         ? raw.sandboxId.trim()
         : DEFAULT_CONFIG.sandboxId || "",
     runtimeApiUrl:
-      (typeof process.env.OPENFOX_API_URL === "string" && process.env.OPENFOX_API_URL.trim()) ||
+      (typeof process.env.OPENFOX_API_URL === "string" &&
+        process.env.OPENFOX_API_URL.trim()) ||
       (typeof raw?.runtimeApiUrl === "string" && raw.runtimeApiUrl.trim()) ||
       undefined,
     runtimeApiKey,
     openaiApiKey:
-      (typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim()) ||
+      (typeof process.env.OPENAI_API_KEY === "string" &&
+        process.env.OPENAI_API_KEY.trim()) ||
       compat.openaiApiKey ||
       (typeof raw?.openaiApiKey === "string" && raw.openaiApiKey.trim()) ||
       undefined,
     anthropicApiKey:
-      (typeof process.env.ANTHROPIC_API_KEY === "string" && process.env.ANTHROPIC_API_KEY.trim()) ||
+      (typeof process.env.ANTHROPIC_API_KEY === "string" &&
+        process.env.ANTHROPIC_API_KEY.trim()) ||
       compat.anthropicApiKey ||
-      (typeof raw?.anthropicApiKey === "string" && raw.anthropicApiKey.trim()) ||
+      (typeof raw?.anthropicApiKey === "string" &&
+        raw.anthropicApiKey.trim()) ||
       undefined,
     ollamaBaseUrl:
-      (typeof process.env.OLLAMA_BASE_URL === "string" && process.env.OLLAMA_BASE_URL.trim()) ||
+      (typeof process.env.OLLAMA_BASE_URL === "string" &&
+        process.env.OLLAMA_BASE_URL.trim()) ||
       compat.ollamaBaseUrl ||
       (typeof raw?.ollamaBaseUrl === "string" && raw.ollamaBaseUrl.trim()) ||
       undefined,
@@ -243,7 +343,8 @@ export function loadConfig(): OpenFoxConfig | null {
         ? raw.tosWalletAddress.trim()
         : DEFAULT_CONFIG.tosWalletAddress,
     tosRpcUrl:
-      typeof process.env.TOS_RPC_URL === "string" && process.env.TOS_RPC_URL.trim()
+      typeof process.env.TOS_RPC_URL === "string" &&
+      process.env.TOS_RPC_URL.trim()
         ? process.env.TOS_RPC_URL.trim()
         : typeof raw?.tosRpcUrl === "string"
           ? raw.tosRpcUrl.trim()
@@ -259,6 +360,7 @@ export function loadConfig(): OpenFoxConfig | null {
     treasuryPolicy,
     modelStrategy,
     soulConfig,
+    agentDiscovery,
   } as OpenFoxConfig;
 }
 
@@ -277,6 +379,7 @@ export function saveConfig(config: OpenFoxConfig): void {
     treasuryPolicy: config.treasuryPolicy ?? DEFAULT_TREASURY_POLICY,
     modelStrategy: config.modelStrategy ?? DEFAULT_MODEL_STRATEGY_CONFIG,
     soulConfig: config.soulConfig ?? DEFAULT_SOUL_CONFIG,
+    agentDiscovery: config.agentDiscovery ?? DEFAULT_AGENT_DISCOVERY_CONFIG,
   };
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2), {
     mode: 0o600,
@@ -357,5 +460,6 @@ export function createConfig(params: {
       ...DEFAULT_MODEL_STRATEGY_CONFIG,
       inferenceModel,
     },
+    agentDiscovery: DEFAULT_AGENT_DISCOVERY_CONFIG,
   };
 }

@@ -31,6 +31,10 @@ import type { OpenFoxIdentity, AgentState, Skill, SocialClientInterface } from "
 import { DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel } from "./observability/logger.js";
 import { bootstrapTopup } from "./runtime/topup.js";
+import { publishLocalAgentDiscoveryCard } from "./agent-discovery/client.js";
+import { startAgentDiscoveryFaucetServer } from "./agent-discovery/faucet-server.js";
+import { startAgentDiscoveryObservationServer } from "./agent-discovery/observation-server.js";
+import { deriveTOSAddressFromPrivateKey } from "./tos/address.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "viem";
 
@@ -184,7 +188,7 @@ async function run(): Promise<void> {
   }
 
   // Load wallet
-  const { account } = await getWallet();
+  const { account, privateKey } = await getWallet();
   const apiKey = config.runtimeApiKey || loadApiKeyFromConfig() || "";
   if (!hasConfiguredInference(config)) {
     logger.error(
@@ -215,11 +219,14 @@ async function run(): Promise<void> {
     createdAt,
   };
 
+  const tosAddress = config.tosWalletAddress || deriveTOSAddressFromPrivateKey(privateKey);
+
   // Store identity in DB
   db.setIdentity("name", config.name);
   db.setIdentity("address", account.address);
   db.setIdentity("creator", config.creatorAddress);
   db.setIdentity("sandbox", config.sandboxId);
+  db.setIdentity("tosAddress", tosAddress);
   const storedOpenFoxId = db.getIdentity("openfoxId");
   const openfoxId = storedOpenFoxId || config.sandboxId || randomUUID();
   if (!storedOpenFoxId) {
@@ -232,6 +239,61 @@ async function run(): Promise<void> {
     apiKey,
     sandboxId: config.sandboxId,
   });
+
+  if (config.agentDiscovery?.faucetServer?.enabled) {
+    try {
+      const faucetServer = await startAgentDiscoveryFaucetServer({
+        identity,
+        config,
+        tosAddress,
+        privateKey,
+        db,
+        faucetConfig: config.agentDiscovery.faucetServer,
+      });
+      logger.info(`Agent Discovery faucet provider enabled at ${faucetServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery faucet server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.observationServer?.enabled) {
+    try {
+      const observationServer = await startAgentDiscoveryObservationServer({
+        identity,
+        config,
+        tosAddress,
+        db,
+        observationConfig: config.agentDiscovery.observationServer,
+      });
+      logger.info(`Agent Discovery observation provider enabled at ${observationServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery observation server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.enabled && config.agentDiscovery.publishCard) {
+    try {
+      const published = await publishLocalAgentDiscoveryCard({
+        identity,
+        config,
+        tosAddress,
+        db,
+      });
+      if (published) {
+        logger.info(
+          `Published Agent Discovery card seq=${published.card.card_seq} on ${published.info.nodeId || "local node"}`,
+        );
+      }
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery publish skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
 
   // Register openfox identity (one-time, immutable)
   const registrationState = db.getIdentity("remoteRegistrationStatus");

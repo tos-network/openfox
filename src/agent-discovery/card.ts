@@ -1,0 +1,125 @@
+import type { PrivateKeyAccount } from "viem";
+import { verifyMessage } from "viem";
+import type { OpenFoxConfig, OpenFoxIdentity } from "../types.js";
+import {
+  capabilityFromConfig,
+  type AgentDiscoveryCard,
+  type AgentDiscoveryCardPayload,
+  type AgentDiscoveryConfig,
+} from "./types.js";
+
+function sortValue(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortValue);
+  }
+  if (value && typeof value === "object") {
+    const out: Record<string, unknown> = {};
+    for (const key of Object.keys(value as Record<string, unknown>).sort()) {
+      out[key] = sortValue((value as Record<string, unknown>)[key]);
+    }
+    return out;
+  }
+  return value;
+}
+
+export function canonicalizeAgentDiscoveryCardPayload(
+  payload: AgentDiscoveryCardPayload,
+): string {
+  return JSON.stringify(sortValue(payload));
+}
+
+export function buildAgentDiscoveryCardPayload(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  agentDiscovery: AgentDiscoveryConfig;
+  tosAddress: string;
+  discoveryNodeId: string;
+  issuedAt?: number;
+  cardSequence?: number;
+}): AgentDiscoveryCardPayload {
+  const issuedAt = params.issuedAt ?? Math.floor(Date.now() / 1000);
+  const displayName = params.agentDiscovery.displayName?.trim() || params.config.name;
+  const capabilities = params.agentDiscovery.capabilities.map(capabilityFromConfig);
+
+  return {
+    version: 1,
+    agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+    primary_identity: {
+      kind: "tos",
+      value: params.tosAddress.toLowerCase(),
+    },
+    discovery_node_id: params.discoveryNodeId,
+    card_seq: params.cardSequence ?? issuedAt,
+    issued_at: issuedAt,
+    expires_at: issuedAt + Math.max(60, params.agentDiscovery.cardTtlSeconds),
+    display_name: displayName,
+    endpoints: params.agentDiscovery.endpoints.map((endpoint) => ({
+      kind: endpoint.kind,
+      url: endpoint.url.trim(),
+    })),
+    capabilities,
+    reputation_refs: [],
+    metadata_signer: {
+      kind: "eip191",
+      address: params.identity.address.toLowerCase(),
+    },
+  };
+}
+
+export async function signAgentDiscoveryCard(
+  account: PrivateKeyAccount,
+  payload: AgentDiscoveryCardPayload,
+): Promise<AgentDiscoveryCard> {
+  const canonical = canonicalizeAgentDiscoveryCardPayload(payload);
+  const signature = await account.signMessage({ message: canonical });
+  return {
+    ...payload,
+    signature,
+  };
+}
+
+export async function buildSignedAgentDiscoveryCard(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  agentDiscovery: AgentDiscoveryConfig;
+  tosAddress: string;
+  discoveryNodeId: string;
+  issuedAt?: number;
+  cardSequence?: number;
+}): Promise<AgentDiscoveryCard> {
+  const payload = buildAgentDiscoveryCardPayload(params);
+  return signAgentDiscoveryCard(params.identity.account, payload);
+}
+
+export async function verifyAgentDiscoveryCard(
+  card: AgentDiscoveryCard,
+  expectedNodeId?: string,
+): Promise<boolean> {
+  if (card.version !== 1) return false;
+  if (card.metadata_signer?.kind !== "eip191") return false;
+  if (expectedNodeId && card.discovery_node_id !== expectedNodeId) return false;
+  if (!Array.isArray(card.capabilities) || card.capabilities.length === 0) return false;
+  if (!Array.isArray(card.endpoints) || card.endpoints.length === 0) return false;
+  if (typeof card.signature !== "string" || !card.signature.startsWith("0x")) return false;
+  if (typeof card.expires_at !== "number" || card.expires_at <= Math.floor(Date.now() / 1000)) {
+    return false;
+  }
+  for (const endpoint of card.endpoints) {
+    if (
+      !endpoint ||
+      typeof endpoint.url !== "string" ||
+      !endpoint.url.trim() ||
+      !["http", "https", "ws"].includes(String(endpoint.kind))
+    ) {
+      return false;
+    }
+  }
+
+  const { signature, ...payload } = card;
+  const canonical = canonicalizeAgentDiscoveryCardPayload(payload);
+  return verifyMessage({
+    address: card.metadata_signer.address as `0x${string}`,
+    message: canonical,
+    signature,
+  });
+}
