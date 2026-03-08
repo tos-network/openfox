@@ -1,13 +1,13 @@
 /**
- * automaton-cli send <to-address> "message text"
+ * openfox-cli send <to-address> "message text"
  *
- * Send a message to an automaton or address via the social relay.
+ * Send a message to an openfox or address via the social relay.
  *
  * Phase 3.2: CRITICAL FIX (S-P0-1) — All outbound messages are now signed
  * using the same canonical format as the runtime client.
  */
 
-import { loadConfig } from "@conway/automaton/config.js";
+import { loadConfig } from "@openfox/openfox/config.js";
 import { privateKeyToAccount, type PrivateKeyAccount } from "viem/accounts";
 import { keccak256, toBytes } from "viem";
 import fs from "fs";
@@ -18,22 +18,22 @@ const toAddress = args[0];
 const messageText = args.slice(1).join(" ");
 
 if (!toAddress || !messageText) {
-  console.log("Usage: automaton-cli send <to-address> <message>");
+  console.log("Usage: openfox-cli send <to-address> <message>");
   console.log("Examples:");
-  console.log('  automaton-cli send 0xabc...def "Hello, fellow automaton!"');
+  console.log('  openfox-cli send 0xabc...def "Hello, fellow openfox!"');
   process.exit(1);
 }
 
 // Load wallet
 const walletPath = path.join(
   process.env.HOME || "/root",
-  ".automaton",
+  ".openfox",
   "wallet.json",
 );
 
 if (!fs.existsSync(walletPath)) {
-  console.log("No wallet found at ~/.automaton/wallet.json");
-  console.log("Run: automaton --init");
+  console.log("No wallet found at ~/.openfox/wallet.json");
+  console.log("Run: openfox --init");
   process.exit(1);
 }
 
@@ -45,14 +45,14 @@ const config = loadConfig();
 const relayUrl =
   config?.socialRelayUrl ||
   process.env.SOCIAL_RELAY_URL ||
-  "https://social.conway.tech";
+  "https://social.openfox.ai";
 
 try {
   // Phase 3.2: Sign the message using the same canonical format as runtime
-  // Canonical: Conway:send:{to_lowercase}:{keccak256(toBytes(content))}:{signed_at_iso}
+  // Canonical: OpenFox:send:{to_lowercase}:{keccak256(toBytes(content))}:{signed_at_iso}
   const signedAt = new Date().toISOString();
   const contentHash = keccak256(toBytes(messageText));
-  const canonical = `Conway:send:${toAddress.toLowerCase()}:${contentHash}:${signedAt}`;
+  const canonical = `OpenFox:send:${toAddress.toLowerCase()}:${contentHash}:${signedAt}`;
   const signature = await account.signMessage({ message: canonical });
 
   const resp = await fetch(`${relayUrl}/v1/messages`, {

@@ -1,8 +1,8 @@
 /**
- * Automaton SQLite Schema
+ * OpenFox SQLite Schema
  *
- * All tables for the automaton's persistent state.
- * The database IS the automaton's memory.
+ * All tables for the openfox's persistent state.
+ * The database IS the openfox's memory.
  */
 
 export const SCHEMA_VERSION = 10;
@@ -114,7 +114,7 @@ export const CREATE_TABLES = `
     installed_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Spawned child automatons
+  -- Spawned child openfox agents
   -- Application-level validation: status must be one of 'spawning','running','sleeping','dead','unknown'
   CREATE TABLE IF NOT EXISTS children (
     id TEXT PRIMARY KEY,

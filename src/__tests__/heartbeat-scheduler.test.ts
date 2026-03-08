@@ -8,7 +8,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { DurableScheduler } from "../heartbeat/scheduler.js";
 import { buildTickContext } from "../heartbeat/tick-context.js";
 import {
-  MockConwayClient,
+  MockRuntimeClient,
   createTestDb,
   createTestIdentity,
   createTestConfig,
@@ -30,7 +30,7 @@ import {
   isDeduplicated,
 } from "../state/database.js";
 import type {
-  AutomatonDatabase,
+  OpenFoxDatabase,
   HeartbeatConfig,
   HeartbeatTaskFn,
   HeartbeatLegacyContext,
@@ -48,14 +48,14 @@ const DEFAULT_HB_CONFIG: HeartbeatConfig = {
 };
 
 function createLegacyContext(
-  db: AutomatonDatabase,
-  conway: MockConwayClient,
+  db: OpenFoxDatabase,
+  runtime: MockRuntimeClient,
 ): HeartbeatLegacyContext {
   return {
     identity: createTestIdentity(),
     config: createTestConfig(),
     db,
-    conway,
+    runtime,
   };
 }
 
@@ -86,14 +86,14 @@ function seedScheduleRow(
 }
 
 describe("DurableScheduler", () => {
-  let db: AutomatonDatabase;
+  let db: OpenFoxDatabase;
   let rawDb: DatabaseType;
-  let conway: MockConwayClient;
+  let runtime: MockRuntimeClient;
 
   beforeEach(() => {
     db = createTestDb();
     rawDb = db.raw;
-    conway = new MockConwayClient();
+    runtime = new MockRuntimeClient();
   });
 
   afterEach(() => {
@@ -115,7 +115,7 @@ describe("DurableScheduler", () => {
         rawDb,
         DEFAULT_HB_CONFIG,
         tasks,
-        createLegacyContext(db, conway),
+        createLegacyContext(db, runtime),
       );
 
       // Start two ticks simultaneously
@@ -142,7 +142,7 @@ describe("DurableScheduler", () => {
         rawDb,
         DEFAULT_HB_CONFIG,
         tasks,
-        createLegacyContext(db, conway),
+        createLegacyContext(db, runtime),
       );
 
       await scheduler.tick();
@@ -319,7 +319,7 @@ describe("DurableScheduler", () => {
         rawDb,
         DEFAULT_HB_CONFIG,
         tasks,
-        createLegacyContext(db, conway),
+        createLegacyContext(db, runtime),
       );
 
       await scheduler.tick();
@@ -342,7 +342,7 @@ describe("DurableScheduler", () => {
         rawDb,
         DEFAULT_HB_CONFIG,
         tasks,
-        createLegacyContext(db, conway),
+        createLegacyContext(db, runtime),
       );
 
       await scheduler.tick();
@@ -356,11 +356,11 @@ describe("DurableScheduler", () => {
 
   describe("TickContext building", () => {
     it("fetches balance once and builds context", async () => {
-      conway.creditsCents = 5_000;
+      runtime.creditsCents = 5_000;
 
       const ctx = await buildTickContext(
         rawDb,
-        conway,
+        runtime,
         DEFAULT_HB_CONFIG,
       );
 
@@ -375,13 +375,13 @@ describe("DurableScheduler", () => {
 
     it("handles API failure gracefully", async () => {
       // Make getCreditsBalance throw
-      conway.getCreditsBalance = async () => {
+      runtime.getCreditsBalance = async () => {
         throw new Error("API unavailable");
       };
 
       const ctx = await buildTickContext(
         rawDb,
-        conway,
+        runtime,
         DEFAULT_HB_CONFIG,
       );
 

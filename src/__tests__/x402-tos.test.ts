@@ -40,10 +40,10 @@ describe("x402 TOS payments", () => {
     process.env.HOME = tempHome;
     process.env.TOS_RPC_URL = TEST_TOS_RPC_URL;
 
-    const automatonDir = path.join(tempHome, ".automaton");
-    fs.mkdirSync(automatonDir, { recursive: true });
+    const openfoxDir = path.join(tempHome, ".openfox");
+    fs.mkdirSync(openfoxDir, { recursive: true });
     fs.writeFileSync(
-      path.join(automatonDir, "wallet.json"),
+      path.join(openfoxDir, "wallet.json"),
       JSON.stringify({
         privateKey: TEST_PRIVATE_KEY,
         createdAt: new Date().toISOString(),
@@ -132,7 +132,7 @@ describe("x402 TOS payments", () => {
       throw new Error(`unexpected fetch URL: ${url}`);
     }) as typeof fetch;
 
-    const { x402Fetch } = await import("../conway/x402.js");
+    const { x402Fetch } = await import("../runtime/x402.js");
     const result = await x402Fetch(TEST_API_URL, account);
 
     expect(result.success).toBe(true);

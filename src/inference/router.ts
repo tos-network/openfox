@@ -242,7 +242,7 @@ export class InferenceRouter {
       return this.fixAnthropicMessages(messages);
     }
 
-    // For OpenAI/Conway, merge consecutive same-role messages
+    // For OpenAI/Runtime, merge consecutive same-role messages
     return this.mergeConsecutiveSameRole(messages);
   }
 

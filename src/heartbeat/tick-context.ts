@@ -9,12 +9,12 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { Address } from "viem";
 import type {
-  ConwayClient,
+  RuntimeClient,
   HeartbeatConfig,
   TickContext,
 } from "../types.js";
-import { getSurvivalTier } from "../conway/credits.js";
-import { getUsdcBalance } from "../conway/x402.js";
+import { getSurvivalTier } from "../runtime/credits.js";
+import { getUsdcBalance } from "../runtime/x402.js";
 import { createLogger } from "../observability/logger.js";
 
 type DatabaseType = BetterSqlite3.Database;
@@ -32,14 +32,14 @@ function generateTickId(): string {
  * Build a TickContext for the current tick.
  *
  * - Generates a unique tickId
- * - Fetches credit balance ONCE via conway.getCreditsBalance()
+ * - Fetches credit balance ONCE via runtime.getCreditsBalance()
  * - Fetches USDC balance ONCE via getUsdcBalance()
  * - Derives survivalTier from credit balance
  * - Reads lowComputeMultiplier from config
  */
 export async function buildTickContext(
   db: DatabaseType,
-  conway: ConwayClient,
+  runtime: RuntimeClient,
   config: HeartbeatConfig,
   walletAddress?: Address,
 ): Promise<TickContext> {
@@ -49,7 +49,7 @@ export async function buildTickContext(
   // Fetch balances ONCE
   let creditBalance = 0;
   try {
-    creditBalance = await conway.getCreditsBalance();
+    creditBalance = await runtime.getCreditsBalance();
   } catch (err: any) {
     logger.error("Failed to fetch credit balance", err instanceof Error ? err : undefined);
   }

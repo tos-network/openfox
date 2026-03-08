@@ -1,5 +1,5 @@
 import { createLogger } from "../observability/logger.js";
-import type { AutomatonDatabase, ChildAutomaton, ChildStatus } from "../types.js";
+import type { OpenFoxDatabase, ChildOpenFox, ChildStatus } from "../types.js";
 import type { ColonyMessaging } from "./messaging.js";
 import type { AgentTracker, FundingProtocol } from "./types.js";
 
@@ -76,7 +76,7 @@ export interface HealAction {
 
 export class HealthMonitor {
   constructor(
-    private readonly db: AutomatonDatabase,
+    private readonly db: OpenFoxDatabase,
     private readonly agentTracker: AgentTracker,
     private readonly funding: FundingProtocol,
     private readonly messaging: ColonyMessaging,
@@ -135,7 +135,7 @@ export class HealthMonitor {
   }
 
   private async checkChildHealth(
-    child: ChildAutomaton,
+    child: ChildOpenFox,
     nowIso: string,
   ): Promise<AgentHealthStatus> {
     const nowMs = Date.parse(nowIso);
@@ -192,7 +192,7 @@ export class HealthMonitor {
     };
   }
 
-  private resolveLastHeartbeat(child: ChildAutomaton): string | null {
+  private resolveLastHeartbeat(child: ChildOpenFox): string | null {
     const eventRow = this.db.raw
       .prepare(
         `SELECT MAX(created_at) AS ts

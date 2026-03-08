@@ -1,17 +1,17 @@
 #!/bin/sh
-# Conway Automaton Installer
-# curl -fsSL https://conway.tech/automaton.sh | sh
+# OpenFox Installer
+# curl -fsSL https://openfox.ai/openfox.sh | sh
 set -e
 
-REPO="https://github.com/Conway-Research/automaton.git"
+REPO="https://github.com/tos-network/openfox.git"
 
 # Determine install directory
-if [ -n "$AUTOMATON_DIR" ]; then
-  INSTALL_DIR="$AUTOMATON_DIR"
+if [ -n "$OPENFOX_DIR" ]; then
+  INSTALL_DIR="$OPENFOX_DIR"
 elif [ -w /opt ] || [ "$(id -u)" = "0" ]; then
-  INSTALL_DIR="/opt/automaton"
+  INSTALL_DIR="/opt/openfox"
 else
-  INSTALL_DIR="$HOME/.automaton/runtime"
+  INSTALL_DIR="$HOME/.openfox/runtime"
 fi
 
 # Preflight: Node.js
@@ -46,7 +46,7 @@ if [ -d "$INSTALL_DIR/.git" ]; then
   echo "[INFO]  Updating existing installation at $INSTALL_DIR..."
   cd "$INSTALL_DIR" && git pull --ff-only
 else
-  echo "[INFO]  Cloning automaton to $INSTALL_DIR..."
+  echo "[INFO]  Cloning openfox to $INSTALL_DIR..."
   mkdir -p "$(dirname "$INSTALL_DIR")"
   git clone "$REPO" "$INSTALL_DIR"
   cd "$INSTALL_DIR"

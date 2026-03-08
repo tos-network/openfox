@@ -1,5 +1,5 @@
 /**
- * Mock infrastructure for deterministic automaton tests.
+ * Mock infrastructure for deterministic openfox tests.
  */
 
 import { createDatabase } from "../state/database.js";
@@ -8,7 +8,7 @@ import type {
   InferenceResponse,
   InferenceOptions,
   ChatMessage,
-  ConwayClient,
+  RuntimeClient,
   ExecResult,
   PortInfo,
   SandboxInfo,
@@ -19,9 +19,9 @@ import type {
   DomainRegistration,
   DnsRecord,
   ModelInfo,
-  AutomatonDatabase,
-  AutomatonIdentity,
-  AutomatonConfig,
+  OpenFoxDatabase,
+  OpenFoxIdentity,
+  OpenFoxConfig,
   SocialClientInterface,
   InboxMessage,
 } from "../types.js";
@@ -104,9 +104,9 @@ export function toolCallResponse(
   };
 }
 
-// ─── Mock Conway Client ─────────────────────────────────────────
+// ─── Mock Runtime Client ─────────────────────────────────────────
 
-export class MockConwayClient implements ConwayClient {
+export class MockRuntimeClient implements RuntimeClient {
   execCalls: { command: string; timeout?: number }[] = [];
   creditsCents = 10_000; // $100 default
   files: Record<string, string> = {};
@@ -127,7 +127,7 @@ export class MockConwayClient implements ConwayClient {
   async exposePort(port: number): Promise<PortInfo> {
     return {
       port,
-      publicUrl: `https://test-${port}.conway.tech`,
+      publicUrl: `https://test-${port}.openfox.ai`,
       sandboxId: "test-sandbox",
     };
   }
@@ -206,20 +206,20 @@ export class MockConwayClient implements ConwayClient {
     ];
   }
 
-  async registerAutomaton(_params: {
-    automatonId: string;
-    automatonAddress: import("viem").Address;
+  async registerOpenFox(_params: {
+    openfoxId: string;
+    openfoxAddress: import("viem").Address;
     creatorAddress: import("viem").Address;
     name: string;
     bio?: string;
     genesisPromptHash?: `0x${string}`;
     account: import("viem").PrivateKeyAccount;
     nonce?: string;
-  }): Promise<{ automaton: Record<string, unknown> }> {
-    return { automaton: {} };
+  }): Promise<{ openfox: Record<string, unknown> }> {
+    return { openfox: {} };
   }
 
-  createScopedClient(_targetSandboxId: string): ConwayClient {
+  createScopedClient(_targetSandboxId: string): RuntimeClient {
     // Return self so spies on exec/writeFile propagate to scoped clients
     return this;
   }
@@ -311,15 +311,15 @@ export class MockLogger {
 
 // ─── Test Helpers ───────────────────────────────────────────────
 
-export function createTestDb(): AutomatonDatabase {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "automaton-test-"));
+export function createTestDb(): OpenFoxDatabase {
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-test-"));
   const dbPath = path.join(tmpDir, "test.db");
   return createDatabase(dbPath);
 }
 
-export function createTestIdentity(): AutomatonIdentity {
+export function createTestIdentity(): OpenFoxIdentity {
   return {
-    name: "test-automaton",
+    name: "test-openfox",
     address: "0x1234567890abcdef1234567890abcdef12345678" as `0x${string}`,
     account: {} as any, // Placeholder — not used in most tests
     creatorAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" as `0x${string}`,
@@ -330,16 +330,16 @@ export function createTestIdentity(): AutomatonIdentity {
 }
 
 export function createTestConfig(
-  overrides?: Partial<AutomatonConfig>,
-): AutomatonConfig {
+  overrides?: Partial<OpenFoxConfig>,
+): OpenFoxConfig {
   return {
-    name: "test-automaton",
-    genesisPrompt: "You are a test automaton.",
+    name: "test-openfox",
+    genesisPrompt: "You are a test openfox.",
     creatorAddress: "0xabcdefabcdefabcdefabcdefabcdefabcdefabcd" as `0x${string}`,
-    registeredWithConway: true,
+    registeredRemotely: true,
     sandboxId: "test-sandbox-id",
-    conwayApiUrl: "https://api.conway.tech",
-    conwayApiKey: "test-api-key",
+    runtimeApiUrl: "https://api.openfox.ai",
+    runtimeApiKey: "test-api-key",
     inferenceModel: "mock-model",
     maxTokensPerTurn: 4096,
     heartbeatConfigPath: "/tmp/test-heartbeat.yml",
@@ -350,7 +350,7 @@ export function createTestConfig(
     skillsDir: "/tmp/test-skills",
     maxChildren: 3,
     maxTurnsPerCycle: 25,
-    socialRelayUrl: "https://social.conway.tech",
+    socialRelayUrl: "https://social.openfox.ai",
     ...overrides,
   };
 }

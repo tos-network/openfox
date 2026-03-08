@@ -1,7 +1,7 @@
 /**
  * Skills Loader
  *
- * Discovers and loads SKILL.md files from ~/.automaton/skills/
+ * Discovers and loads SKILL.md files from ~/.openfox/skills/
  * Each skill is a directory containing a SKILL.md file with
  * YAML frontmatter + Markdown instructions.
  */
@@ -9,7 +9,7 @@
 import { execFileSync } from "child_process";
 import fs from "fs";
 import path from "path";
-import type { Skill, AutomatonDatabase } from "../types.js";
+import type { Skill, OpenFoxDatabase } from "../types.js";
 import { parseSkillMd } from "./format.js";
 import { sanitizeInput } from "../agent/injection-defense.js";
 import { createLogger } from "../observability/logger.js";
@@ -40,7 +40,7 @@ const SUSPICIOUS_INSTRUCTION_PATTERNS: { pattern: RegExp; label: string }[] = [
  */
 export function loadSkills(
   skillsDir: string,
-  db: AutomatonDatabase,
+  db: OpenFoxDatabase,
 ): Skill[] {
   const resolvedDir = resolveHome(skillsDir);
 

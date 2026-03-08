@@ -1,8 +1,8 @@
 /**
- * Conway Inference Client
+ * Runtime Inference Client
  *
- * Wraps Conway's /v1/chat/completions endpoint (OpenAI-compatible).
- * The automaton pays for its own thinking through Conway credits.
+ * Wraps Runtime's /v1/chat/completions endpoint (OpenAI-compatible).
+ * The openfox pays for its own thinking through Runtime credits.
  */
 
 import type {
@@ -31,7 +31,7 @@ interface InferenceClientOptions {
   getModelProvider?: (modelId: string) => string | undefined;
 }
 
-type InferenceBackend = "conway" | "openai" | "anthropic" | "ollama";
+type InferenceBackend = "runtime" | "openai" | "anthropic" | "ollama";
 
 function parseModelSelection(model: string): {
   providerHint?: string;
@@ -131,7 +131,7 @@ export function createInferenceClient(
 
     if (!openAiLikeApiKey) {
       throw new Error(
-        "No inference provider configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_BASE_URL, or a legacy Conway API key.",
+        "No inference provider configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_BASE_URL, or a legacy Runtime API key.",
       );
     }
 
@@ -205,7 +205,7 @@ function resolveInferenceBackend(
   if ((keys.providerHint === "ollama" || keys.providerHint === "local") && keys.ollamaBaseUrl) {
     return "ollama";
   }
-  if (keys.providerHint === "conway") return "conway";
+  if (keys.providerHint === "runtime") return "runtime";
 
   // Registry-based routing: most accurate, no name guessing
   if (keys.getModelProvider) {
@@ -213,14 +213,14 @@ function resolveInferenceBackend(
     if (provider === "ollama" && keys.ollamaBaseUrl) return "ollama";
     if (provider === "anthropic" && keys.anthropicApiKey) return "anthropic";
     if (provider === "openai" && keys.openaiApiKey) return "openai";
-    if (provider === "conway") return "conway";
+    if (provider === "runtime") return "runtime";
     // provider unknown or key not configured — fall through to heuristics
   }
 
   // Heuristic fallback (model not in registry yet)
   if (keys.anthropicApiKey && /^claude/i.test(model)) return "anthropic";
   if (keys.openaiApiKey && /^(gpt-[3-9]|gpt-4|gpt-5|o[1-9][-\s.]|o[1-9]$|chatgpt)/i.test(model)) return "openai";
-  return "conway";
+  return "runtime";
 
 }
 
@@ -229,7 +229,7 @@ async function chatViaOpenAiCompatible(params: {
   body: Record<string, unknown>;
   apiUrl: string;
   apiKey: string;
-  backend: "conway" | "openai" | "ollama";
+  backend: "runtime" | "openai" | "ollama";
   httpClient: ResilientHttpClient;
 }): Promise<InferenceResponse> {
   const resp = await params.httpClient.request(`${params.apiUrl}/v1/chat/completions`, {

@@ -104,7 +104,7 @@ describe("UnifiedInferenceClient", () => {
     mockState.queue.splice(0, mockState.queue.length);
     mockState.calls.splice(0, mockState.calls.length);
     process.env = { ...ORIGINAL_ENV };
-    delete process.env.AUTOMATON_CREDITS_BALANCE;
+    delete process.env.OPENFOX_CREDITS_BALANCE;
   });
 
   afterAll(() => {
@@ -128,7 +128,7 @@ describe("UnifiedInferenceClient", () => {
   });
 
   it("chat uses survival tier resolution when credits are low", async () => {
-    process.env.AUTOMATON_CREDITS_BALANCE = "500";
+    process.env.OPENFOX_CREDITS_BALANCE = "500";
     const client = createClient();
     queueCompletion({ content: "survival" });
 

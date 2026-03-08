@@ -92,7 +92,7 @@ export class DurableScheduler {
       // Build shared context (single API call for balance)
       const context = await buildTickContext(
         this.db,
-        this.legacyContext.conway,
+        this.legacyContext.runtime,
         this.config,
         this.legacyContext.identity.address,
       );

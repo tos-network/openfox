@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
- * Automaton CLI
+ * OpenFox CLI
  *
- * Creator-facing CLI for interacting with an automaton.
- * Usage: automaton-cli <command> [args]
+ * Creator-facing CLI for interacting with OpenFox.
+ * Usage: openfox-cli <command> [args]
  */
 
 const args = process.argv.slice(2);
@@ -31,15 +31,15 @@ async function main(): Promise<void> {
       break;
     default:
       console.log(`
-Automaton CLI - Creator Tools
+OpenFox CLI - Creator Tools
 
 Usage:
-  automaton-cli status              Show automaton status
-  automaton-cli logs [--tail N]     View automaton logs
-  automaton-cli fund <amount> [--to 0x...]  Legacy Conway credits transfer
-  automaton-cli send <to-address> <message> Send a social message
-  automaton-cli tos-status          Show TOS wallet status
-  automaton-cli tos-send <to> <amount> [--wait]   Send native TOS transfer
+  openfox-cli status              Show OpenFox status
+  openfox-cli logs [--tail N]     View OpenFox logs
+  openfox-cli fund <amount> [--to 0x...]  Legacy Runtime credits transfer
+  openfox-cli send <to-address> <message> Send a social message
+  openfox-cli tos-status          Show TOS wallet status
+  openfox-cli tos-send <to> <amount> [--wait]   Send native TOS transfer
 `);
   }
 }

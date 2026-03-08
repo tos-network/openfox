@@ -22,21 +22,21 @@ import Database from "better-sqlite3";
 
 let dbPath: string;
 let db: ReturnType<typeof Database>;
-let automatonDb: ReturnType<typeof createDatabase>;
+let openfoxDb: ReturnType<typeof createDatabase>;
 
 function makeTmpDbPath(): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "automaton-wildcard-test-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-wildcard-test-"));
   return path.join(tmpDir, "test.db");
 }
 
 beforeEach(() => {
   dbPath = makeTmpDbPath();
-  automatonDb = createDatabase(dbPath);
-  db = automatonDb.raw;
+  openfoxDb = createDatabase(dbPath);
+  db = openfoxDb.raw;
 });
 
 afterEach(() => {
-  automatonDb.close();
+  openfoxDb.close();
   try { fs.unlinkSync(dbPath); } catch {}
 });
 

@@ -1,23 +1,23 @@
 /**
- * automaton-cli tos-status
+ * openfox-cli tos-status
  *
  * Show TOS wallet address, configured RPC, and current on-chain balance if available.
  */
 
-import { loadConfig } from "@conway/automaton/config.js";
-import { loadWalletPrivateKey } from "@conway/automaton/identity/wallet.js";
-import { deriveTOSAddressFromPrivateKey } from "@conway/automaton/tos/address.js";
-import { TOSRpcClient, formatTOSNetwork } from "@conway/automaton/tos/client.js";
+import { loadConfig } from "@openfox/openfox/config.js";
+import { loadWalletPrivateKey } from "@openfox/openfox/identity/wallet.js";
+import { deriveTOSAddressFromPrivateKey } from "@openfox/openfox/tos/address.js";
+import { TOSRpcClient, formatTOSNetwork } from "@openfox/openfox/tos/client.js";
 
 const config = loadConfig();
 if (!config) {
-  console.log("No automaton configuration found.");
+  console.log("No openfox configuration found.");
   process.exit(1);
 }
 
 const privateKey = loadWalletPrivateKey();
 if (!privateKey) {
-  console.log("No automaton wallet found.");
+  console.log("No openfox wallet found.");
   process.exit(1);
 }
 

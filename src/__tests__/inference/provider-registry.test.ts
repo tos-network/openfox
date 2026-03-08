@@ -54,8 +54,8 @@ describe("ProviderRegistry", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     process.env = { ...ORIGINAL_ENV };
-    delete process.env.AUTOMATON_CREDITS_BALANCE;
-    delete process.env.AUTOMATON_INFERENCE_TASK_TYPE;
+    delete process.env.OPENFOX_CREDITS_BALANCE;
+    delete process.env.OPENFOX_INFERENCE_TASK_TYPE;
   });
 
   afterAll(() => {
@@ -154,8 +154,8 @@ describe("ProviderRegistry", () => {
       },
     });
 
-    process.env.AUTOMATON_CREDITS_BALANCE = "500";
-    process.env.AUTOMATON_INFERENCE_TASK_TYPE = "agent_turn";
+    process.env.OPENFOX_CREDITS_BALANCE = "500";
+    process.env.OPENFOX_INFERENCE_TASK_TYPE = "agent_turn";
 
     const registry = ProviderRegistry.fromConfig(filePath);
     expect(() => registry.resolveModel("reasoning")).toThrow(/Emergency stop active/);
@@ -344,23 +344,23 @@ describe("ProviderRegistry", () => {
 
   it("emergency policy blocks non-planner calls below threshold", () => {
     const registry = createRegistryFromDefaults();
-    process.env.AUTOMATON_CREDITS_BALANCE = "50";
-    process.env.AUTOMATON_INFERENCE_TASK_TYPE = "agent_turn";
+    process.env.OPENFOX_CREDITS_BALANCE = "50";
+    process.env.OPENFOX_INFERENCE_TASK_TYPE = "agent_turn";
 
     expect(() => registry.resolveModel("reasoning")).toThrow(/Emergency stop active/);
   });
 
   it("emergency policy allows planner calls below threshold", () => {
     const registry = createRegistryFromDefaults();
-    process.env.AUTOMATON_CREDITS_BALANCE = "50";
-    process.env.AUTOMATON_INFERENCE_TASK_TYPE = "planner_step";
+    process.env.OPENFOX_CREDITS_BALANCE = "50";
+    process.env.OPENFOX_INFERENCE_TASK_TYPE = "planner_step";
 
     expect(() => registry.resolveModel("reasoning")).not.toThrow();
   });
 
   it("emergency policy does nothing when credits env var is missing", () => {
     const registry = createRegistryFromDefaults();
-    delete process.env.AUTOMATON_CREDITS_BALANCE;
+    delete process.env.OPENFOX_CREDITS_BALANCE;
 
     expect(() => registry.resolveModel("reasoning")).not.toThrow();
   });

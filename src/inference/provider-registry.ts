@@ -536,7 +536,7 @@ export class ProviderRegistry {
   }
 
   private assertEmergencyPolicy(): void {
-    const rawCredits = process.env.AUTOMATON_CREDITS_BALANCE;
+    const rawCredits = process.env.OPENFOX_CREDITS_BALANCE;
     if (!rawCredits) {
       return;
     }
@@ -546,7 +546,7 @@ export class ProviderRegistry {
       return;
     }
 
-    const taskType = (process.env.AUTOMATON_INFERENCE_TASK_TYPE || "").toLowerCase();
+    const taskType = (process.env.OPENFOX_INFERENCE_TASK_TYPE || "").toLowerCase();
     const plannerCall = taskType.includes("planner") || taskType.includes("planning");
 
     if (!plannerCall) {

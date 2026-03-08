@@ -1,7 +1,7 @@
 /**
  * Credit Topup via x402
  *
- * Converts USDC to Conway credits via the x402 payment protocol.
+ * Converts USDC to Runtime credits via the x402 payment protocol.
  *
  * - On startup: bootstraps with the minimum tier ($5) so the agent can run.
  * - At runtime: the agent uses the `topup_credits` tool to choose how much.

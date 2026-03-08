@@ -63,7 +63,7 @@ importers:
 
   packages/cli:
     dependencies:
-      '@conway/automaton':
+      '@openfox/openfox':
         specifier: workspace:*
         version: link:../..
       chalk:

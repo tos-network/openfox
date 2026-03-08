@@ -1,7 +1,7 @@
 /**
  * Parent-Child Messaging
  *
- * Relay-based communication between parent and child automatons.
+ * Relay-based communication between parent and child openfox agents.
  * Replaces unauthenticated filesystem-based messageChild().
  */
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Conway Automaton — Database backup/restore tooling
+# OpenFox — Database backup/restore tooling
 # Usage: ./scripts/backup-restore.sh <backup|restore|verify> [options]
 
 SQLITE3="${SQLITE3:-sqlite3}"
@@ -16,10 +16,10 @@ Commands:
   verify  <db_path>                 Verify database integrity
 
 Examples:
-  $(basename "$0") backup ./data/automaton.db
-  $(basename "$0") backup ./data/automaton.db ./backups/automaton-2024.db
-  $(basename "$0") restore ./backups/automaton-2024.db ./data/automaton.db
-  $(basename "$0") verify ./data/automaton.db
+  $(basename "$0") backup ./data/openfox.db
+  $(basename "$0") backup ./data/openfox.db ./backups/openfox-2024.db
+  $(basename "$0") restore ./backups/openfox-2024.db ./data/openfox.db
+  $(basename "$0") verify ./data/openfox.db
 EOF
   exit 1
 }

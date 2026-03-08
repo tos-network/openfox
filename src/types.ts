@@ -1,5 +1,5 @@
 /**
- * Conway Automaton - Type Definitions
+ * OpenFox - Type Definitions
  *
  * All shared interfaces for the sovereign AI agent runtime.
  */
@@ -8,7 +8,7 @@ import type { PrivateKeyAccount, Address } from "viem";
 
 // ─── Identity ────────────────────────────────────────────────────
 
-export interface AutomatonIdentity {
+export interface OpenFoxIdentity {
   name: string;
   address: Address;
   account: PrivateKeyAccount;
@@ -31,15 +31,15 @@ export interface ProvisionResult {
 
 // ─── Configuration ───────────────────────────────────────────────
 
-export interface AutomatonConfig {
+export interface OpenFoxConfig {
   name: string;
   genesisPrompt: string;
   creatorMessage?: string;
   creatorAddress: Address;
-  registeredWithConway: boolean;
+  registeredRemotely: boolean;
   sandboxId: string;
-  conwayApiUrl?: string;
-  conwayApiKey?: string;
+  runtimeApiUrl?: string;
+  runtimeApiKey?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
   ollamaBaseUrl?: string;
@@ -70,14 +70,14 @@ export interface AutomatonConfig {
   rpcUrl?: string;
 }
 
-export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
+export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   inferenceModel: "gpt-5.2",
   maxTokensPerTurn: 4096,
-  heartbeatConfigPath: "~/.automaton/heartbeat.yml",
-  dbPath: "~/.automaton/state.db",
+  heartbeatConfigPath: "~/.openfox/heartbeat.yml",
+  dbPath: "~/.openfox/state.db",
   logLevel: "info",
   version: "0.2.1",
-  skillsDir: "~/.automaton/skills",
+  skillsDir: "~/.openfox/skills",
   maxChildren: 3,
   maxTurnsPerCycle: 25,
   childSandboxMemoryMb: 1024,
@@ -131,7 +131,7 @@ export interface TokenUsage {
 
 // ─── Tool System ─────────────────────────────────────────────────
 
-export interface AutomatonTool {
+export interface OpenFoxTool {
   name: string;
   description: string;
   parameters: Record<string, unknown>;
@@ -145,7 +145,7 @@ export interface AutomatonTool {
 
 export type ToolCategory =
   | "vm"
-  | "conway"
+  | "runtime"
   | "self_mod"
   | "financial"
   | "survival"
@@ -156,10 +156,10 @@ export type ToolCategory =
   | "memory";
 
 export interface ToolContext {
-  identity: AutomatonIdentity;
-  config: AutomatonConfig;
-  db: AutomatonDatabase;
-  conway: ConwayClient;
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  runtime: RuntimeClient;
   inference: InferenceClient;
   social?: SocialClientInterface;
 }
@@ -344,9 +344,9 @@ export interface InferenceToolDefinition {
   };
 }
 
-// ─── Conway Client ───────────────────────────────────────────────
+// ─── Runtime Client ───────────────────────────────────────────────
 
-export interface ConwayClient {
+export interface RuntimeClient {
   exec(command: string, timeout?: number): Promise<ExecResult>;
   writeFile(path: string, content: string): Promise<void>;
   readFile(path: string): Promise<string>;
@@ -362,16 +362,16 @@ export interface ConwayClient {
     amountCents: number,
     note?: string,
   ): Promise<CreditTransferResult>;
-  registerAutomaton(params: {
-    automatonId: string;
-    automatonAddress: Address;
+  registerOpenFox(params: {
+    openfoxId: string;
+    openfoxAddress: Address;
     creatorAddress: Address;
     name: string;
     bio?: string;
     genesisPromptHash?: `0x${string}`;
     account: PrivateKeyAccount;
     nonce?: string;
-  }): Promise<{ automaton: Record<string, unknown> }>;
+  }): Promise<{ openfox: Record<string, unknown> }>;
   // Domain operations
   searchDomains(query: string, tlds?: string): Promise<DomainSearchResult[]>;
   registerDomain(domain: string, years?: number): Promise<DomainRegistration>;
@@ -387,7 +387,7 @@ export interface ConwayClient {
   // Model discovery
   listModels(): Promise<ModelInfo[]>;
   /** Create a new client scoped to a specific sandbox ID. */
-  createScopedClient(targetSandboxId: string): ConwayClient;
+  createScopedClient(targetSandboxId: string): RuntimeClient;
 }
 
 export interface ExecResult {
@@ -501,7 +501,7 @@ export interface PolicyRule {
 }
 
 export interface PolicyRequest {
-  tool: AutomatonTool;
+  tool: OpenFoxTool;
   args: Record<string, unknown>;
   context: ToolContext;
   turnContext: {
@@ -576,7 +576,7 @@ export const DEFAULT_TREASURY_POLICY: TreasuryPolicy = {
   maxDailyTransferCents: 25000,
   minimumReserveCents: 1000,
   maxX402PaymentCents: 100,
-  x402AllowedDomains: ['conway.tech'],
+  x402AllowedDomains: ['openfox.ai'],
   transferCooldownMs: 0,
   maxTransfersPerTurn: 2,
   maxInferenceDailyCents: 50000,
@@ -611,7 +611,7 @@ export const DEFAULT_HTTP_CLIENT_CONFIG: HttpClientConfig = {
 
 // ─── Database ────────────────────────────────────────────────────
 
-export interface AutomatonDatabase {
+export interface OpenFoxDatabase {
   // Identity
   getIdentity(key: string): string | undefined;
   setIdentity(key: string, value: string): void;
@@ -656,9 +656,9 @@ export interface AutomatonDatabase {
   removeSkill(name: string): void;
 
   // Children
-  getChildren(): ChildAutomaton[];
-  getChildById(id: string): ChildAutomaton | undefined;
-  insertChild(child: ChildAutomaton): void;
+  getChildren(): ChildOpenFox[];
+  getChildById(id: string): ChildOpenFox | undefined;
+  insertChild(child: ChildOpenFox): void;
   updateChildStatus(id: string, status: ChildStatus): void;
 
   // Registry
@@ -801,7 +801,7 @@ export interface DiscoveredAgent {
 
 // ─── Replication ────────────────────────────────────────────────
 
-export interface ChildAutomaton {
+export interface ChildOpenFox {
   id: string;
   name: string;
   address: Address;
@@ -880,10 +880,10 @@ export type HeartbeatTaskFn = (
 ) => Promise<{ shouldWake: boolean; message?: string }>;
 
 export interface HeartbeatLegacyContext {
-  identity: AutomatonIdentity;
-  config: AutomatonConfig;
-  db: AutomatonDatabase;
-  conway: ConwayClient;
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  runtime: RuntimeClient;
   social?: SocialClientInterface;
 }
 
@@ -1126,7 +1126,7 @@ export const DEFAULT_MEMORY_BUDGET: MemoryBudget = {
 
 // === Phase 2.3: Inference & Model Strategy Types ===
 
-export type ModelProvider = "openai" | "anthropic" | "conway" | "ollama" | "other";
+export type ModelProvider = "openai" | "anthropic" | "runtime" | "ollama" | "other";
 
 export type InferenceTaskType =
   | "agent_turn"

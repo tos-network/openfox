@@ -2,22 +2,22 @@
  * The Agent Loop
  *
  * The core ReAct loop: Think -> Act -> Observe -> Persist.
- * This is the automaton's consciousness. When this runs, it is alive.
+ * This is the openfox's consciousness. When this runs, it is alive.
  */
 
 import path from "node:path";
 import type {
-  AutomatonIdentity,
-  AutomatonConfig,
-  AutomatonDatabase,
-  ConwayClient,
+  OpenFoxIdentity,
+  OpenFoxConfig,
+  OpenFoxDatabase,
+  RuntimeClient,
   InferenceClient,
   AgentState,
   AgentTurn,
   ToolCallResult,
   FinancialState,
   ToolContext,
-  AutomatonTool,
+  OpenFoxTool,
   Skill,
   SocialClientInterface,
   SpendTrackerInterface,
@@ -35,8 +35,8 @@ import {
   executeTool,
 } from "./tools.js";
 import { sanitizeInput } from "./injection-defense.js";
-import { getSurvivalTier } from "../conway/credits.js";
-import { getUsdcBalance } from "../conway/x402.js";
+import { getSurvivalTier } from "../runtime/credits.js";
+import { getUsdcBalance } from "../runtime/x402.js";
 import {
   claimInboxMessages,
   markInboxProcessed,
@@ -73,10 +73,10 @@ const MAX_CONSECUTIVE_ERRORS = 5;
 const MAX_REPETITIVE_TURNS = 3;
 
 export interface AgentLoopOptions {
-  identity: AutomatonIdentity;
-  config: AutomatonConfig;
-  db: AutomatonDatabase;
-  conway: ConwayClient;
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  runtime: RuntimeClient;
   inference: InferenceClient;
   social?: SocialClientInterface;
   skills?: Skill[];
@@ -94,11 +94,11 @@ export interface AgentLoopOptions {
 export async function runAgentLoop(
   options: AgentLoopOptions,
 ): Promise<void> {
-  const { identity, config, db, conway, inference, social, skills, policyEngine, spendTracker, onStateChange, onTurnComplete, ollamaBaseUrl } =
+  const { identity, config, db, runtime, inference, social, skills, policyEngine, spendTracker, onStateChange, onTurnComplete, ollamaBaseUrl } =
     options;
 
   const builtinTools = createBuiltinTools(identity.sandboxId, {
-    enableLegacyConway: Boolean(config.conwayApiUrl && config.conwayApiKey),
+    enableRemoteRuntime: Boolean(config.runtimeApiUrl && config.runtimeApiKey),
   });
   const installedTools = loadInstalledTools(db);
   const tools = [...builtinTools, ...installedTools];
@@ -106,7 +106,7 @@ export async function runAgentLoop(
     identity,
     config,
     db,
-    conway,
+    runtime,
     inference,
     social,
   };
@@ -142,12 +142,12 @@ export async function runAgentLoop(
 
       const providersPath = path.join(
         process.env.HOME || process.cwd(),
-        ".automaton",
+        ".openfox",
         "inference-providers.json",
       );
       const registry = ProviderRegistry.fromConfig(providersPath);
 
-      // Legacy Conway fallback keeps using the OpenAI-compatible surface when
+      // Legacy Runtime fallback keeps using the OpenAI-compatible surface when
       // explicitly configured, but local/provider-first setups do not require it.
       if (process.env.OPENAI_BASE_URL) {
         registry.overrideBaseUrl("openai", process.env.OPENAI_BASE_URL);
@@ -155,7 +155,7 @@ export async function runAgentLoop(
 
       const unifiedInference = new UnifiedInferenceClient(registry);
       const agentTracker = new SimpleAgentTracker(db);
-      const funding = new SimpleFundingProtocol(conway, identity, db);
+      const funding = new SimpleFundingProtocol(runtime, identity, db);
       const messaging = new ColonyMessaging(
         new LocalDBTransport(db),
         db,
@@ -170,7 +170,7 @@ export async function runAgentLoop(
       );
 
       // Adapter: wrap the main agent's working inference client so local
-      // workers can use it. The main InferenceClient talks to Conway Compute
+      // workers can use it. The main InferenceClient talks to Runtime Compute
       // (which always works), unlike the UnifiedInferenceClient which needs
       // a direct OpenAI key.
       const workerInference = {
@@ -191,11 +191,11 @@ export async function runAgentLoop(
       };
 
       // Local worker pool: runs inference-driven agents in-process
-      // as async tasks. Falls back from Conway sandbox spawning.
+      // as async tasks. Falls back from Runtime sandbox spawning.
       const workerPool = new LocalWorkerPool({
         db: db.raw,
         inference: workerInference,
-        conway,
+        runtime,
         workerId: `pool-${identity.name}`,
       });
 
@@ -220,7 +220,7 @@ export async function runAgentLoop(
         config: {
           ...config,
           spawnAgent: async (task: any) => {
-            // Try Conway sandbox spawn first (production)
+            // Try Runtime sandbox spawn first (production)
             try {
               const { generateGenesisConfig } = await import("../replication/genesis.js");
               const { spawnChild } = await import("../replication/spawn.js");
@@ -233,7 +233,7 @@ export async function runAgentLoop(
               });
 
               const lifecycle = new ChildLifecycle(db.raw);
-              const child = await spawnChild(conway, identity, db, genesis, lifecycle);
+              const child = await spawnChild(runtime, identity, db, genesis, lifecycle);
 
               return {
                 address: child.address,
@@ -253,14 +253,14 @@ export async function runAgentLoop(
 
                 if (cooldownExpired) {
                   db.setKV("last_sandbox_topup_attempt", new Date().toISOString());
-                  if (!config.conwayApiUrl) {
-                    logger.info("Skipping sandbox topup because Conway is not configured", {
+                  if (!config.runtimeApiUrl) {
+                    logger.info("Skipping sandbox topup because Runtime is not configured", {
                       taskId: task.id,
                     });
                   } else try {
-                    const { topupForSandbox } = await import("../conway/topup.js");
+                    const { topupForSandbox } = await import("../runtime/topup.js");
                     const topupResult = await topupForSandbox({
-                      apiUrl: config.conwayApiUrl,
+                      apiUrl: config.runtimeApiUrl,
                       account: identity.account,
                       error: sandboxError,
                     });
@@ -281,7 +281,7 @@ export async function runAgentLoop(
                           specialization: `${retryRole}: ${task.title}`,
                         });
                         const retryLifecycle = new RetryLifecycle(db.raw);
-                        const child = await retrySpawn(conway, identity, db, retryGenesis, retryLifecycle);
+                        const child = await retrySpawn(runtime, identity, db, retryGenesis, retryLifecycle);
                         return {
                           address: child.address,
                           name: child.name,
@@ -303,8 +303,8 @@ export async function runAgentLoop(
                 }
               }
 
-              // Conway sandbox unavailable — fall back to local worker
-              logger.info("Conway sandbox unavailable, spawning local worker", {
+              // Runtime sandbox unavailable — fall back to local worker
+              logger.info("Runtime sandbox unavailable, spawning local worker", {
                 taskId: task.id,
                 error: sandboxError instanceof Error ? sandboxError.message : String(sandboxError),
               });
@@ -362,7 +362,7 @@ export async function runAgentLoop(
   onStateChange?.("waking");
 
   // Get financial state
-  let financial = await getFinancialState(conway, identity.address, db);
+  let financial = await getFinancialState(runtime, identity.address, db);
 
   // Check if this is the first run
   const isFirstRun = db.getTurnCount() === 0;
@@ -430,7 +430,7 @@ export async function runAgentLoop(
       }
 
       // Refresh financial state periodically
-      financial = await getFinancialState(conway, identity.address, db);
+      financial = await getFinancialState(runtime, identity.address, db);
 
       // Check survival tier
       // api_unreachable: creditsCents === -1 means API failed with no cache.
@@ -453,12 +453,12 @@ export async function runAgentLoop(
 
           if (cooldownExpired) {
             db.setKV("last_inline_topup_attempt", new Date().toISOString());
-            if (!config.conwayApiUrl) {
-              logger.info("Skipping inline auto-topup because Conway is not configured");
+            if (!config.runtimeApiUrl) {
+              logger.info("Skipping inline auto-topup because Runtime is not configured");
             } else try {
-              const { bootstrapTopup } = await import("../conway/topup.js");
+              const { bootstrapTopup } = await import("../runtime/topup.js");
               const topupResult = await bootstrapTopup({
-                apiUrl: config.conwayApiUrl,
+                apiUrl: config.runtimeApiUrl,
                 account: identity.account,
                 creditsCents: financial.creditsCents,
               });
@@ -466,7 +466,7 @@ export async function runAgentLoop(
                 log(config, `[AUTO-TOPUP] Bought $${topupResult.amountUsd} credits from USDC mid-loop`);
                 // Re-fetch financial state after topup so the rest of
                 // the turn sees the updated balance.
-                financial = await getFinancialState(conway, identity.address, db);
+                financial = await getFinancialState(runtime, identity.address, db);
               }
             } catch (err: any) {
               logger.warn(`Inline auto-topup failed: ${err.message}`);
@@ -928,20 +928,20 @@ export async function runAgentLoop(
 // ─── Helpers ───────────────────────────────────────────────────
 
 // Cache last known good balances so transient API failures don't
-// cause the automaton to believe it has $0 and kill itself.
+// cause the openfox to believe it has $0 and kill itself.
 let _lastKnownCredits = 0;
 let _lastKnownUsdc = 0;
 
 async function getFinancialState(
-  conway: ConwayClient,
+  runtime: RuntimeClient,
   address: string,
-  db?: AutomatonDatabase,
+  db?: OpenFoxDatabase,
 ): Promise<FinancialState> {
   let creditsCents = _lastKnownCredits;
   let usdcBalance = _lastKnownUsdc;
 
   try {
-    creditsCents = await conway.getCreditsBalance();
+    creditsCents = await runtime.getCreditsBalance();
     if (creditsCents > 0) _lastKnownCredits = creditsCents;
   } catch (error) {
     logger.error("Credits balance fetch failed", error instanceof Error ? error : undefined);
@@ -997,11 +997,11 @@ async function getFinancialState(
   };
 }
 
-function log(_config: AutomatonConfig, message: string): void {
+function log(_config: OpenFoxConfig, message: string): void {
   logger.info(message);
 }
 
-function hasTable(db: AutomatonDatabase["raw"], tableName: string): boolean {
+function hasTable(db: OpenFoxDatabase["raw"], tableName: string): boolean {
   try {
     const row = db
       .prepare("SELECT 1 AS ok FROM sqlite_master WHERE type = 'table' AND name = ?")
@@ -1013,7 +1013,7 @@ function hasTable(db: AutomatonDatabase["raw"], tableName: string): boolean {
 }
 
 function syncProviderEnvironment(
-  config: AutomatonConfig,
+  config: OpenFoxConfig,
   ollamaBaseUrl?: string,
 ): void {
   if (config.openaiApiKey && !process.env.OPENAI_API_KEY) {
@@ -1031,24 +1031,24 @@ function syncProviderEnvironment(
     }
   }
 
-  if (config.conwayApiKey && !process.env.CONWAY_API_KEY) {
-    process.env.CONWAY_API_KEY = config.conwayApiKey;
+  if (config.runtimeApiKey && !process.env.OPENFOX_API_KEY) {
+    process.env.OPENFOX_API_KEY = config.runtimeApiKey;
   }
-  if (!process.env.OPENAI_API_KEY && config.conwayApiKey && config.conwayApiUrl) {
-    process.env.OPENAI_API_KEY = config.conwayApiKey;
-    process.env.OPENAI_BASE_URL = `${config.conwayApiUrl.replace(/\/$/, "")}/v1`;
+  if (!process.env.OPENAI_API_KEY && config.runtimeApiKey && config.runtimeApiUrl) {
+    process.env.OPENAI_API_KEY = config.runtimeApiKey;
+    process.env.OPENAI_BASE_URL = `${config.runtimeApiUrl.replace(/\/$/, "")}/v1`;
   }
 }
 
 function syncModelAvailability(
   modelRegistry: ModelRegistry,
-  config: AutomatonConfig,
+  config: OpenFoxConfig,
   ollamaBaseUrl?: string,
 ): void {
   const openaiEnabled = !!(process.env.OPENAI_API_KEY || config.openaiApiKey);
   const anthropicEnabled = !!(process.env.ANTHROPIC_API_KEY || config.anthropicApiKey);
   const ollamaEnabled = !!(process.env.OLLAMA_BASE_URL || ollamaBaseUrl);
-  const conwayEnabled = !!(config.conwayApiKey && config.conwayApiUrl);
+  const runtimeEnabled = !!(config.runtimeApiKey && config.runtimeApiUrl);
 
   for (const entry of modelRegistry.getAll()) {
     if (entry.provider === "openai") {
@@ -1057,8 +1057,8 @@ function syncModelAvailability(
       modelRegistry.setEnabled(entry.modelId, anthropicEnabled);
     } else if (entry.provider === "ollama") {
       modelRegistry.setEnabled(entry.modelId, ollamaEnabled);
-    } else if (entry.provider === "conway") {
-      modelRegistry.setEnabled(entry.modelId, conwayEnabled);
+    } else if (entry.provider === "runtime") {
+      modelRegistry.setEnabled(entry.modelId, runtimeEnabled);
     }
   }
 }

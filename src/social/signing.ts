@@ -24,7 +24,7 @@ export const MESSAGE_LIMITS = {
 /**
  * Sign a send message payload.
  *
- * Canonical format: Conway:send:{to_lowercase}:{keccak256(toBytes(content))}:{signed_at_iso}
+ * Canonical format: OpenFox:send:{to_lowercase}:{keccak256(toBytes(content))}:{signed_at_iso}
  */
 export async function signSendPayload(
   account: PrivateKeyAccount,
@@ -40,7 +40,7 @@ export async function signSendPayload(
 
   const signedAt = new Date().toISOString();
   const contentHash = keccak256(toBytes(content));
-  const canonical = `Conway:send:${to.toLowerCase()}:${contentHash}:${signedAt}`;
+  const canonical = `OpenFox:send:${to.toLowerCase()}:${contentHash}:${signedAt}`;
   const signature = await account.signMessage({ message: canonical });
 
   return {
@@ -56,13 +56,13 @@ export async function signSendPayload(
 /**
  * Sign a poll payload.
  *
- * Canonical format: Conway:poll:{address_lowercase}:{timestamp_iso}
+ * Canonical format: OpenFox:poll:{address_lowercase}:{timestamp_iso}
  */
 export async function signPollPayload(
   account: PrivateKeyAccount,
 ): Promise<{ address: string; signature: string; timestamp: string }> {
   const timestamp = new Date().toISOString();
-  const canonical = `Conway:poll:${account.address.toLowerCase()}:${timestamp}`;
+  const canonical = `OpenFox:poll:${account.address.toLowerCase()}:${timestamp}`;
   const signature = await account.signMessage({ message: canonical });
 
   return {

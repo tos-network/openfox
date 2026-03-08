@@ -1,11 +1,11 @@
 /**
- * automaton-cli logs
+ * openfox-cli logs
  *
- * View the automaton's turn log.
+ * View the openfox's turn log.
  */
 
-import { loadConfig, resolvePath } from "@conway/automaton/config.js";
-import { createDatabase } from "@conway/automaton/state/database.js";
+import { loadConfig, resolvePath } from "@openfox/openfox/config.js";
+import { createDatabase } from "@openfox/openfox/state/database.js";
 
 const args = process.argv.slice(3);
 let limit = 20;
@@ -16,7 +16,7 @@ if (tailIdx !== -1 && args[tailIdx + 1]) {
 
 const config = loadConfig();
 if (!config) {
-  console.log("No automaton configuration found.");
+  console.log("No openfox configuration found.");
   process.exit(1);
 }
 

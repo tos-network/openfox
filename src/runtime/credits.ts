@@ -1,25 +1,25 @@
 /**
- * Conway Credits Management
+ * Runtime Credits Management
  *
- * Monitors the automaton's compute credit balance and triggers
+ * Monitors the openfox's compute credit balance and triggers
  * survival mode transitions.
  */
 
 import type {
-  ConwayClient,
+  RuntimeClient,
   FinancialState,
   SurvivalTier,
 } from "../types.js";
 import { SURVIVAL_THRESHOLDS } from "../types.js";
 
 /**
- * Check the current financial state of the automaton.
+ * Check the current financial state of the openfox.
  */
 export async function checkFinancialState(
-  conway: ConwayClient,
+  runtime: RuntimeClient,
   usdcBalance: number,
 ): Promise<FinancialState> {
-  const creditsCents = await conway.getCreditsBalance();
+  const creditsCents = await runtime.getCreditsBalance();
 
   return {
     creditsCents,

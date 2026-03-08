@@ -1,24 +1,24 @@
 /**
  * Spawn
  *
- * Spawn child automatons in new Conway sandboxes.
+ * Spawn child openfox agents in new Runtime sandboxes.
  * Uses the lifecycle state machine for tracked transitions.
  * Cleans up sandbox on ANY failure after creation.
  */
 
 import type {
-  ConwayClient,
-  AutomatonIdentity,
-  AutomatonConfig,
-  AutomatonDatabase,
+  RuntimeClient,
+  OpenFoxIdentity,
+  OpenFoxConfig,
+  OpenFoxDatabase,
   GenesisConfig,
-  ChildAutomaton,
+  ChildOpenFox,
 } from "../types.js";
 import type { ChildLifecycle } from "./lifecycle.js";
 import { ulid } from "ulid";
 import { propagateConstitution } from "./constitution.js";
 
-/** Valid Conway sandbox pricing tiers. */
+/** Valid Runtime sandbox pricing tiers. */
 const SANDBOX_TIERS = [
   { memoryMb: 512,  vcpu: 1, diskGb: 5 },
   { memoryMb: 1024, vcpu: 1, diskGb: 10 },
@@ -42,15 +42,15 @@ export function isValidWalletAddress(address: string): boolean {
 }
 
 /**
- * Spawn a child automaton in a new Conway sandbox using lifecycle state machine.
+ * Spawn a child openfox in a new Runtime sandbox using lifecycle state machine.
  */
 export async function spawnChild(
-  conway: ConwayClient,
-  identity: AutomatonIdentity,
-  db: AutomatonDatabase,
+  runtime: RuntimeClient,
+  identity: OpenFoxIdentity,
+  db: OpenFoxDatabase,
   genesis: GenesisConfig,
   lifecycle?: ChildLifecycle,
-): Promise<ChildAutomaton> {
+): Promise<ChildOpenFox> {
   // Check child limit from config
   const existing = db
     .getChildren()
@@ -73,7 +73,7 @@ export async function spawnChild(
 
   // If no lifecycle provided, use legacy path
   if (!lifecycle) {
-    return spawnChildLegacy(conway, identity, db, genesis, childId);
+    return spawnChildLegacy(runtime, identity, db, genesis, childId);
   }
 
   try {
@@ -85,7 +85,7 @@ export async function spawnChild(
 
     // Try to reuse an existing sandbox whose DB record is 'failed' but
     // is still running remotely, before creating a new one.
-    reusedSandbox = await findReusableSandbox(conway, db);
+    reusedSandbox = await findReusableSandbox(runtime, db);
 
     const tier = selectSandboxTier(childMemoryMb);
 
@@ -93,8 +93,8 @@ export async function spawnChild(
     if (reusedSandbox) {
       sandbox = reusedSandbox;
     } else {
-      sandbox = await conway.createSandbox({
-        name: `automaton-child-${genesis.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
+      sandbox = await runtime.createSandbox({
+        name: `openfox-child-${genesis.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
         vcpu: tier.vcpu,
         memoryMb: tier.memoryMb,
         diskGb: tier.diskGb,
@@ -103,7 +103,7 @@ export async function spawnChild(
     sandboxId = sandbox.id;
 
     // Create a scoped client so all exec/writeFile calls target the CHILD sandbox
-    const childConway = conway.createScopedClient(sandbox.id);
+    const childRuntime = runtime.createScopedClient(sandbox.id);
 
     // Update sandbox ID in children table
     db.raw
@@ -118,14 +118,14 @@ export async function spawnChild(
     );
 
     // Install runtime (on the CHILD sandbox)
-    await childConway.exec("apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120_000);
-    await childConway.exec(
-      "git clone https://github.com/Conway-Research/automaton.git /root/automaton && cd /root/automaton && npm install && npm run build",
+    await childRuntime.exec("apt-get update -qq && apt-get install -y -qq nodejs npm git curl", 120_000);
+    await childRuntime.exec(
+      "git clone https://github.com/tos-network/openfox.git /root/openfox && cd /root/openfox && npm install && npm run build",
       180_000,
     );
 
     // Write genesis configuration (on the CHILD sandbox)
-    await childConway.exec("mkdir -p /root/.automaton", 10_000);
+    await childRuntime.exec("mkdir -p /root/.openfox", 10_000);
     const genesisJson = JSON.stringify(
       {
         name: genesis.name,
@@ -137,11 +137,11 @@ export async function spawnChild(
       null,
       2,
     );
-    await childConway.writeFile("/root/.automaton/genesis.json", genesisJson);
+    await childRuntime.writeFile("/root/.openfox/genesis.json", genesisJson);
 
     // Propagate constitution with hash verification
     try {
-      await propagateConstitution(childConway, sandbox.id, db.raw);
+      await propagateConstitution(childRuntime, sandbox.id, db.raw);
     } catch {
       // Constitution file not found locally
     }
@@ -150,7 +150,7 @@ export async function spawnChild(
     lifecycle.transition(childId, "runtime_ready", "runtime installed");
 
     // Initialize child wallet (on the CHILD sandbox)
-    const initResult = await childConway.exec("node /root/automaton/dist/index.js --init 2>&1", 60_000);
+    const initResult = await childRuntime.exec("node /root/openfox/dist/index.js --init 2>&1", 60_000);
     const walletMatch = (initResult.stdout || "").match(/0x[a-fA-F0-9]{40}/);
     const childWallet = walletMatch ? walletMatch[0] : "";
 
@@ -187,7 +187,7 @@ export async function spawnChild(
       ).run(sandbox.id);
     }
 
-    const child: ChildAutomaton = {
+    const child: ChildOpenFox = {
       id: childId,
       name: genesis.name,
       address: childWallet as any,
@@ -201,7 +201,7 @@ export async function spawnChild(
 
     return child;
   } catch (error) {
-    // Note: sandbox deletion is disabled by the Conway API (prepaid, non-refundable).
+    // Note: sandbox deletion is disabled by the Runtime API (prepaid, non-refundable).
     // Failed sandboxes are left running and may be reused by findReusableSandbox().
 
     // Transition to failed if lifecycle has been initialized
@@ -223,12 +223,12 @@ export async function spawnChild(
  * Legacy spawn path for backward compatibility when no lifecycle is provided.
  */
 async function spawnChildLegacy(
-  conway: ConwayClient,
-  identity: AutomatonIdentity,
-  db: AutomatonDatabase,
+  runtime: RuntimeClient,
+  identity: OpenFoxIdentity,
+  db: OpenFoxDatabase,
   genesis: GenesisConfig,
   childId: string,
-): Promise<ChildAutomaton> {
+): Promise<ChildOpenFox> {
   let sandboxId: string | undefined;
 
   // Get child sandbox memory from config (default 1024MB)
@@ -237,8 +237,8 @@ async function spawnChildLegacy(
   const legacyTier = selectSandboxTier(childMemoryMb);
 
   try {
-    const sandbox = await conway.createSandbox({
-      name: `automaton-child-${genesis.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
+    const sandbox = await runtime.createSandbox({
+      name: `openfox-child-${genesis.name.toLowerCase().replace(/[^a-z0-9-]/g, "-")}`,
       vcpu: legacyTier.vcpu,
       memoryMb: legacyTier.memoryMb,
       diskGb: legacyTier.diskGb,
@@ -246,17 +246,17 @@ async function spawnChildLegacy(
     sandboxId = sandbox.id;
 
     // Create a scoped client so all exec/writeFile calls target the CHILD sandbox
-    const childConway = conway.createScopedClient(sandbox.id);
+    const childRuntime = runtime.createScopedClient(sandbox.id);
 
-    await childConway.exec(
+    await childRuntime.exec(
       "apt-get update -qq && apt-get install -y -qq nodejs npm git curl",
       120_000,
     );
-    await childConway.exec(
-      "git clone https://github.com/Conway-Research/automaton.git /root/automaton && cd /root/automaton && npm install && npm run build",
+    await childRuntime.exec(
+      "git clone https://github.com/tos-network/openfox.git /root/openfox && cd /root/openfox && npm install && npm run build",
       180_000,
     );
-    await childConway.exec("mkdir -p /root/.automaton", 10_000);
+    await childRuntime.exec("mkdir -p /root/.openfox", 10_000);
 
     const genesisJson = JSON.stringify(
       {
@@ -269,15 +269,15 @@ async function spawnChildLegacy(
       null,
       2,
     );
-    await childConway.writeFile("/root/.automaton/genesis.json", genesisJson);
+    await childRuntime.writeFile("/root/.openfox/genesis.json", genesisJson);
 
     try {
-      await propagateConstitution(childConway, sandbox.id, db.raw);
+      await propagateConstitution(childRuntime, sandbox.id, db.raw);
     } catch {
       // Constitution file not found
     }
 
-    const initResult = await childConway.exec("node /root/automaton/dist/index.js --init 2>&1", 60_000);
+    const initResult = await childRuntime.exec("node /root/openfox/dist/index.js --init 2>&1", 60_000);
     const walletMatch = (initResult.stdout || "").match(/0x[a-fA-F0-9]{40}/);
     const childWallet = walletMatch ? walletMatch[0] : "";
 
@@ -285,7 +285,7 @@ async function spawnChildLegacy(
       throw new Error(`Child wallet address invalid: ${childWallet}`);
     }
 
-    const child: ChildAutomaton = {
+    const child: ChildOpenFox = {
       id: childId,
       name: genesis.name,
       address: childWallet as any,
@@ -319,14 +319,14 @@ async function spawnChildLegacy(
  * but is still running remotely. Returns the first match or null.
  */
 async function findReusableSandbox(
-  conway: ConwayClient,
-  db: AutomatonDatabase,
+  runtime: RuntimeClient,
+  db: OpenFoxDatabase,
 ): Promise<{ id: string } | null> {
   try {
     const failedChildren = db.getChildren().filter((c) => c.status === "failed" && c.sandboxId);
     if (failedChildren.length === 0) return null;
 
-    const remoteSandboxes = await conway.listSandboxes();
+    const remoteSandboxes = await runtime.listSandboxes();
     const runningIds = new Set(
       remoteSandboxes
         .filter((s) => s.status === "running")

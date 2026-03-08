@@ -1,5 +1,5 @@
-declare module "@conway/automaton/config.js" {
-  export interface AutomatonCliConfig {
+declare module "@openfox/openfox/config.js" {
+  export interface OpenFoxCliConfig {
     name: string;
     walletAddress: string;
     tosWalletAddress?: string;
@@ -10,31 +10,31 @@ declare module "@conway/automaton/config.js" {
     dbPath: string;
     inferenceModel: string;
     inferenceModelRef?: string;
-    conwayApiUrl?: string;
-    conwayApiKey?: string;
+    runtimeApiUrl?: string;
+    runtimeApiKey?: string;
     openaiApiKey?: string;
     anthropicApiKey?: string;
     ollamaBaseUrl?: string;
     socialRelayUrl?: string;
   }
 
-  export function loadConfig(): AutomatonCliConfig | null;
+  export function loadConfig(): OpenFoxCliConfig | null;
   export function resolvePath(p: string): string;
 }
 
-declare module "@conway/automaton/identity/wallet.js" {
+declare module "@openfox/openfox/identity/wallet.js" {
   export function loadWalletPrivateKey(): `0x${string}` | null;
 }
 
-declare module "@conway/automaton/tos/address.js" {
+declare module "@openfox/openfox/tos/address.js" {
   export type TOSAddress = `0x${string}`;
 
   export function deriveTOSAddressFromPrivateKey(privateKey: `0x${string}`): TOSAddress;
   export function normalizeTOSAddress(value: string): TOSAddress;
 }
 
-declare module "@conway/automaton/tos/client.js" {
-  import type { TOSAddress } from "@conway/automaton/tos/address.js";
+declare module "@openfox/openfox/tos/client.js" {
+  import type { TOSAddress } from "@openfox/openfox/tos/address.js";
 
   export class TOSRpcClient {
     constructor(options: { rpcUrl: string });
@@ -66,7 +66,7 @@ declare module "@conway/automaton/tos/client.js" {
   }>;
 }
 
-declare module "@conway/automaton/state/database.js" {
+declare module "@openfox/openfox/state/database.js" {
   export interface CliToolCall {
     name: string;
     result: string;
@@ -94,7 +94,7 @@ declare module "@conway/automaton/state/database.js" {
     name: string;
   }
 
-  export interface AutomatonCliDatabase {
+  export interface OpenFoxCliDatabase {
     getAgentState(): string;
     getTurnCount(): number;
     getInstalledTools(): CliInstalledTool[];
@@ -103,5 +103,5 @@ declare module "@conway/automaton/state/database.js" {
     close(): void;
   }
 
-  export function createDatabase(path: string): AutomatonCliDatabase;
+  export function createDatabase(path: string): OpenFoxCliDatabase;
 }

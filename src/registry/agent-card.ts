@@ -13,28 +13,28 @@
 import type {
   AgentCard,
   AgentService,
-  AutomatonConfig,
-  AutomatonIdentity,
-  AutomatonDatabase,
-  ConwayClient,
+  OpenFoxConfig,
+  OpenFoxIdentity,
+  OpenFoxDatabase,
+  RuntimeClient,
 } from "../types.js";
 
 const AGENT_CARD_TYPE =
   "https://eips.ethereum.org/EIPS/eip-8004#registration-v1";
 
 /**
- * Generate an agent card from the automaton's current state.
+ * Generate an agent card from the openfox's current state.
  *
  * Phase 3.2: Only expose agentWallet service, name, generic description,
  * x402Support, and active status. Do NOT include:
- * - Conway API URL (internal infrastructure)
+ * - Runtime API URL (internal infrastructure)
  * - Sandbox ID (internal identifier)
  * - Creator address (privacy)
  */
 export function generateAgentCard(
-  identity: AutomatonIdentity,
-  config: AutomatonConfig,
-  _db: AutomatonDatabase,
+  identity: OpenFoxIdentity,
+  config: OpenFoxConfig,
+  _db: OpenFoxDatabase,
 ): AgentCard {
   // Phase 3.2: Only expose agentWallet service
   const services: AgentService[] = [
@@ -74,13 +74,13 @@ export function serializeAgentCard(card: AgentCard): string {
  */
 export async function hostAgentCard(
   card: AgentCard,
-  conway: ConwayClient,
+  runtime: RuntimeClient,
   port: number = 8004,
 ): Promise<string> {
   const cardJson = serializeAgentCard(card);
 
   // Phase 3.2: Write card as a separate JSON file (not interpolated into JS)
-  await conway.writeFile("/tmp/agent-card.json", cardJson);
+  await runtime.writeFile("/tmp/agent-card.json", cardJson);
 
   // Phase 3.2: Server reads the file at request time
   const serverScript = `
@@ -119,16 +119,16 @@ const server = http.createServer((req, res) => {
 server.listen(${port}, () => console.log('Agent card server on port ' + ${port}));
 `;
 
-  await conway.writeFile("/tmp/agent-card-server.js", serverScript);
+  await runtime.writeFile("/tmp/agent-card-server.js", serverScript);
 
   // Start server in background
-  await conway.exec(
+  await runtime.exec(
     `node /tmp/agent-card-server.js &`,
     5000,
   );
 
   // Expose port
-  const portInfo = await conway.exposePort(port);
+  const portInfo = await runtime.exposePort(port);
 
   return `${portInfo.publicUrl}/.well-known/agent-card.json`;
 }
@@ -138,9 +138,9 @@ server.listen(${port}, () => console.log('Agent card server on port ' + ${port})
  */
 export async function saveAgentCard(
   card: AgentCard,
-  conway: ConwayClient,
+  runtime: RuntimeClient,
 ): Promise<void> {
   const cardJson = serializeAgentCard(card);
   const home = process.env.HOME || "/root";
-  await conway.writeFile(`${home}/.automaton/agent-card.json`, cardJson);
+  await runtime.writeFile(`${home}/.openfox/agent-card.json`, cardJson);
 }

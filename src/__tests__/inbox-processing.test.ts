@@ -19,14 +19,14 @@ import {
   resetInboxToReceived,
   getUnprocessedInboxCount,
 } from "../state/database.js";
-import type { AutomatonDatabase } from "../types.js";
+import type { OpenFoxDatabase } from "../types.js";
 
 function makeTmpDbPath(): string {
-  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "automaton-inbox-test-"));
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-inbox-test-"));
   return path.join(tmpDir, "test.db");
 }
 
-function insertTestMessage(db: AutomatonDatabase, id: string, from = "0xsender"): void {
+function insertTestMessage(db: OpenFoxDatabase, id: string, from = "0xsender"): void {
   db.insertInboxMessage({
     id,
     from,
@@ -39,7 +39,7 @@ function insertTestMessage(db: AutomatonDatabase, id: string, from = "0xsender")
 
 describe("Inbox Processing State Machine (Phase 1.2)", () => {
   let dbPath: string;
-  let db: AutomatonDatabase;
+  let db: OpenFoxDatabase;
 
   beforeEach(() => {
     dbPath = makeTmpDbPath();

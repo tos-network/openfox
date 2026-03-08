@@ -9,7 +9,7 @@
 import type {
   ChatMessage,
   AgentTurn,
-  AutomatonDatabase,
+  OpenFoxDatabase,
   InferenceClient,
   TokenBudget,
   MemoryRetrievalResult,

@@ -1,12 +1,12 @@
 {
-  "name": "@conway/automaton-cli",
+  "name": "@openfox/openfox-cli",
   "version": "0.2.0",
-  "description": "Automaton - Creator CLI",
+  "description": "OpenFox CLI",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
-    "automaton-cli": "dist/index.js"
+    "openfox-cli": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
@@ -14,7 +14,7 @@
     "clean": "rm -rf dist"
   },
   "dependencies": {
-    "@conway/automaton": "workspace:*",
+    "@openfox/openfox": "workspace:*",
     "chalk": "^5.3.0",
     "viem": "^2.44.2"
   },

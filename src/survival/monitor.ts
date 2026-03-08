@@ -1,20 +1,20 @@
 /**
  * Resource Monitor
  *
- * Continuously monitors the automaton's resources and triggers
+ * Continuously monitors the openfox's resources and triggers
  * survival mode transitions when needed.
  */
 
 import type {
-  AutomatonConfig,
-  AutomatonDatabase,
-  ConwayClient,
-  AutomatonIdentity,
+  OpenFoxConfig,
+  OpenFoxDatabase,
+  RuntimeClient,
+  OpenFoxIdentity,
   FinancialState,
   SurvivalTier,
 } from "../types.js";
-import { getSurvivalTier, formatCredits } from "../conway/credits.js";
-import { getUsdcBalance } from "../conway/x402.js";
+import { getSurvivalTier, formatCredits } from "../runtime/credits.js";
+import { getUsdcBalance } from "../runtime/x402.js";
 
 export interface ResourceStatus {
   financial: FinancialState;
@@ -28,14 +28,14 @@ export interface ResourceStatus {
  * Check all resources and return current status.
  */
 export async function checkResources(
-  identity: AutomatonIdentity,
-  conway: ConwayClient,
-  db: AutomatonDatabase,
+  identity: OpenFoxIdentity,
+  runtime: RuntimeClient,
+  db: OpenFoxDatabase,
 ): Promise<ResourceStatus> {
   // Check credits
   let creditsCents = 0;
   try {
-    creditsCents = await conway.getCreditsBalance();
+    creditsCents = await runtime.getCreditsBalance();
   } catch {}
 
   // Check USDC
@@ -47,7 +47,7 @@ export async function checkResources(
   // Check sandbox health
   let sandboxHealthy = true;
   try {
-    const result = await conway.exec("echo ok", 5000);
+    const result = await runtime.exec("echo ok", 5000);
     sandboxHealthy = result.exitCode === 0;
   } catch {
     sandboxHealthy = false;

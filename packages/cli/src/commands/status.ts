@@ -1,15 +1,15 @@
 /**
- * automaton-cli status
+ * openfox-cli status
  *
- * Show the current status of an automaton.
+ * Show the current status of an openfox.
  */
 
-import { loadConfig, resolvePath } from "@conway/automaton/config.js";
-import { createDatabase } from "@conway/automaton/state/database.js";
+import { loadConfig, resolvePath } from "@openfox/openfox/config.js";
+import { createDatabase } from "@openfox/openfox/state/database.js";
 
 const config = loadConfig();
 if (!config) {
-  console.log("No automaton configuration found.");
+  console.log("No openfox configuration found.");
   process.exit(1);
 }
 

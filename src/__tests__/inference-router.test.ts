@@ -176,7 +176,7 @@ describe("ModelRegistry", () => {
     registry.refreshFromApi([
       {
         id: "new-api-model",
-        provider: "conway",
+        provider: "runtime",
         display_name: "New API Model",
         max_tokens: 8192,
         context_window: 200000,
@@ -188,7 +188,7 @@ describe("ModelRegistry", () => {
 
     const entry = registry.get("new-api-model");
     expect(entry).toBeDefined();
-    expect(entry!.provider).toBe("conway");
+    expect(entry!.provider).toBe("runtime");
     expect(entry!.costPer1kInput).toBe(15);
   });
 
@@ -749,7 +749,7 @@ describe("Static Model Baseline", () => {
   });
 
   it("all models have valid provider", () => {
-    const validProviders = ["openai", "anthropic", "conway", "other"];
+    const validProviders = ["openai", "anthropic", "runtime", "other"];
     for (const model of STATIC_MODEL_BASELINE) {
       expect(validProviders).toContain(model.provider);
     }

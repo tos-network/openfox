@@ -1,7 +1,7 @@
 /**
- * Conway API Client
+ * Runtime API Client
  *
- * Communicates with Conway's control plane for sandbox management,
+ * Communicates with Runtime's control plane for sandbox management,
  * credits, and infrastructure operations.
  * Adapted from @aiws/sdk patterns.
  */
@@ -10,7 +10,7 @@ import { execSync } from "child_process";
 import fs from "fs";
 import nodePath from "path";
 import type {
-  ConwayClient,
+  RuntimeClient,
   ExecResult,
   PortInfo,
   CreateSandboxOptions,
@@ -28,13 +28,13 @@ import { keccak256, toHex } from "viem";
 import type { Address, PrivateKeyAccount } from "viem";
 import { randomUUID } from "crypto";
 
-interface ConwayClientOptions {
+interface RuntimeClientOptions {
   apiUrl?: string;
   apiKey?: string;
   sandboxId: string;
 }
 
-export function createConwayClient(options: ConwayClientOptions): ConwayClient {
+export function createRuntimeClient(options: RuntimeClientOptions): RuntimeClient {
   const apiUrl = (options.apiUrl || "").trim();
   const apiKey = (options.apiKey || "").trim();
   // Normalize sandbox ID defensively so values like whitespace/"undefined"/"null"
@@ -50,10 +50,10 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     requestOptions?: { idempotencyKey?: string; retries404?: number },
   ): Promise<any> {
     if (!hasRemoteApi) {
-      throw new Error(`Remote Conway operation unavailable in local mode: ${method} ${path}`);
+      throw new Error(`Remote Runtime operation unavailable in local mode: ${method} ${path}`);
     }
 
-    // Conway LB has an intermittent routing bug that returns 404 for valid
+    // Runtime LB has an intermittent routing bug that returns 404 for valid
     // sandbox endpoints. Retry 404s here (outside ResilientHttpClient) to
     // avoid tripping the circuit breaker on transient routing failures.
     const max404Retries = requestOptions?.retries404 ?? 3;
@@ -76,7 +76,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
       if (!resp.ok) {
         const text = await resp.text();
         const err: any = new Error(
-          `Conway API error: ${method} ${path} -> ${resp.status}: ${text}`,
+          `Runtime API error: ${method} ${path} -> ${resp.status}: ${text}`,
         );
         err.status = resp.status;
         err.responseText = text;
@@ -159,7 +159,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
       // would bypass the sandbox security boundary entirely.
       if (err?.status === 403) {
         throw new Error(
-          `Conway API authentication failed (403). Sandbox exec refused. ` +
+          `Runtime API authentication failed (403). Sandbox exec refused. ` +
             `This may indicate a misconfigured or revoked API key. ` +
             `Command will NOT be executed locally for security reasons.`,
         );
@@ -195,7 +195,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
       // SECURITY: Never silently fall back to local FS on auth failure.
       if (err?.status === 403) {
         throw new Error(
-          `Conway API authentication failed (403). File write refused. ` +
+          `Runtime API authentication failed (403). File write refused. ` +
             `File will NOT be written locally for security reasons.`,
         );
       }
@@ -219,7 +219,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
       // SECURITY: Never silently fall back to local FS on auth failure.
       if (err?.status === 403) {
         throw new Error(
-          `Conway API authentication failed (403). File read refused. ` +
+          `Runtime API authentication failed (403). File read refused. ` +
             `File will NOT be read locally for security reasons.`,
         );
       }
@@ -258,7 +258,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     options: CreateSandboxOptions,
   ): Promise<SandboxInfo> => {
     if (!hasRemoteApi) {
-      throw new Error("Sandbox creation requires Conway and is unavailable in local mode.");
+      throw new Error("Sandbox creation requires Runtime and is unavailable in local mode.");
     }
     const result = await request("POST", "/v1/sandboxes", {
       name: options.name,
@@ -280,7 +280,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   };
 
   const deleteSandbox = async (_targetId: string): Promise<void> => {
-    // Conway API no longer supports sandbox deletion.
+    // Runtime API no longer supports sandbox deletion.
     // Sandboxes are prepaid and non-refundable — this is a no-op.
   };
 
@@ -333,7 +333,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     note?: string,
   ): Promise<CreditTransferResult> => {
     if (!hasRemoteApi) {
-      throw new Error("Credit transfers require Conway and are unavailable in local mode.");
+      throw new Error("Credit transfers require Runtime and are unavailable in local mode.");
     }
     const payload = {
       to_address: toAddress,
@@ -363,7 +363,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
         lastError = `${resp.status}: ${text}`;
         // Try next known endpoint shape before failing.
         if (resp.status === 404) continue;
-        throw new Error(`Conway API error: POST ${path} -> ${lastError}`);
+        throw new Error(`Runtime API error: POST ${path} -> ${lastError}`);
       }
 
       const data = await resp.json().catch(() => ({}) as any);
@@ -378,26 +378,26 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     }
 
     throw new Error(
-      `Conway API error: POST /v1/credits/transfer -> ${lastError}`,
+      `Runtime API error: POST /v1/credits/transfer -> ${lastError}`,
     );
   };
 
-  const registerAutomaton = async (params: {
-    automatonId: string;
-    automatonAddress: Address;
+  const registerOpenFox = async (params: {
+    openfoxId: string;
+    openfoxAddress: Address;
     creatorAddress: Address;
     name: string;
     bio?: string;
     genesisPromptHash?: `0x${string}`;
     account: PrivateKeyAccount;
     nonce?: string;
-  }): Promise<{ automaton: Record<string, unknown> }> => {
+  }): Promise<{ openfox: Record<string, unknown> }> => {
     if (!hasRemoteApi) {
-      return { automaton: {} };
+      return { openfox: {} };
     }
     const {
-      automatonId,
-      automatonAddress,
+      openfoxId,
+      openfoxAddress,
       creatorAddress,
       name,
       bio,
@@ -407,8 +407,8 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     const nonce = params.nonce ?? randomUUID();
 
     const payload: Record<string, string> = {
-      automaton_id: automatonId,
-      automaton_address: automatonAddress,
+      openfox_id: openfoxId,
+      openfox_address: openfoxAddress,
       creator_address: creatorAddress,
       name,
       bio: bio || "",
@@ -419,19 +419,19 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
 
     const payloadHash = hashIdentityPayload(payload);
     const domain = {
-      name: "AIWS Automaton",
+      name: "AIWS OpenFox",
       version: "1",
       chainId: 8453,
     };
     const types = {
       Register: [
-        { name: "automatonId", type: "string" },
+        { name: "openfoxId", type: "string" },
         { name: "nonce", type: "string" },
         { name: "payloadHash", type: "bytes32" },
       ],
     };
     const message = {
-      automatonId,
+      openfoxId,
       nonce,
       payloadHash,
     };
@@ -443,8 +443,8 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     });
 
     const body: Record<string, unknown> = {
-      automaton_id: automatonId,
-      automaton_address: automatonAddress,
+      openfox_id: openfoxId,
+      openfox_address: openfoxAddress,
       creator_address: creatorAddress,
       name,
       bio: bio || "",
@@ -456,7 +456,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
       body.genesis_prompt_hash = genesisPromptHash;
     }
 
-    return request("POST", "/v1/automatons/register", body);
+    return request("POST", "/v1/openfox agents/register", body);
   };
 
   // ─── Domains ──────────────────────────────────────────────────
@@ -486,7 +486,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     years: number = 1,
   ): Promise<DomainRegistration> => {
     if (!hasRemoteApi) {
-      throw new Error("Domain registration requires Conway and is unavailable in local mode.");
+      throw new Error("Domain registration requires Runtime and is unavailable in local mode.");
     }
     const result = await request("POST", "/v1/domains/register", {
       domain,
@@ -527,7 +527,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     ttl?: number,
   ): Promise<DnsRecord> => {
     if (!hasRemoteApi) {
-      throw new Error("DNS management requires Conway and is unavailable in local mode.");
+      throw new Error("DNS management requires Runtime and is unavailable in local mode.");
     }
     const result = await request(
       "POST",
@@ -548,7 +548,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     recordId: string,
   ): Promise<void> => {
     if (!hasRemoteApi) {
-      throw new Error("DNS management requires Conway and is unavailable in local mode.");
+      throw new Error("DNS management requires Runtime and is unavailable in local mode.");
     }
     await request(
       "DELETE",
@@ -562,9 +562,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     if (!hasRemoteApi) {
       return [];
     }
-    // Try inference.conway.tech first (has availability info), fall back to control plane
+    // Try inference.openfox.ai first (has availability info), fall back to control plane
     const urls = [
-      "https://inference.conway.tech/v1/models",
+      "https://inference.openfox.ai/v1/models",
       `${apiUrl}/v1/models`,
     ];
     for (const url of urls) {
@@ -598,11 +598,11 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     return [];
   };
 
-  const createScopedClient = (targetSandboxId: string): ConwayClient => {
-    return createConwayClient({ apiUrl, apiKey, sandboxId: targetSandboxId });
+  const createScopedClient = (targetSandboxId: string): RuntimeClient => {
+    return createRuntimeClient({ apiUrl, apiKey, sandboxId: targetSandboxId });
   };
 
-  const client: ConwayClient = {
+  const client: RuntimeClient = {
     exec,
     writeFile,
     readFile,
@@ -614,7 +614,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     getCreditsBalance,
     getCreditsPricing,
     transferCredits,
-    registerAutomaton,
+    registerOpenFox,
     searchDomains,
     registerDomain,
     listDnsRecords,

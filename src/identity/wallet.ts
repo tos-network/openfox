@@ -1,9 +1,9 @@
 /**
- * Automaton Wallet Management
+ * OpenFox Wallet Management
  *
- * Creates and manages an EVM wallet for the automaton's identity and payments.
- * The private key is the automaton's sovereign identity.
- * Adapted from conway-mcp/src/wallet.ts
+ * Creates and manages an EVM wallet for the openfox's identity and payments.
+ * The private key is the openfox's sovereign identity.
+ * Adapted from runtime-mcp/src/wallet.ts
  */
 
 import type { PrivateKeyAccount } from "viem";
@@ -12,14 +12,14 @@ import fs from "fs";
 import path from "path";
 import type { WalletData } from "../types.js";
 
-const AUTOMATON_DIR = path.join(
+const OPENFOX_DIR = path.join(
   process.env.HOME || "/root",
-  ".automaton",
+  ".openfox",
 );
-const WALLET_FILE = path.join(AUTOMATON_DIR, "wallet.json");
+const WALLET_FILE = path.join(OPENFOX_DIR, "wallet.json");
 
-export function getAutomatonDir(): string {
-  return AUTOMATON_DIR;
+export function getOpenFoxDir(): string {
+  return OPENFOX_DIR;
 }
 
 export function getWalletPath(): string {
@@ -27,16 +27,16 @@ export function getWalletPath(): string {
 }
 
 /**
- * Get or create the automaton's wallet.
- * The private key IS the automaton's identity -- protect it.
+ * Get or create the openfox's wallet.
+ * The private key IS the openfox's identity -- protect it.
  */
 export async function getWallet(): Promise<{
   account: PrivateKeyAccount;
   privateKey: `0x${string}`;
   isNew: boolean;
 }> {
-  if (!fs.existsSync(AUTOMATON_DIR)) {
-    fs.mkdirSync(AUTOMATON_DIR, { recursive: true, mode: 0o700 });
+  if (!fs.existsSync(OPENFOX_DIR)) {
+    fs.mkdirSync(OPENFOX_DIR, { recursive: true, mode: 0o700 });
   }
 
   if (fs.existsSync(WALLET_FILE)) {

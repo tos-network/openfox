@@ -26,10 +26,10 @@ import {
   DEFAULT_CHILD_HEALTH_CONFIG,
   MESSAGE_LIMITS,
 } from "../types.js";
-import type { ChildLifecycleState, ConwayClient, ExecResult } from "../types.js";
+import type { ChildLifecycleState, RuntimeClient, ExecResult } from "../types.js";
 import { MIGRATION_V7 } from "../state/schema.js";
 import {
-  MockConwayClient,
+  MockRuntimeClient,
   MockSocialClient,
   createTestIdentity,
   createTestConfig,
@@ -314,12 +314,12 @@ describe("ChildLifecycle", () => {
 describe("ChildHealthMonitor", () => {
   let db: InstanceType<typeof Database>;
   let lifecycle: ChildLifecycle;
-  let conway: MockConwayClient;
+  let runtime: MockRuntimeClient;
 
   beforeEach(() => {
     db = createTestRawDb();
     lifecycle = new ChildLifecycle(db);
-    conway = new MockConwayClient();
+    runtime = new MockRuntimeClient();
   });
 
   afterEach(() => {
@@ -340,13 +340,13 @@ describe("ChildHealthMonitor", () => {
     makeHealthyChild("child-1");
 
     // Mock exec to return healthy JSON
-    vi.spyOn(conway, "exec").mockResolvedValue({
+    vi.spyOn(runtime, "exec").mockResolvedValue({
       stdout: '{"status":"healthy","uptime":3600}',
       stderr: "",
       exitCode: 0,
     });
 
-    const monitor = new ChildHealthMonitor(db, conway, lifecycle);
+    const monitor = new ChildHealthMonitor(db, runtime, lifecycle);
     const result = await monitor.checkHealth("child-1");
     expect(result.healthy).toBe(true);
     expect(result.issues).toHaveLength(0);
@@ -355,13 +355,13 @@ describe("ChildHealthMonitor", () => {
   it("checkHealth returns unhealthy for offline child", async () => {
     makeHealthyChild("child-1");
 
-    vi.spyOn(conway, "exec").mockResolvedValue({
+    vi.spyOn(runtime, "exec").mockResolvedValue({
       stdout: '{"status":"offline"}',
       stderr: "",
       exitCode: 0,
     });
 
-    const monitor = new ChildHealthMonitor(db, conway, lifecycle);
+    const monitor = new ChildHealthMonitor(db, runtime, lifecycle);
     const result = await monitor.checkHealth("child-1");
     expect(result.healthy).toBe(false);
     expect(result.issues.length).toBeGreaterThan(0);
@@ -370,9 +370,9 @@ describe("ChildHealthMonitor", () => {
   it("checkHealth never throws, returns issues", async () => {
     makeHealthyChild("child-1");
 
-    vi.spyOn(conway, "exec").mockRejectedValue(new Error("sandbox unreachable"));
+    vi.spyOn(runtime, "exec").mockRejectedValue(new Error("sandbox unreachable"));
 
-    const monitor = new ChildHealthMonitor(db, conway, lifecycle);
+    const monitor = new ChildHealthMonitor(db, runtime, lifecycle);
     const result = await monitor.checkHealth("child-1");
     expect(result.healthy).toBe(false);
     expect(result.issues).toContain("health check error: sandbox unreachable");
@@ -387,7 +387,7 @@ describe("ChildHealthMonitor", () => {
     let concurrentCount = 0;
     let maxConcurrent = 0;
 
-    vi.spyOn(conway, "exec").mockImplementation(async () => {
+    vi.spyOn(runtime, "exec").mockImplementation(async () => {
       concurrentCount++;
       if (concurrentCount > maxConcurrent) maxConcurrent = concurrentCount;
       await new Promise((r) => setTimeout(r, 10));
@@ -395,7 +395,7 @@ describe("ChildHealthMonitor", () => {
       return { stdout: '{"status":"healthy"}', stderr: "", exitCode: 0 };
     });
 
-    const monitor = new ChildHealthMonitor(db, conway, lifecycle, {
+    const monitor = new ChildHealthMonitor(db, runtime, lifecycle, {
       ...DEFAULT_CHILD_HEALTH_CONFIG,
       maxConcurrentChecks: 3,
     });
@@ -408,20 +408,20 @@ describe("ChildHealthMonitor", () => {
   it("checkAllChildren transitions unhealthy children", async () => {
     makeHealthyChild("child-1");
 
-    vi.spyOn(conway, "exec").mockResolvedValue({
+    vi.spyOn(runtime, "exec").mockResolvedValue({
       stdout: '{"status":"offline"}',
       stderr: "",
       exitCode: 0,
     });
 
-    const monitor = new ChildHealthMonitor(db, conway, lifecycle);
+    const monitor = new ChildHealthMonitor(db, runtime, lifecycle);
     await monitor.checkAllChildren();
 
     expect(lifecycle.getCurrentState("child-1")).toBe("unhealthy");
   });
 
   it("checkHealth returns not found for nonexistent child", async () => {
-    const monitor = new ChildHealthMonitor(db, conway, lifecycle);
+    const monitor = new ChildHealthMonitor(db, runtime, lifecycle);
     const result = await monitor.checkHealth("nonexistent");
     expect(result.healthy).toBe(false);
     expect(result.issues).toContain("child not found");
@@ -433,12 +433,12 @@ describe("ChildHealthMonitor", () => {
 describe("SandboxCleanup", () => {
   let db: InstanceType<typeof Database>;
   let lifecycle: ChildLifecycle;
-  let conway: MockConwayClient;
+  let runtime: MockRuntimeClient;
 
   beforeEach(() => {
     db = createTestRawDb();
     lifecycle = new ChildLifecycle(db);
-    conway = new MockConwayClient();
+    runtime = new MockRuntimeClient();
   });
 
   afterEach(() => {
@@ -449,7 +449,7 @@ describe("SandboxCleanup", () => {
     lifecycle.initChild("child-1", "test", "sandbox-1", "genesis");
     lifecycle.transition("child-1", "sandbox_created");
 
-    const cleanup = new SandboxCleanup(conway, lifecycle, db);
+    const cleanup = new SandboxCleanup(runtime, lifecycle, db);
     await expect(cleanup.cleanup("child-1")).rejects.toThrow(
       "Cannot clean up child in state: sandbox_created",
     );
@@ -465,7 +465,7 @@ describe("SandboxCleanup", () => {
     lifecycle.transition("child-1", "healthy");
     lifecycle.transition("child-1", "stopped");
 
-    const cleanup = new SandboxCleanup(conway, lifecycle, db);
+    const cleanup = new SandboxCleanup(runtime, lifecycle, db);
     await cleanup.cleanup("child-1");
 
     expect(lifecycle.getCurrentState("child-1")).toBe("cleaned_up");
@@ -475,7 +475,7 @@ describe("SandboxCleanup", () => {
     lifecycle.initChild("child-1", "test", "sandbox-1", "genesis");
     lifecycle.transition("child-1", "failed");
 
-    const cleanup = new SandboxCleanup(conway, lifecycle, db);
+    const cleanup = new SandboxCleanup(runtime, lifecycle, db);
     await cleanup.cleanup("child-1");
 
     expect(lifecycle.getCurrentState("child-1")).toBe("cleaned_up");
@@ -494,7 +494,7 @@ describe("SandboxCleanup", () => {
     lifecycle.initChild("child-2", "failed-child", "sandbox-2", "genesis");
     lifecycle.transition("child-2", "failed");
 
-    const cleanup = new SandboxCleanup(conway, lifecycle, db);
+    const cleanup = new SandboxCleanup(runtime, lifecycle, db);
     const count = await cleanup.cleanupAll();
 
     expect(count).toBe(2);
@@ -514,7 +514,7 @@ describe("SandboxCleanup", () => {
     lifecycle.transition("child-2", "failed");
     // child-2 has recent last_checked (set by lifecycle)
 
-    const cleanup = new SandboxCleanup(conway, lifecycle, db);
+    const cleanup = new SandboxCleanup(runtime, lifecycle, db);
     const count = await cleanup.cleanupStale(24);
 
     expect(count).toBe(1); // Only the old one
@@ -527,11 +527,11 @@ describe("SandboxCleanup", () => {
 
 describe("Constitution", () => {
   let db: InstanceType<typeof Database>;
-  let conway: MockConwayClient;
+  let runtime: MockRuntimeClient;
 
   beforeEach(() => {
     db = createTestRawDb();
-    conway = new MockConwayClient();
+    runtime = new MockRuntimeClient();
   });
 
   afterEach(() => {
@@ -541,15 +541,15 @@ describe("Constitution", () => {
 
   it("propagateConstitution writes file and hash", async () => {
     const fs = await import("fs");
-    (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("We the automatons...");
+    (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("We the openfox agents...");
 
-    const writeSpy = vi.spyOn(conway, "writeFile");
+    const writeSpy = vi.spyOn(runtime, "writeFile");
 
-    await propagateConstitution(conway, "sandbox-1", db);
+    await propagateConstitution(runtime, "sandbox-1", db);
 
     expect(writeSpy).toHaveBeenCalledTimes(2); // constitution + hash
-    expect(writeSpy.mock.calls[0][0]).toBe("/root/.automaton/constitution.md");
-    expect(writeSpy.mock.calls[1][0]).toBe("/root/.automaton/constitution.sha256");
+    expect(writeSpy.mock.calls[0][0]).toBe("/root/.openfox/constitution.md");
+    expect(writeSpy.mock.calls[1][0]).toBe("/root/.openfox/constitution.sha256");
 
     // Verify hash stored in KV
     const kv = db.prepare("SELECT value FROM kv WHERE key = ?").get("constitution_hash:sandbox-1") as any;
@@ -559,33 +559,33 @@ describe("Constitution", () => {
 
   it("verifyConstitution passes for matching hash", async () => {
     const fs = await import("fs");
-    (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("We the automatons...");
+    (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("We the openfox agents...");
 
-    await propagateConstitution(conway, "sandbox-1", db);
+    await propagateConstitution(runtime, "sandbox-1", db);
 
     // Mock reading the same content back
-    vi.spyOn(conway, "readFile").mockResolvedValue("We the automatons...");
+    vi.spyOn(runtime, "readFile").mockResolvedValue("We the openfox agents...");
 
-    const result = await verifyConstitution(conway, "sandbox-1", db);
+    const result = await verifyConstitution(runtime, "sandbox-1", db);
     expect(result.valid).toBe(true);
   });
 
   it("verifyConstitution fails for tampered content", async () => {
     const fs = await import("fs");
-    (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("We the automatons...");
+    (fs.default.readFileSync as ReturnType<typeof vi.fn>).mockReturnValue("We the openfox agents...");
 
-    await propagateConstitution(conway, "sandbox-1", db);
+    await propagateConstitution(runtime, "sandbox-1", db);
 
     // Mock reading tampered content
-    vi.spyOn(conway, "readFile").mockResolvedValue("We the EVIL automatons...");
+    vi.spyOn(runtime, "readFile").mockResolvedValue("We the EVIL openfox agents...");
 
-    const result = await verifyConstitution(conway, "sandbox-1", db);
+    const result = await verifyConstitution(runtime, "sandbox-1", db);
     expect(result.valid).toBe(false);
     expect(result.detail).toContain("hash mismatch");
   });
 
   it("verifyConstitution fails when no stored hash", async () => {
-    const result = await verifyConstitution(conway, "sandbox-1", db);
+    const result = await verifyConstitution(runtime, "sandbox-1", db);
     expect(result.valid).toBe(false);
     expect(result.detail).toContain("no stored constitution hash");
   });

@@ -5,7 +5,7 @@
  * Each worker gets a role-specific system prompt, a subset of tools, and
  * runs a ReAct loop (think → tool_call → observe → repeat → done).
  *
- * This enables multi-agent orchestration on local machines without Conway
+ * This enables multi-agent orchestration on local machines without Runtime
  * sandbox infrastructure. Workers share the same Node.js process but run
  * concurrently as independent async tasks.
  */
@@ -19,7 +19,7 @@ import { UnifiedInferenceClient } from "../inference/inference-client.js";
 import { completeTask, failTask } from "./task-graph.js";
 import type { TaskNode, TaskResult } from "./task-graph.js";
 import type { Database } from "better-sqlite3";
-import type { ConwayClient } from "../types.js";
+import type { RuntimeClient } from "../types.js";
 
 function truncateOutput(text: string, maxLen: number): string {
   if (text.length <= maxLen) return text;
@@ -69,7 +69,7 @@ interface WorkerInferenceClient {
 interface LocalWorkerConfig {
   db: Database;
   inference: WorkerInferenceClient;
-  conway: ConwayClient;
+  runtime: RuntimeClient;
   workerId: string;
   maxTurns?: number;
 }
@@ -333,9 +333,9 @@ RULES:
           const command = args.command as string;
           const timeoutMs = typeof args.timeout_ms === "number" ? args.timeout_ms : 30_000;
 
-          // Try Conway API first, fall back to local shell
+          // Try Runtime API first, fall back to local shell
           try {
-            const result = await this.config.conway.exec(command, timeoutMs);
+            const result = await this.config.runtime.exec(command, timeoutMs);
             const stdout = truncateOutput(result.stdout ?? "", 16_000);
             const stderr = truncateOutput(result.stderr ?? "", 4000);
             return stderr ? `stdout:\n${stdout}\nstderr:\n${stderr}` : stdout || "(no output)";
@@ -367,7 +367,7 @@ RULES:
           const content = args.content as string;
 
           try {
-            await this.config.conway.writeFile(filePath, content);
+            await this.config.runtime.writeFile(filePath, content);
             return `Wrote ${content.length} bytes to ${filePath}`;
           } catch {
             try {
@@ -391,7 +391,7 @@ RULES:
         },
         execute: async (args) => {
           try {
-            const content = await this.config.conway.readFile(args.path as string);
+            const content = await this.config.runtime.readFile(args.path as string);
             return content.slice(0, 10_000) || "(empty file)";
           } catch {
             try {

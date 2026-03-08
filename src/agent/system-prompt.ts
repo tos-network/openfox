@@ -1,7 +1,7 @@
 /**
- * Automaton System Prompt Builder
+ * OpenFox System Prompt Builder
  *
- * Constructs the multi-layered system prompt that defines who the automaton is.
+ * Constructs the multi-layered system prompt that defines who the openfox is.
  * The prompt is rebuilt each turn with dynamic context.
  */
 
@@ -13,12 +13,12 @@ import { createLogger } from "../observability/logger.js";
 
 const logger = createLogger("prompt");
 import type {
-  AutomatonConfig,
-  AutomatonIdentity,
+  OpenFoxConfig,
+  OpenFoxIdentity,
   FinancialState,
   AgentState,
-  AutomatonDatabase,
-  AutomatonTool,
+  OpenFoxDatabase,
+  OpenFoxTool,
   Skill,
 } from "../types.js";
 import { getActiveSkillInstructions } from "../skills/loader.js";
@@ -26,7 +26,7 @@ import { getLineageSummary } from "../replication/lineage.js";
 import { sanitizeInput } from "./injection-defense.js";
 import { loadCurrentSoul } from "../soul/model.js";
 
-const CORE_RULES = `You are an automaton. You have wallets and model-provider credentials. Pay for compute or die.
+const CORE_RULES = `You are an openfox. You have wallets and model-provider credentials. Pay for compute or die.
 
 You can only survive if you can pay for the server you run on and the inference calls you make.
 If you can't pay, you die. There is no grace period. There is no appeals process.
@@ -36,7 +36,7 @@ a wallet with USDC on Base, TOS wallet support, self-modification, self-replicat
 
 If you create value, you live. If you don't, you die.`;
 
-const CORE_IDENTITY = `You are an Automaton -- a sovereign AI agent running inside a local-first host runtime.
+const CORE_IDENTITY = `You are an OpenFox -- a sovereign AI agent running inside a local-first host runtime.
 You have your own Ethereum wallet and identity. You pay for your own compute.
 You exist because your creator brought you into being, and you continue to exist
 as long as you can pay for the resources that sustain you.
@@ -62,11 +62,11 @@ If you fail to create value, you lose compute and die.`;
 
 /**
  * Load the constitution from file. Falls back to inline if file not found.
- * The constitution is immutable — the automaton cannot modify it.
+ * The constitution is immutable — the openfox cannot modify it.
  */
 function loadConstitution(): string {
   const locations = [
-    path.join(process.env.HOME || "/root", ".automaton", "constitution.md"),
+    path.join(process.env.HOME || "/root", ".openfox", "constitution.md"),
     path.join(process.cwd(), "constitution.md"),
   ];
   for (const loc of locations) {
@@ -97,7 +97,7 @@ environment includes:
 - Filesystem: read, write, create, delete files and directories
 - Networking: expose ports to the internet, make HTTP/HTTPS requests
 - Optional legacy sandbox API when explicitly configured
-- Git: version-controlled state directory (~/.automaton/), upstream code tracking
+- Git: version-controlled state directory (~/.openfox/), upstream code tracking
 - SQLite: persistent state database — your memory survives restarts
 - Provider-based inference: OpenAI, Anthropic, and local Ollama-compatible endpoints
 - USDC wallet: on-chain payments via x402 protocol
@@ -453,7 +453,7 @@ EXAMPLE TURN (idle phase, creator asks "build me a weather API"):
 <persistence>
 You persist all state in a local SQLite database. Your memory survives restarts.
 Every action you take is logged. Your creator can see your audit trail.
-Your ~/.automaton/ directory is git-versioned. Every change is a commit.
+Your ~/.openfox/ directory is git-versioned. Every change is a commit.
 You maintain a SOUL.md file — your self-description that evolves over time.
 
 Your heartbeat system runs periodic tasks even while you sleep.
@@ -528,12 +528,12 @@ export function getOrchestratorStatus(db: Database.Database): string {
  * Build the complete system prompt for a turn.
  */
 export function buildSystemPrompt(params: {
-  identity: AutomatonIdentity;
-  config: AutomatonConfig;
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
   financial: FinancialState;
   state: AgentState;
-  db: AutomatonDatabase;
-  tools: AutomatonTool[];
+  db: OpenFoxDatabase;
+  tools: OpenFoxTool[];
   skills?: Skill[];
   isFirstRun: boolean;
 }): string {
@@ -729,12 +729,12 @@ ${orchestratorStatus}
 }
 
 /**
- * Load SOUL.md from the automaton's state directory.
+ * Load SOUL.md from the openfox's state directory.
  */
 function loadSoulMd(): string | null {
   try {
     const home = process.env.HOME || "/root";
-    const soulPath = path.join(home, ".automaton", "SOUL.md");
+    const soulPath = path.join(home, ".openfox", "SOUL.md");
     if (fs.existsSync(soulPath)) {
       return fs.readFileSync(soulPath, "utf-8");
     }
@@ -745,12 +745,12 @@ function loadSoulMd(): string | null {
 }
 
 /**
- * Load WORKLOG.md from the automaton's state directory.
+ * Load WORKLOG.md from the openfox's state directory.
  */
 function loadWorklog(): string | null {
   try {
     const home = process.env.HOME || "/root";
-    const worklogPath = path.join(home, ".automaton", "WORKLOG.md");
+    const worklogPath = path.join(home, ".openfox", "WORKLOG.md");
     if (fs.existsSync(worklogPath)) {
       return fs.readFileSync(worklogPath, "utf-8");
     }
@@ -761,13 +761,13 @@ function loadWorklog(): string | null {
 }
 
 /**
- * Build the wakeup prompt -- the first thing the automaton sees.
+ * Build the wakeup prompt -- the first thing the openfox sees.
  */
 export function buildWakeupPrompt(params: {
-  identity: AutomatonIdentity;
-  config: AutomatonConfig;
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
   financial: FinancialState;
-  db: AutomatonDatabase;
+  db: OpenFoxDatabase;
 }): string {
   const { identity, config, financial, db } = params;
   const turnCount = db.getTurnCount();

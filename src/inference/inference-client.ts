@@ -473,7 +473,7 @@ export class UnifiedInferenceClient {
   }
 
   private isSurvivalMode(): boolean {
-    const rawCredits = process.env.AUTOMATON_CREDITS_BALANCE;
+    const rawCredits = process.env.OPENFOX_CREDITS_BALANCE;
     if (!rawCredits) {
       return false;
     }

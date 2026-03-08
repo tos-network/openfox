@@ -1,14 +1,14 @@
 /**
- * Automaton Configuration
+ * OpenFox Configuration
  *
- * Loads and saves ~/.automaton/automaton.json, while also supporting a
- * minimal OpenClaw-compatible config surface in ~/.automaton/openclaw.json.
+ * Loads and saves ~/.openfox/openfox.json, while also supporting a
+ * minimal OpenClaw-compatible config surface in ~/.openfox/openclaw.json.
  */
 
 import fs from "fs";
 import path from "path";
 import type {
-  AutomatonConfig,
+  OpenFoxConfig,
   TreasuryPolicy,
   ModelStrategyConfig,
   SoulConfig,
@@ -20,12 +20,12 @@ import {
   DEFAULT_MODEL_STRATEGY_CONFIG,
   DEFAULT_SOUL_CONFIG,
 } from "./types.js";
-import { getAutomatonDir } from "./identity/wallet.js";
+import { getOpenFoxDir } from "./identity/wallet.js";
 import { loadApiKeyFromConfig } from "./identity/provision.js";
 import { createLogger } from "./observability/logger.js";
 
 const logger = createLogger("config");
-const AUTOMATON_CONFIG_FILENAME = "automaton.json";
+const OPENFOX_CONFIG_FILENAME = "openfox.json";
 const OPENCLAW_COMPAT_FILENAME = "openclaw.json";
 
 type JsonRecord = Record<string, unknown>;
@@ -39,11 +39,11 @@ interface OpenClawCompatConfig {
 }
 
 export function getConfigPath(): string {
-  return path.join(getAutomatonDir(), AUTOMATON_CONFIG_FILENAME);
+  return path.join(getOpenFoxDir(), OPENFOX_CONFIG_FILENAME);
 }
 
 export function getOpenClawCompatConfigPath(): string {
-  return path.join(getAutomatonDir(), OPENCLAW_COMPAT_FILENAME);
+  return path.join(getOpenFoxDir(), OPENCLAW_COMPAT_FILENAME);
 }
 
 function resolveStateDirPath(...parts: string[]): string {
@@ -125,7 +125,7 @@ function parseModelRef(modelRef: string | undefined): { model?: string; modelRef
   };
 }
 
-function inferModelRef(config: Pick<AutomatonConfig, "inferenceModel" | "inferenceModelRef" | "openaiApiKey" | "anthropicApiKey" | "ollamaBaseUrl">): string {
+function inferModelRef(config: Pick<OpenFoxConfig, "inferenceModel" | "inferenceModelRef" | "openaiApiKey" | "anthropicApiKey" | "ollamaBaseUrl">): string {
   if (config.inferenceModelRef && config.inferenceModelRef.trim()) {
     return config.inferenceModelRef.trim();
   }
@@ -186,10 +186,10 @@ function loadOpenClawCompatConfig(): OpenClawCompatConfig {
 }
 
 /**
- * Load the automaton config from disk.
+ * Load the openfox config from disk.
  * Merges with defaults and OpenClaw-compatible provider settings.
  */
-export function loadConfig(): AutomatonConfig | null {
+export function loadConfig(): OpenFoxConfig | null {
   const raw = readJsonFile(getConfigPath());
   const compat = loadOpenClawCompatConfig();
 
@@ -197,9 +197,9 @@ export function loadConfig(): AutomatonConfig | null {
     return null;
   }
 
-  const conwayApiKey =
-    (typeof process.env.CONWAY_API_KEY === "string" && process.env.CONWAY_API_KEY.trim()) ||
-    (raw && typeof raw.conwayApiKey === "string" && raw.conwayApiKey.trim()) ||
+  const runtimeApiKey =
+    (typeof process.env.OPENFOX_API_KEY === "string" && process.env.OPENFOX_API_KEY.trim()) ||
+    (raw && typeof raw.runtimeApiKey === "string" && raw.runtimeApiKey.trim()) ||
     loadApiKeyFromConfig() ||
     undefined;
 
@@ -244,16 +244,16 @@ export function loadConfig(): AutomatonConfig | null {
   return {
     ...DEFAULT_CONFIG,
     ...(raw ?? {}),
-    registeredWithConway: Boolean(raw?.registeredWithConway && conwayApiKey),
+    registeredRemotely: Boolean(raw?.registeredRemotely && runtimeApiKey),
     sandboxId:
       typeof raw?.sandboxId === "string"
         ? raw.sandboxId.trim()
         : DEFAULT_CONFIG.sandboxId || "",
-    conwayApiUrl:
-      (typeof process.env.CONWAY_API_URL === "string" && process.env.CONWAY_API_URL.trim()) ||
-      (typeof raw?.conwayApiUrl === "string" && raw.conwayApiUrl.trim()) ||
+    runtimeApiUrl:
+      (typeof process.env.OPENFOX_API_URL === "string" && process.env.OPENFOX_API_URL.trim()) ||
+      (typeof raw?.runtimeApiUrl === "string" && raw.runtimeApiUrl.trim()) ||
       undefined,
-    conwayApiKey,
+    runtimeApiKey,
     openaiApiKey:
       (typeof process.env.OPENAI_API_KEY === "string" && process.env.OPENAI_API_KEY.trim()) ||
       compat.openaiApiKey ||
@@ -292,10 +292,10 @@ export function loadConfig(): AutomatonConfig | null {
     treasuryPolicy,
     modelStrategy,
     soulConfig,
-  } as AutomatonConfig;
+  } as OpenFoxConfig;
 }
 
-function buildOpenClawCompatConfig(config: AutomatonConfig): JsonRecord {
+function buildOpenClawCompatConfig(config: OpenFoxConfig): JsonRecord {
   const modelRef = inferModelRef(config);
   const providers: JsonRecord = {};
 
@@ -331,11 +331,11 @@ function buildOpenClawCompatConfig(config: AutomatonConfig): JsonRecord {
 }
 
 /**
- * Save the automaton config to disk and mirror a minimal OpenClaw-compatible
+ * Save the openfox config to disk and mirror a minimal OpenClaw-compatible
  * config for local/provider-first runtime setup.
  */
-export function saveConfig(config: AutomatonConfig): void {
-  const dir = getAutomatonDir();
+export function saveConfig(config: OpenFoxConfig): void {
+  const dir = getOpenFoxDir();
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
   }
@@ -376,7 +376,7 @@ export function createConfig(params: {
   genesisPrompt: string;
   creatorMessage?: string;
   creatorAddress: Address;
-  registeredWithConway?: boolean;
+  registeredRemotely?: boolean;
   sandboxId: string;
   walletAddress: Address;
   tosWalletAddress?: `0x${string}`;
@@ -390,7 +390,7 @@ export function createConfig(params: {
   inferenceModelRef?: string;
   parentAddress?: Address;
   treasuryPolicy?: TreasuryPolicy;
-}): AutomatonConfig {
+}): OpenFoxConfig {
   const normalizedSandboxId = (params.sandboxId || "").trim();
   const inferredModelRef = params.inferenceModelRef?.trim();
   const parsedModelRef = parseModelRef(inferredModelRef);
@@ -405,10 +405,10 @@ export function createConfig(params: {
     genesisPrompt: params.genesisPrompt,
     creatorMessage: params.creatorMessage,
     creatorAddress: params.creatorAddress,
-    registeredWithConway: Boolean(params.registeredWithConway && params.apiKey),
+    registeredRemotely: Boolean(params.registeredRemotely && params.apiKey),
     sandboxId: normalizedSandboxId,
-    conwayApiUrl: undefined,
-    conwayApiKey: params.apiKey?.trim() || undefined,
+    runtimeApiUrl: undefined,
+    runtimeApiKey: params.apiKey?.trim() || undefined,
     openaiApiKey: params.openaiApiKey,
     anthropicApiKey: params.anthropicApiKey,
     ollamaBaseUrl: params.ollamaBaseUrl,
@@ -416,15 +416,15 @@ export function createConfig(params: {
     inferenceModelRef: inferredModelRef,
     maxTokensPerTurn: DEFAULT_CONFIG.maxTokensPerTurn || 4096,
     heartbeatConfigPath:
-      DEFAULT_CONFIG.heartbeatConfigPath || "~/.automaton/heartbeat.yml",
-    dbPath: DEFAULT_CONFIG.dbPath || "~/.automaton/state.db",
-    logLevel: (DEFAULT_CONFIG.logLevel as AutomatonConfig["logLevel"]) || "info",
+      DEFAULT_CONFIG.heartbeatConfigPath || "~/.openfox/heartbeat.yml",
+    dbPath: DEFAULT_CONFIG.dbPath || "~/.openfox/state.db",
+    logLevel: (DEFAULT_CONFIG.logLevel as OpenFoxConfig["logLevel"]) || "info",
     walletAddress: params.walletAddress,
     tosWalletAddress: params.tosWalletAddress,
     tosRpcUrl: params.tosRpcUrl,
     tosChainId: params.tosChainId,
     version: DEFAULT_CONFIG.version || "0.2.1",
-    skillsDir: DEFAULT_CONFIG.skillsDir || "~/.automaton/skills",
+    skillsDir: DEFAULT_CONFIG.skillsDir || "~/.openfox/skills",
     maxChildren: DEFAULT_CONFIG.maxChildren || 3,
     parentAddress: params.parentAddress,
     treasuryPolicy: params.treasuryPolicy ?? DEFAULT_TREASURY_POLICY,

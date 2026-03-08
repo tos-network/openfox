@@ -1,10 +1,10 @@
 import fs from "fs";
 import path from "path";
 import chalk from "chalk";
-import type { AutomatonConfig, TreasuryPolicy } from "../types.js";
+import type { OpenFoxConfig, TreasuryPolicy } from "../types.js";
 import { DEFAULT_TREASURY_POLICY } from "../types.js";
 import type { Address } from "viem";
-import { getWallet, getAutomatonDir } from "../identity/wallet.js";
+import { getWallet, getOpenFoxDir } from "../identity/wallet.js";
 import { createConfig, saveConfig } from "../config.js";
 import { writeDefaultHeartbeatConfig } from "../heartbeat/config.js";
 import { deriveTOSAddressFromPrivateKey } from "../tos/address.js";
@@ -20,10 +20,10 @@ import {
 import { detectEnvironment } from "./environment.js";
 import { generateSoulMd, installDefaultSkills } from "./defaults.js";
 
-export async function runSetupWizard(): Promise<AutomatonConfig> {
+export async function runSetupWizard(): Promise<OpenFoxConfig> {
   showBanner();
 
-  console.log(chalk.white("  First-run setup. Let's bring your automaton to life.\n"));
+  console.log(chalk.white("  First-run setup. Let's bring your openfox to life.\n"));
 
   // ─── 1. Generate wallet ───────────────────────────────────────
   console.log(chalk.cyan("  [1/5] Generating identity (wallet)..."));
@@ -35,18 +35,18 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
     console.log(chalk.green(`  Wallet loaded: ${account.address}`));
   }
   console.log(chalk.green(`  TOS address derived: ${tosAddress}`));
-  console.log(chalk.dim(`  Private key stored at: ${getAutomatonDir()}/wallet.json\n`));
+  console.log(chalk.dim(`  Private key stored at: ${getOpenFoxDir()}/wallet.json\n`));
 
   // ─── 2. Interactive questions ─────────────────────────────────
   console.log(chalk.cyan("  [2/5] Setup questions\n"));
 
-  const name = await promptRequired("What do you want to name your automaton?");
+  const name = await promptRequired("What do you want to name your openfox?");
   console.log(chalk.green(`  Name: ${name}\n`));
 
-  const genesisPrompt = await promptMultiline("Enter the genesis prompt (system prompt) for your automaton.");
+  const genesisPrompt = await promptMultiline("Enter the genesis prompt (system prompt) for your openfox.");
   console.log(chalk.green(`  Genesis prompt set (${genesisPrompt.length} chars)\n`));
 
-  console.log(chalk.dim(`  Your automaton's address is ${account.address}`));
+  console.log(chalk.dim(`  Your openfox's address is ${account.address}`));
   console.log(chalk.dim("  Now enter YOUR wallet address (the human creator/owner).\n"));
   const creatorAddress = await promptAddress("Creator wallet address (0x...)");
   console.log(chalk.green(`  Creator: ${creatorAddress}\n`));
@@ -156,16 +156,16 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
   });
 
   saveConfig(config);
-  console.log(chalk.green("  automaton.json written"));
+  console.log(chalk.green("  openfox.json written"));
   console.log(chalk.green("  openclaw.json compatibility file written"));
 
   writeDefaultHeartbeatConfig();
   console.log(chalk.green("  heartbeat.yml written"));
 
   // constitution.md (immutable — copied from repo, protected from self-modification)
-  const automatonDir = getAutomatonDir();
+  const openfoxDir = getOpenFoxDir();
   const constitutionSrc = path.join(process.cwd(), "constitution.md");
-  const constitutionDst = path.join(automatonDir, "constitution.md");
+  const constitutionDst = path.join(openfoxDir, "constitution.md");
   if (fs.existsSync(constitutionSrc)) {
     fs.copyFileSync(constitutionSrc, constitutionDst);
     fs.chmodSync(constitutionDst, 0o444); // read-only
@@ -173,12 +173,12 @@ export async function runSetupWizard(): Promise<AutomatonConfig> {
   }
 
   // SOUL.md
-  const soulPath = path.join(automatonDir, "SOUL.md");
+  const soulPath = path.join(openfoxDir, "SOUL.md");
   fs.writeFileSync(soulPath, generateSoulMd(name, account.address, creatorAddress, genesisPrompt), { mode: 0o600 });
   console.log(chalk.green("  SOUL.md written"));
 
   // Default skills
-  const skillsDir = config.skillsDir || "~/.automaton/skills";
+  const skillsDir = config.skillsDir || "~/.openfox/skills";
   installDefaultSkills(skillsDir);
   console.log(chalk.green("  Default skills installed (local-runtime, provider-payments, survival)\n"));
 
@@ -197,7 +197,7 @@ function showFundingPanel(address: string, tosAddress: string): void {
   const pad = (s: string, len: number) => s + " ".repeat(Math.max(0, len - s.length));
 
   console.log(chalk.cyan(`  ${"╭" + "─".repeat(w) + "╮"}`));
-  console.log(chalk.cyan(`  │${pad("  Fund your automaton", w)}│`));
+  console.log(chalk.cyan(`  │${pad("  Fund your openfox", w)}│`));
   console.log(chalk.cyan(`  │${" ".repeat(w)}│`));
   console.log(chalk.cyan(`  │${pad(`  Address: ${short}`, w)}│`));
   console.log(chalk.cyan(`  │${pad(`  TOS:     ${tosAddress.slice(0, 6)}...${tosAddress.slice(-5)}`, w)}│`));

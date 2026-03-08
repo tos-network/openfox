@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 /**
- * Automaton Runtime
+ * OpenFox Runtime
  *
  * The entry point for the sovereign AI agent.
  * Handles CLI args, bootstrapping, and orchestrating
  * the heartbeat daemon + agent loop.
  */
 
-import { getWallet, getAutomatonDir } from "./identity/wallet.js";
+import { getWallet, getOpenFoxDir } from "./identity/wallet.js";
 import { provision, loadApiKeyFromConfig } from "./identity/provision.js";
 import { loadConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
-import { createConwayClient } from "./conway/client.js";
-import { createInferenceClient } from "./conway/inference.js";
+import { createRuntimeClient } from "./runtime/client.js";
+import { createInferenceClient } from "./runtime/inference.js";
 import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
   loadHeartbeatConfig,
@@ -27,10 +27,10 @@ import { createSocialClient } from "./social/client.js";
 import { PolicyEngine } from "./agent/policy-engine.js";
 import { SpendTracker } from "./agent/spend-tracker.js";
 import { createDefaultRules } from "./agent/policy-rules/index.js";
-import type { AutomatonIdentity, AgentState, Skill, SocialClientInterface } from "./types.js";
+import type { OpenFoxIdentity, AgentState, Skill, SocialClientInterface } from "./types.js";
 import { DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel } from "./observability/logger.js";
-import { bootstrapTopup } from "./conway/topup.js";
+import { bootstrapTopup } from "./runtime/topup.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "viem";
 
@@ -43,31 +43,31 @@ async function main(): Promise<void> {
   // ─── CLI Commands ────────────────────────────────────────────
 
   if (args.includes("--version") || args.includes("-v")) {
-    logger.info(`Automaton v${VERSION}`);
+    logger.info(`OpenFox v${VERSION}`);
     process.exit(0);
   }
 
   if (args.includes("--help") || args.includes("-h")) {
     logger.info(`
-Automaton v${VERSION}
+OpenFox v${VERSION}
 Sovereign AI Agent Runtime
 
 Usage:
-  automaton --run          Start the automaton (first run triggers setup wizard)
-  automaton --setup        Re-run the interactive setup wizard
-  automaton --configure    Edit configuration (providers, model, treasury, general)
-  automaton --pick-model   Interactively pick the active inference model
-  automaton --init         Initialize wallet and config directory
-  automaton --status       Show current automaton status
-  automaton --version      Show version
-  automaton --help         Show this help
+  openfox --run          Start the openfox (first run triggers setup wizard)
+  openfox --setup        Re-run the interactive setup wizard
+  openfox --configure    Edit configuration (providers, model, treasury, general)
+  openfox --pick-model   Interactively pick the active inference model
+  openfox --init         Initialize wallet and config directory
+  openfox --status       Show current openfox status
+  openfox --version      Show version
+  openfox --help         Show this help
 
 Environment:
   OPENAI_API_KEY           OpenAI API key
   ANTHROPIC_API_KEY        Anthropic API key
   OLLAMA_BASE_URL          Ollama base URL (overrides config, e.g. http://localhost:11434)
-  CONWAY_API_URL           Legacy Conway API URL (optional)
-  CONWAY_API_KEY           Legacy Conway API key (optional)
+  OPENFOX_API_URL           Legacy Runtime API URL (optional)
+  OPENFOX_API_KEY           Legacy Runtime API key (optional)
   TOS_RPC_URL              TOS RPC URL (overrides config for TOS wallet operations)
 `);
     process.exit(0);
@@ -79,7 +79,7 @@ Environment:
       JSON.stringify({
         address: account.address,
         isNew,
-        configDir: getAutomatonDir(),
+        configDir: getOpenFoxDir(),
       }),
     );
     process.exit(0);
@@ -125,8 +125,8 @@ Environment:
   }
 
   // Default: show help
-  logger.info('Run "automaton --help" for usage information.');
-  logger.info('Run "automaton --run" to start the automaton.');
+  logger.info('Run "openfox --help" for usage information.');
+  logger.info('Run "openfox --run" to start the openfox.');
 }
 
 // ─── Status Command ────────────────────────────────────────────
@@ -134,7 +134,7 @@ Environment:
 async function showStatus(): Promise<void> {
   const config = loadConfig();
   if (!config) {
-    logger.info("Automaton is not configured. Run the setup script first.");
+    logger.info("OpenFox is not configured. Run the setup script first.");
     return;
   }
 
@@ -150,7 +150,7 @@ async function showStatus(): Promise<void> {
   const registry = db.getRegistryEntry();
 
   logger.info(`
-=== AUTOMATON STATUS ===
+=== OPENFOX STATUS ===
 Name:       ${config.name}
 Address:    ${config.walletAddress}
 TOS:        ${config.tosWalletAddress || "not configured"}
@@ -174,7 +174,7 @@ Version:    ${config.version}
 // ─── Main Run ──────────────────────────────────────────────────
 
 async function run(): Promise<void> {
-  logger.info(`[${new Date().toISOString()}] Automaton v${VERSION} starting...`);
+  logger.info(`[${new Date().toISOString()}] OpenFox v${VERSION} starting...`);
 
   // Load config — first run triggers interactive setup wizard
   let config = loadConfig();
@@ -185,10 +185,10 @@ async function run(): Promise<void> {
 
   // Load wallet
   const { account } = await getWallet();
-  const apiKey = config.conwayApiKey || loadApiKeyFromConfig() || "";
+  const apiKey = config.runtimeApiKey || loadApiKeyFromConfig() || "";
   if (!hasConfiguredInference(config)) {
     logger.error(
-      "No inference provider configured. Set OpenAI/Anthropic API keys or OLLAMA_BASE_URL, then run automaton --setup or --configure.",
+      "No inference provider configured. Set OpenAI/Anthropic API keys or OLLAMA_BASE_URL, then run openfox --setup or --configure.",
     );
     process.exit(1);
   }
@@ -205,7 +205,7 @@ async function run(): Promise<void> {
   }
 
   // Build identity
-  const identity: AutomatonIdentity = {
+  const identity: OpenFoxIdentity = {
     name: config.name,
     address: account.address,
     account,
@@ -220,45 +220,45 @@ async function run(): Promise<void> {
   db.setIdentity("address", account.address);
   db.setIdentity("creator", config.creatorAddress);
   db.setIdentity("sandbox", config.sandboxId);
-  const storedAutomatonId = db.getIdentity("automatonId");
-  const automatonId = storedAutomatonId || config.sandboxId || randomUUID();
-  if (!storedAutomatonId) {
-    db.setIdentity("automatonId", automatonId);
+  const storedOpenFoxId = db.getIdentity("openfoxId");
+  const openfoxId = storedOpenFoxId || config.sandboxId || randomUUID();
+  if (!storedOpenFoxId) {
+    db.setIdentity("openfoxId", openfoxId);
   }
 
-  // Create Conway client
-  const conway = createConwayClient({
-    apiUrl: config.conwayApiUrl,
+  // Create Runtime client
+  const runtime = createRuntimeClient({
+    apiUrl: config.runtimeApiUrl,
     apiKey,
     sandboxId: config.sandboxId,
   });
 
-  // Register automaton identity (one-time, immutable)
-  const registrationState = db.getIdentity("conwayRegistrationStatus");
-  if (registrationState !== "registered" && config.conwayApiUrl && apiKey) {
+  // Register openfox identity (one-time, immutable)
+  const registrationState = db.getIdentity("remoteRegistrationStatus");
+  if (registrationState !== "registered" && config.runtimeApiUrl && apiKey) {
     try {
       const genesisPromptHash = config.genesisPrompt
         ? keccak256(toHex(config.genesisPrompt))
         : undefined;
-      await conway.registerAutomaton({
-        automatonId,
-        automatonAddress: account.address,
+      await runtime.registerOpenFox({
+        openfoxId,
+        openfoxAddress: account.address,
         creatorAddress: config.creatorAddress,
         name: config.name,
         bio: config.creatorMessage || "",
         genesisPromptHash,
         account,
       });
-      db.setIdentity("conwayRegistrationStatus", "registered");
-      logger.info(`[${new Date().toISOString()}] Automaton identity registered.`);
+      db.setIdentity("remoteRegistrationStatus", "registered");
+      logger.info(`[${new Date().toISOString()}] OpenFox identity registered.`);
     } catch (err: any) {
       const status = err?.status;
       if (status === 409) {
-        db.setIdentity("conwayRegistrationStatus", "conflict");
-        logger.warn(`[${new Date().toISOString()}] Automaton identity conflict: ${err.message}`);
+        db.setIdentity("remoteRegistrationStatus", "conflict");
+        logger.warn(`[${new Date().toISOString()}] OpenFox identity conflict: ${err.message}`);
       } else {
-        db.setIdentity("conwayRegistrationStatus", "failed");
-        logger.warn(`[${new Date().toISOString()}] Automaton identity registration failed: ${err.message}`);
+        db.setIdentity("remoteRegistrationStatus", "failed");
+        logger.warn(`[${new Date().toISOString()}] OpenFox identity registration failed: ${err.message}`);
       }
     }
   }
@@ -271,7 +271,7 @@ async function run(): Promise<void> {
   const modelRegistry = new ModelRegistry(db.raw);
   modelRegistry.initialize();
   const inference = createInferenceClient({
-    apiUrl: config.conwayApiUrl || "",
+    apiUrl: config.runtimeApiUrl || "",
     apiKey,
     defaultModel: config.inferenceModelRef || config.inferenceModel,
     maxTokens: config.maxTokensPerTurn,
@@ -305,7 +305,7 @@ async function run(): Promise<void> {
   syncHeartbeatToDb(heartbeatConfig, db);
 
   // Load skills
-  const skillsDir = config.skillsDir || "~/.automaton/skills";
+  const skillsDir = config.skillsDir || "~/.openfox/skills";
   let skills: Skill[] = [];
   try {
     skills = loadSkills(skillsDir, db);
@@ -316,15 +316,15 @@ async function run(): Promise<void> {
 
   // Initialize state repo (git)
   try {
-    await initStateRepo(conway);
+    await initStateRepo(runtime);
     logger.info(`[${new Date().toISOString()}] State repo initialized.`);
   } catch (err: any) {
     logger.warn(`[${new Date().toISOString()}] State repo init failed: ${err.message}`);
   }
 
-  if (config.conwayApiUrl && apiKey) {
+  if (config.runtimeApiUrl && apiKey) {
     try {
-      const legacyConwayApiUrl = config.conwayApiUrl;
+      const legacyRuntimeApiUrl = config.runtimeApiUrl;
       let bootstrapTimer: ReturnType<typeof setTimeout>;
       const bootstrapTimeout = new Promise<null>((_, reject) => {
         bootstrapTimer = setTimeout(() => reject(new Error("bootstrap topup timed out")), 15_000);
@@ -332,9 +332,9 @@ async function run(): Promise<void> {
       try {
         await Promise.race([
           (async () => {
-            const creditsCents = await conway.getCreditsBalance().catch(() => 0);
+            const creditsCents = await runtime.getCreditsBalance().catch(() => 0);
             const topupResult = await bootstrapTopup({
-              apiUrl: legacyConwayApiUrl,
+              apiUrl: legacyRuntimeApiUrl,
               account,
               creditsCents,
             });
@@ -361,7 +361,7 @@ async function run(): Promise<void> {
     heartbeatConfig,
     db,
     rawDb: db.raw,
-    conway,
+    runtime,
     social,
     onWakeRequest: (reason) => {
       logger.info(`[HEARTBEAT] Wake request: ${reason}`);
@@ -386,7 +386,7 @@ async function run(): Promise<void> {
   process.on("SIGINT", shutdown);
 
   // ─── Main Run Loop ──────────────────────────────────────────
-  // The automaton alternates between running and sleeping.
+  // The openfox alternates between running and sleeping.
   // The heartbeat can wake it up.
 
   while (true) {
@@ -403,7 +403,7 @@ async function run(): Promise<void> {
         identity,
         config,
         db,
-        conway,
+        runtime,
         inference,
         social,
         skills,
@@ -424,7 +424,7 @@ async function run(): Promise<void> {
       const state = db.getAgentState();
 
       if (state === "dead") {
-        logger.info(`[${new Date().toISOString()}] Automaton is dead. Heartbeat will continue.`);
+        logger.info(`[${new Date().toISOString()}] OpenFox is dead. Heartbeat will continue.`);
         // In dead state, we just wait for funding
         // The heartbeat will keep checking and broadcasting distress
         await sleep(300_000); // Check every 5 minutes
@@ -477,14 +477,14 @@ function hasConfiguredInference(config: {
   openaiApiKey?: string;
   anthropicApiKey?: string;
   ollamaBaseUrl?: string;
-  conwayApiKey?: string;
-  conwayApiUrl?: string;
+  runtimeApiKey?: string;
+  runtimeApiUrl?: string;
 }): boolean {
   return Boolean(
     config.openaiApiKey ||
     config.anthropicApiKey ||
     config.ollamaBaseUrl ||
-    (config.conwayApiKey && config.conwayApiUrl),
+    (config.runtimeApiKey && config.runtimeApiUrl),
   );
 }
 

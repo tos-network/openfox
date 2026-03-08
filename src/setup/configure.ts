@@ -5,14 +5,14 @@
  * (first-run) and --pick-model (model selection only) by letting
  * users update individual settings without re-running the full wizard.
  *
- * Usage: automaton --configure
+ * Usage: openfox --configure
  */
 
 import readline from "readline";
 import chalk from "chalk";
 import { loadConfig, saveConfig, resolvePath } from "../config.js";
 import { DEFAULT_TREASURY_POLICY, DEFAULT_MODEL_STRATEGY_CONFIG } from "../types.js";
-import type { AutomatonConfig, ModelStrategyConfig, TreasuryPolicy, ModelEntry } from "../types.js";
+import type { OpenFoxConfig, ModelStrategyConfig, TreasuryPolicy, ModelEntry } from "../types.js";
 import { closePrompts } from "./prompts.js";
 import { createDatabase } from "../state/database.js";
 import { ModelRegistry } from "../inference/registry.js";
@@ -168,7 +168,7 @@ function val(v: string | number | boolean | undefined): string {
 
 // ─── Main menu ────────────────────────────────────────────────────
 
-function printMainMenu(config: AutomatonConfig): void {
+function printMainMenu(config: OpenFoxConfig): void {
   const providers = [
     config.openaiApiKey ? "OpenAI" : null,
     config.anthropicApiKey ? "Anthropic" : null,
@@ -179,7 +179,7 @@ function printMainMenu(config: AutomatonConfig): void {
   const activeModel = config.inferenceModelRef || config.inferenceModel;
 
   console.log(chalk.cyan("  ┌────────────────────────────────────────────┐"));
-  console.log(chalk.cyan("  │  Configure Automaton                        │"));
+  console.log(chalk.cyan("  │  Configure OpenFox                        │"));
   console.log(chalk.cyan("  └────────────────────────────────────────────┘"));
   console.log("");
   console.log(`  ${chalk.white("1.")} Inference Providers   ${dim(providers)}`);
@@ -193,7 +193,7 @@ function printMainMenu(config: AutomatonConfig): void {
 
 // ─── Section: Inference Providers ────────────────────────────────
 
-async function configureProviders(config: AutomatonConfig): Promise<void> {
+async function configureProviders(config: OpenFoxConfig): Promise<void> {
   console.log(chalk.cyan("\n  ── Inference Providers ─────────────────────────\n"));
   console.log(chalk.dim("  Press Enter to keep the current value. Type - to clear an optional field."));
   console.log(chalk.dim("  Configure at least one of OpenAI, Anthropic, or Ollama for local runtime.\n"));
@@ -223,7 +223,7 @@ async function configureProviders(config: AutomatonConfig): Promise<void> {
 
 // ─── Section: Model Strategy ──────────────────────────────────────
 
-async function configureModelStrategy(config: AutomatonConfig): Promise<void> {
+async function configureModelStrategy(config: OpenFoxConfig): Promise<void> {
   console.log(chalk.cyan("\n  ── Model Strategy ──────────────────────────────\n"));
 
   // Load available models from registry + Ollama
@@ -279,7 +279,7 @@ async function configureModelStrategy(config: AutomatonConfig): Promise<void> {
 
 // ─── Section: Treasury Policy ─────────────────────────────────────
 
-async function configureTreasury(config: AutomatonConfig): Promise<void> {
+async function configureTreasury(config: OpenFoxConfig): Promise<void> {
   console.log(chalk.cyan("\n  ── Treasury Policy ─────────────────────────────\n"));
   console.log(chalk.dim("  All values are in cents (100 cents = $1.00).\n"));
 
@@ -305,7 +305,7 @@ async function configureTreasury(config: AutomatonConfig): Promise<void> {
 
 // ─── Section: General ─────────────────────────────────────────────
 
-async function configureGeneral(config: AutomatonConfig): Promise<void> {
+async function configureGeneral(config: OpenFoxConfig): Promise<void> {
   console.log(chalk.cyan("\n  ── General ─────────────────────────────────────\n"));
 
   config.name = await askRequiredString("Agent name", config.name);
@@ -314,7 +314,7 @@ async function configureGeneral(config: AutomatonConfig): Promise<void> {
     ["debug", "info", "warn", "error"] as const,
     config.logLevel,
   );
-  config.maxChildren = await askNumber("Max child automatons", config.maxChildren);
+  config.maxChildren = await askNumber("Max child openfox agents", config.maxChildren);
   config.socialRelayUrl = (await askString("Social relay URL", config.socialRelayUrl)) || undefined;
   config.rpcUrl = (await askString("RPC endpoint  (Base chain, e.g. https://mainnet.base.org)", config.rpcUrl)) || undefined;
 
@@ -326,7 +326,7 @@ async function configureGeneral(config: AutomatonConfig): Promise<void> {
 export async function runConfigure(): Promise<void> {
   const config = loadConfig();
   if (!config) {
-    console.log(chalk.red("  Automaton is not configured. Run: automaton --setup\n"));
+    console.log(chalk.red("  OpenFox is not configured. Run: openfox --setup\n"));
     return;
   }
 
@@ -368,7 +368,7 @@ export async function runConfigure(): Promise<void> {
 
   if (rl) { rl.close(); rl = null; }
   closePrompts();
-  console.log(chalk.dim("  Done. Restart the automaton to apply changes.\n"));
+  console.log(chalk.dim("  Done. Restart the openfox to apply changes.\n"));
 }
 
 function buildModelRef(models: ModelEntry[], modelId: string): string {

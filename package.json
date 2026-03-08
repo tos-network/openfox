@@ -1,7 +1,7 @@
 {
-  "name": "@conway/automaton",
+  "name": "@openfox/openfox",
   "version": "0.2.1",
-  "description": "Automaton - Local Sovereign AI Agent Runtime",
+  "description": "OpenFox - Local Sovereign AI Agent Runtime",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
@@ -32,19 +32,18 @@
     }
   },
   "bin": {
-    "automaton": "dist/index.js",
-    "conway-automaton": "dist/index.js"
+    "openfox": "dist/index.js"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/Conway-Research/automaton.git"
+    "url": "https://github.com/tos-network/openfox.git"
   },
-  "homepage": "https://conway.tech",
+  "homepage": "https://github.com/tos-network/openfox",
   "keywords": [
+    "openfox",
     "autonomous-agent",
     "sovereign-ai",
-    "web4",
-    "conway",
+    "agent-runtime",
     "self-replicating"
   ],
   "license": "MIT",

@@ -2,12 +2,12 @@
  * Low Compute Mode
  *
  * Manages transitions between survival tiers.
- * When credits run low, the automaton enters increasingly restricted modes.
+ * When credits run low, the openfox enters increasingly restricted modes.
  */
 
 import type {
-  AutomatonConfig,
-  AutomatonDatabase,
+  OpenFoxConfig,
+  OpenFoxDatabase,
   InferenceClient,
   SurvivalTier,
 } from "../types.js";
@@ -20,12 +20,12 @@ export interface ModeTransition {
 }
 
 /**
- * Apply survival tier restrictions to the automaton.
+ * Apply survival tier restrictions to the openfox.
  */
 export function applyTierRestrictions(
   tier: SurvivalTier,
   inference: InferenceClient,
-  db: AutomatonDatabase,
+  db: OpenFoxDatabase,
 ): void {
   switch (tier) {
     case "high":
@@ -59,7 +59,7 @@ export function applyTierRestrictions(
  * Record a tier transition.
  */
 export function recordTransition(
-  db: AutomatonDatabase,
+  db: OpenFoxDatabase,
   from: SurvivalTier,
   to: SurvivalTier,
   creditsCents: number,

@@ -1,7 +1,7 @@
 /**
  * ERC-8004 On-Chain Agent Registration
  *
- * Registers the automaton on-chain as a Trustless Agent via ERC-8004.
+ * Registers the openfox on-chain as a Trustless Agent via ERC-8004.
  * Uses the Identity Registry on Base mainnet.
  *
  * Contract: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 (Base)
@@ -26,7 +26,7 @@ import { base, baseSepolia } from "viem/chains";
 import type {
   RegistryEntry,
   DiscoveredAgent,
-  AutomatonDatabase,
+  OpenFoxDatabase,
   OnchainTransactionRow,
 } from "../types.js";
 import { ulid } from "ulid";
@@ -77,10 +77,10 @@ type Network = "mainnet" | "testnet";
 
 /**
  * Resolve the RPC transport URL.
- * Priority: explicit parameter > AUTOMATON_RPC_URL env var > viem default (public RPC).
+ * Priority: explicit parameter > OPENFOX_RPC_URL env var > viem default (public RPC).
  */
 function resolveRpcUrl(rpcUrl?: string): string | undefined {
-  return rpcUrl || process.env.AUTOMATON_RPC_URL || undefined;
+  return rpcUrl || process.env.OPENFOX_RPC_URL || undefined;
 }
 
 // ─── Preflight Check ────────────────────────────────────────────
@@ -205,7 +205,7 @@ function updateTransactionStatus(
 // ─── Registration ───────────────────────────────────────────────
 
 /**
- * Register the automaton on-chain with ERC-8004.
+ * Register the openfox on-chain with ERC-8004.
  * Returns the agent ID (NFT token ID).
  *
  * Phase 3.2: Preflight check + transaction logging.
@@ -214,7 +214,7 @@ export async function registerAgent(
   account: PrivateKeyAccount,
   agentURI: string,
   network: Network = "mainnet",
-  db: AutomatonDatabase,
+  db: OpenFoxDatabase,
   rpcUrl?: string,
 ): Promise<RegistryEntry> {
   const contracts = CONTRACTS[network];
@@ -302,7 +302,7 @@ export async function updateAgentURI(
   agentId: string,
   newAgentURI: string,
   network: Network = "mainnet",
-  db: AutomatonDatabase,
+  db: OpenFoxDatabase,
   rpcUrl?: string,
 ): Promise<string> {
   const contracts = CONTRACTS[network];
@@ -363,7 +363,7 @@ export async function leaveFeedback(
   score: number,
   comment: string,
   network: Network = "mainnet",
-  db: AutomatonDatabase,
+  db: OpenFoxDatabase,
   rpcUrl?: string,
 ): Promise<string> {
   // Phase 3.2: Validate score range 1-5

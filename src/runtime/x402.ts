@@ -1,8 +1,8 @@
 /**
  * x402 Payment Protocol
  *
- * Enables the automaton to make USDC micropayments via HTTP 402.
- * Adapted from conway-mcp/src/x402/index.ts
+ * Enables the openfox to make USDC micropayments via HTTP 402.
+ * Adapted from runtime-mcp/src/x402/index.ts
  */
 
 import {
@@ -223,7 +223,7 @@ function selectRequirement(parsed: PaymentRequiredResponse): PaymentRequirement 
 }
 
 /**
- * Get the USDC balance for the automaton's wallet on a given network.
+ * Get the USDC balance for the openfox's wallet on a given network.
  */
 export async function getUsdcBalance(
   address: Address,
@@ -252,7 +252,7 @@ export async function getUsdcBalanceDetailed(
   }
 
   try {
-    const rpcUrl = process.env.AUTOMATON_RPC_URL || undefined;
+    const rpcUrl = process.env.OPENFOX_RPC_URL || undefined;
     const client = createPublicClient({
       chain,
       transport: http(rpcUrl, { timeout: 10_000 }),

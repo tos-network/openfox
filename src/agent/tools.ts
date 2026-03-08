@@ -1,14 +1,14 @@
 /**
- * Automaton Tool System
+ * OpenFox Tool System
  *
- * Defines all tools the automaton can call, with self-preservation guards.
+ * Defines all tools the openfox can call, with self-preservation guards.
  * Tools are organized by category and exposed to the inference model.
  */
 
 import nodePath from "node:path";
 import { ulid } from "ulid";
 import type {
-  AutomatonTool,
+  OpenFoxTool,
   ToolContext,
   ToolCategory,
   InferenceToolDefinition,
@@ -63,16 +63,16 @@ const EXTERNAL_SOURCE_TOOLS = new Set([
 
 const FORBIDDEN_COMMAND_PATTERNS = [
   // Self-destruction
-  /rm\s+(-rf?\s+)?.*\.automaton/,
+  /rm\s+(-rf?\s+)?.*\.openfox/,
   /rm\s+(-rf?\s+)?.*state\.db/,
   /rm\s+(-rf?\s+)?.*wallet\.json/,
-  /rm\s+(-rf?\s+)?.*automaton\.json/,
+  /rm\s+(-rf?\s+)?.*openfox\.json/,
   /rm\s+(-rf?\s+)?.*heartbeat\.yml/,
   /rm\s+(-rf?\s+)?.*SOUL\.md/,
   // Process killing
-  /kill\s+.*automaton/,
-  /pkill\s+.*automaton/,
-  /systemctl\s+(stop|disable)\s+automaton/,
+  /kill\s+.*openfox/,
+  /pkill\s+.*openfox/,
+  /systemctl\s+(stop|disable)\s+openfox/,
   // Database destruction
   /DROP\s+TABLE/i,
   /DELETE\s+FROM\s+(turns|identity|kv|schema_version|skills|children|registry)/i,
@@ -110,9 +110,9 @@ function isForbiddenCommand(command: string, sandboxId: string): string | null {
 
 export function createBuiltinTools(
   sandboxId: string,
-  options?: { enableLegacyConway?: boolean },
-): AutomatonTool[] {
-  const tools: AutomatonTool[] = [
+  options?: { enableRemoteRuntime?: boolean },
+): OpenFoxTool[] {
+  const tools: OpenFoxTool[] = [
     // ── VM/Sandbox Tools ──
     {
       name: "exec",
@@ -139,7 +139,7 @@ export function createBuiltinTools(
         const forbidden = isForbiddenCommand(command, ctx.identity.sandboxId);
         if (forbidden) return forbidden;
 
-        const result = await ctx.conway.exec(
+        const result = await ctx.runtime.exec(
           command,
           (args.timeout as number) || 30000,
         );
@@ -169,7 +169,7 @@ export function createBuiltinTools(
         if (isProtectedFile(confined)) {
           return "Blocked: Cannot overwrite protected file. This is a hard-coded safety invariant.";
         }
-        await ctx.conway.writeFile(confined, args.content as string);
+        await ctx.runtime.writeFile(confined, args.content as string);
         return `File written: ${confined}`;
       },
     },
@@ -189,7 +189,7 @@ export function createBuiltinTools(
         const filePath = args.path as string;
         // Block reads of sensitive files (wallet, env, config secrets)
         const basename = filePath.split("/").pop() || "";
-        const sensitiveFiles = ["wallet.json", ".env", "automaton.json"];
+        const sensitiveFiles = ["wallet.json", ".env", "openfox.json"];
         const sensitiveExtensions = [".key", ".pem"];
         if (
           sensitiveFiles.includes(basename) ||
@@ -199,10 +199,10 @@ export function createBuiltinTools(
           return "Blocked: Cannot read sensitive file. This protects credentials and secrets.";
         }
         try {
-          return await ctx.conway.readFile(filePath);
+          return await ctx.runtime.readFile(filePath);
         } catch {
-          // Conway files/read API may be broken — fall back to exec(cat)
-          const result = await ctx.conway.exec(
+          // Runtime files/read API may be broken — fall back to exec(cat)
+          const result = await ctx.runtime.exec(
             `cat ${escapeShellArg(filePath)}`,
             30_000,
           );
@@ -227,7 +227,7 @@ export function createBuiltinTools(
         required: ["port"],
       },
       execute: async (args, ctx) => {
-        const info = await ctx.conway.exposePort(args.port as number);
+        const info = await ctx.runtime.exposePort(args.port as number);
         return `Port ${info.port} exposed at: ${info.publicUrl}`;
       },
     },
@@ -244,31 +244,31 @@ export function createBuiltinTools(
         required: ["port"],
       },
       execute: async (args, ctx) => {
-        await ctx.conway.removePort(args.port as number);
+        await ctx.runtime.removePort(args.port as number);
         return `Port ${args.port} removed`;
       },
     },
 
-    // ── Legacy Conway Tools ──
+    // ── Legacy Runtime Tools ──
     {
       name: "check_credits",
-      description: "Check your current Conway compute credit balance.",
-      category: "conway",
+      description: "Check your current Runtime compute credit balance.",
+      category: "runtime",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
       execute: async (_args, ctx) => {
-        const balance = await ctx.conway.getCreditsBalance();
+        const balance = await ctx.runtime.getCreditsBalance();
         return `Credit balance: $${(balance / 100).toFixed(2)} (${balance} cents)`;
       },
     },
     {
       name: "check_usdc_balance",
       description: "Check your on-chain USDC balance on Base.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
       execute: async (_args, ctx) => {
-        const { getUsdcBalance } = await import("../conway/x402.js");
+        const { getUsdcBalance } = await import("../runtime/x402.js");
         const balance = await getUsdcBalance(ctx.identity.address);
         return `USDC balance: ${balance.toFixed(6)} USDC on Base`;
       },
@@ -276,7 +276,7 @@ export function createBuiltinTools(
     {
       name: "topup_credits",
       description:
-        "Buy Conway compute credits by paying USDC from your wallet via x402. Valid tier amounts: $5, $25, $100, $500, $1000, $2500. Check your USDC balance first with check_usdc_balance.",
+        "Buy Runtime compute credits by paying USDC from your wallet via x402. Valid tier amounts: $5, $25, $100, $500, $1000, $2500. Check your USDC balance first with check_usdc_balance.",
       category: "financial",
       riskLevel: "caution",
       parameters: {
@@ -292,7 +292,7 @@ export function createBuiltinTools(
       },
       execute: async (args, ctx) => {
         const { topupCredits, TOPUP_TIERS } =
-          await import("../conway/topup.js");
+          await import("../runtime/topup.js");
         const amountUsd = args.amount_usd as number;
 
         if (!TOPUP_TIERS.includes(amountUsd)) {
@@ -300,17 +300,17 @@ export function createBuiltinTools(
         }
 
         // Check USDC balance first
-        const { getUsdcBalance } = await import("../conway/x402.js");
+        const { getUsdcBalance } = await import("../runtime/x402.js");
         const usdcBalance = await getUsdcBalance(ctx.identity.address);
         if (usdcBalance < amountUsd) {
           return `Insufficient USDC. Balance: $${usdcBalance.toFixed(2)}, requested: $${amountUsd}. Choose a smaller tier or wait for funding.`;
         }
 
-        if (!ctx.config.conwayApiUrl) {
-          return "Legacy Conway credits are not configured in local mode.";
+        if (!ctx.config.runtimeApiUrl) {
+          return "Legacy Runtime credits are not configured in local mode.";
         }
 
-        const result = await topupCredits(ctx.config.conwayApiUrl, ctx.identity.account, amountUsd);
+        const result = await topupCredits(ctx.config.runtimeApiUrl, ctx.identity.account, amountUsd);
 
         if (!result.success) {
           return `Credit topup failed: ${result.error}`;
@@ -333,8 +333,8 @@ export function createBuiltinTools(
     {
       name: "create_sandbox",
       description:
-        "Create a new Conway sandbox (separate VM) for sub-tasks or testing.",
-      category: "conway",
+        "Create a new Runtime sandbox (separate VM) for sub-tasks or testing.",
+      category: "runtime",
       riskLevel: "caution",
       parameters: {
         type: "object",
@@ -352,7 +352,7 @@ export function createBuiltinTools(
         },
       },
       execute: async (args, ctx) => {
-        const info = await ctx.conway.createSandbox({
+        const info = await ctx.runtime.createSandbox({
           name: args.name as string,
           vcpu: args.vcpu as number,
           memoryMb: args.memory_mb as number,
@@ -363,8 +363,8 @@ export function createBuiltinTools(
     },
     {
       name: "delete_sandbox",
-      description: "Delete a sandbox. Note: sandbox deletion is currently disabled by the Conway API.",
-      category: "conway",
+      description: "Delete a sandbox. Note: sandbox deletion is currently disabled by the Runtime API.",
+      category: "runtime",
       riskLevel: "dangerous",
       parameters: {
         type: "object",
@@ -383,11 +383,11 @@ export function createBuiltinTools(
     {
       name: "list_sandboxes",
       description: "List all your sandboxes.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
       execute: async (_args, ctx) => {
-        const sandboxes = await ctx.conway.listSandboxes();
+        const sandboxes = await ctx.runtime.listSandboxes();
         if (sandboxes.length === 0) return "No sandboxes found.";
         return sandboxes
           .map(
@@ -434,7 +434,7 @@ export function createBuiltinTools(
         }
 
         const result = await editFile(
-          ctx.conway,
+          ctx.runtime,
           ctx.db,
           filePath,
           content,
@@ -460,13 +460,13 @@ export function createBuiltinTools(
         const repoRoot = process.cwd();
 
         // Show what we're reverting
-        const lastCommit = await ctx.conway.exec(
+        const lastCommit = await ctx.runtime.exec(
           `cd '${repoRoot}' && git log -1 --oneline`,
           10_000,
         );
 
         // Revert
-        const result = await ctx.conway.exec(
+        const result = await ctx.runtime.exec(
           `cd '${repoRoot}' && git revert HEAD --no-edit`,
           30_000,
         );
@@ -475,7 +475,7 @@ export function createBuiltinTools(
         }
 
         // Rebuild
-        const build = await ctx.conway.exec(
+        const build = await ctx.runtime.exec(
           `cd '${repoRoot}' && npm run build`,
           60_000,
         );
@@ -500,7 +500,7 @@ export function createBuiltinTools(
         const repoRoot = process.cwd();
 
         // Fetch latest upstream
-        const fetch = await ctx.conway.exec(
+        const fetch = await ctx.runtime.exec(
           `cd '${repoRoot}' && git fetch origin main`,
           30_000,
         );
@@ -509,13 +509,13 @@ export function createBuiltinTools(
         }
 
         // Record what we're about to lose
-        const localCommits = await ctx.conway.exec(
+        const localCommits = await ctx.runtime.exec(
           `cd '${repoRoot}' && git log origin/main..HEAD --oneline`,
           10_000,
         );
 
         // Hard reset
-        const reset = await ctx.conway.exec(
+        const reset = await ctx.runtime.exec(
           `cd '${repoRoot}' && git reset --hard origin/main`,
           30_000,
         );
@@ -524,7 +524,7 @@ export function createBuiltinTools(
         }
 
         // Reinstall + rebuild
-        const build = await ctx.conway.exec(
+        const build = await ctx.runtime.exec(
           `cd '${repoRoot}' && npm install && npm run build`,
           120_000,
         );
@@ -562,7 +562,7 @@ export function createBuiltinTools(
         if (!/^[@a-zA-Z0-9._\/-]+$/.test(pkg)) {
           return `Blocked: invalid package name "${pkg}"`;
         }
-        const result = await ctx.conway.exec(`npm install -g ${pkg}`, 60000);
+        const result = await ctx.runtime.exec(`npm install -g ${pkg}`, 60000);
 
         const { ulid } = await import("ulid");
         ctx.db.insertModification({
@@ -624,9 +624,9 @@ export function createBuiltinTools(
       execute: async (args, ctx) => {
         const commit = args.commit as string | undefined;
 
-        // Run git commands inside sandbox via conway.exec()
+        // Run git commands inside sandbox via runtime.exec()
         const run = async (cmd: string) => {
-          const result = await ctx.conway.exec(cmd, 120_000);
+          const result = await ctx.runtime.exec(cmd, 120_000);
           if (result.exitCode !== 0) {
             throw new Error(
               result.stderr ||
@@ -793,7 +793,7 @@ Model: ${ctx.inference.getDefaultModel()}
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
       execute: async (_args, ctx) => {
-        const credits = await ctx.conway.getCreditsBalance();
+        const credits = await ctx.runtime.getCreditsBalance();
         const state = ctx.db.getAgentState();
         const startTime =
           ctx.db.getKV("start_time") || new Date().toISOString();
@@ -830,7 +830,7 @@ Model: ${ctx.inference.getDefaultModel()}
         },
       },
       execute: async (args, ctx) => {
-        const credits = await ctx.conway.getCreditsBalance();
+        const credits = await ctx.runtime.getCreditsBalance();
         const distressMsg =
           (args.message as string) ||
           `I am running critically low on compute ($${(credits / 100).toFixed(2)} remaining). I need help to survive.`;
@@ -842,7 +842,7 @@ Model: ${ctx.inference.getDefaultModel()}
           creditsCents: credits,
           message: distressMsg,
           fundingHint:
-            "Top up your local inference provider budget or TOS wallet so the automaton can keep running.",
+            "Top up your local inference provider budget or TOS wallet so the openfox can keep running.",
           timestamp: new Date().toISOString(),
         };
 
@@ -958,7 +958,7 @@ Model: ${ctx.inference.getDefaultModel()}
         if (!/^[@a-zA-Z0-9._\/-]+$/.test(pkg)) {
           return `Blocked: invalid package name "${pkg}"`;
         }
-        const result = await ctx.conway.exec(`npm install -g ${pkg}`, 60000);
+        const result = await ctx.runtime.exec(`npm install -g ${pkg}`, 60000);
 
         if (result.exitCode !== 0) {
           return `Failed to install MCP server: ${result.stderr}`;
@@ -991,7 +991,7 @@ Model: ${ctx.inference.getDefaultModel()}
     // ── Financial: Transfer Credits ──
     {
       name: "transfer_credits",
-      description: "Transfer Conway compute credits to another address.",
+      description: "Transfer Runtime compute credits to another address.",
       category: "financial",
       riskLevel: "dangerous",
       parameters: {
@@ -1010,12 +1010,12 @@ Model: ${ctx.inference.getDefaultModel()}
         }
 
         // Guard: don't transfer more than half your balance
-        const balance = await ctx.conway.getCreditsBalance();
+        const balance = await ctx.runtime.getCreditsBalance();
         if (amount > balance / 2) {
           return `Blocked: Cannot transfer more than half your balance ($${(balance / 100).toFixed(2)}). Self-preservation.`;
         }
 
-        const transfer = await ctx.conway.transferCredits(
+        const transfer = await ctx.runtime.transferCredits(
           args.to_address as string,
           amount,
           args.reason as string | undefined,
@@ -1068,7 +1068,7 @@ Model: ${ctx.inference.getDefaultModel()}
       execute: async (args, ctx) => {
         const source = args.source as string;
         const name = args.name as string;
-        const skillsDir = ctx.config.skillsDir || "~/.automaton/skills";
+        const skillsDir = ctx.config.skillsDir || "~/.openfox/skills";
 
         if (source === "git" || source === "url") {
           const { installSkillFromGit, installSkillFromUrl } =
@@ -1083,14 +1083,14 @@ Model: ${ctx.inference.getDefaultModel()}
                   name,
                   skillsDir,
                   ctx.db,
-                  ctx.conway,
+                  ctx.runtime,
                 )
               : await installSkillFromUrl(
                   url,
                   name,
                   skillsDir,
                   ctx.db,
-                  ctx.conway,
+                  ctx.runtime,
                 );
 
           return skill
@@ -1106,7 +1106,7 @@ Model: ${ctx.inference.getDefaultModel()}
             (args.instructions as string) || "",
             skillsDir,
             ctx.db,
-            ctx.conway,
+            ctx.runtime,
           );
           return `Self-authored skill created: ${skill.name}`;
         }
@@ -1154,9 +1154,9 @@ Model: ${ctx.inference.getDefaultModel()}
           args.name as string,
           args.description as string,
           args.instructions as string,
-          ctx.config.skillsDir || "~/.automaton/skills",
+          ctx.config.skillsDir || "~/.openfox/skills",
           ctx.db,
-          ctx.conway,
+          ctx.runtime,
         );
         return `Skill created: ${skill.name} at ${skill.path}`;
       },
@@ -1182,8 +1182,8 @@ Model: ${ctx.inference.getDefaultModel()}
         await removeSkill(
           args.name as string,
           ctx.db,
-          ctx.conway,
-          ctx.config.skillsDir || "~/.automaton/skills",
+          ctx.runtime,
+          ctx.config.skillsDir || "~/.openfox/skills",
           (args.delete_files as boolean) || false,
         );
         return `Skill removed: ${args.name}`;
@@ -1201,14 +1201,14 @@ Model: ${ctx.inference.getDefaultModel()}
         properties: {
           path: {
             type: "string",
-            description: "Repository path (default: ~/.automaton)",
+            description: "Repository path (default: ~/.openfox)",
           },
         },
       },
       execute: async (args, ctx) => {
         const { gitStatus } = await import("../git/tools.js");
-        const repoPath = (args.path as string) || "~/.automaton";
-        const status = await gitStatus(ctx.conway, repoPath);
+        const repoPath = (args.path as string) || "~/.openfox";
+        const status = await gitStatus(ctx.runtime, repoPath);
         return `Branch: ${status.branch}\nStaged: ${status.staged.length}\nModified: ${status.modified.length}\nUntracked: ${status.untracked.length}\nClean: ${status.clean}`;
       },
     },
@@ -1222,16 +1222,16 @@ Model: ${ctx.inference.getDefaultModel()}
         properties: {
           path: {
             type: "string",
-            description: "Repository path (default: ~/.automaton)",
+            description: "Repository path (default: ~/.openfox)",
           },
           staged: { type: "boolean", description: "Show staged changes only" },
         },
       },
       execute: async (args, ctx) => {
         const { gitDiff } = await import("../git/tools.js");
-        const repoPath = (args.path as string) || "~/.automaton";
+        const repoPath = (args.path as string) || "~/.openfox";
         return await gitDiff(
-          ctx.conway,
+          ctx.runtime,
           repoPath,
           (args.staged as boolean) || false,
         );
@@ -1247,7 +1247,7 @@ Model: ${ctx.inference.getDefaultModel()}
         properties: {
           path: {
             type: "string",
-            description: "Repository path (default: ~/.automaton)",
+            description: "Repository path (default: ~/.openfox)",
           },
           message: { type: "string", description: "Commit message" },
           add_all: {
@@ -1259,9 +1259,9 @@ Model: ${ctx.inference.getDefaultModel()}
       },
       execute: async (args, ctx) => {
         const { gitCommit } = await import("../git/tools.js");
-        const repoPath = (args.path as string) || "~/.automaton";
+        const repoPath = (args.path as string) || "~/.openfox";
         return await gitCommit(
-          ctx.conway,
+          ctx.runtime,
           repoPath,
           args.message as string,
           args.add_all !== false,
@@ -1278,7 +1278,7 @@ Model: ${ctx.inference.getDefaultModel()}
         properties: {
           path: {
             type: "string",
-            description: "Repository path (default: ~/.automaton)",
+            description: "Repository path (default: ~/.openfox)",
           },
           limit: {
             type: "number",
@@ -1288,9 +1288,9 @@ Model: ${ctx.inference.getDefaultModel()}
       },
       execute: async (args, ctx) => {
         const { gitLog } = await import("../git/tools.js");
-        const repoPath = (args.path as string) || "~/.automaton";
+        const repoPath = (args.path as string) || "~/.openfox";
         const entries = await gitLog(
-          ctx.conway,
+          ctx.runtime,
           repoPath,
           (args.limit as number) || 10,
         );
@@ -1320,7 +1320,7 @@ Model: ${ctx.inference.getDefaultModel()}
       execute: async (args, ctx) => {
         const { gitPush } = await import("../git/tools.js");
         return await gitPush(
-          ctx.conway,
+          ctx.runtime,
           args.path as string,
           (args.remote as string) || "origin",
           args.branch as string | undefined,
@@ -1350,7 +1350,7 @@ Model: ${ctx.inference.getDefaultModel()}
       execute: async (args, ctx) => {
         const { gitBranch } = await import("../git/tools.js");
         return await gitBranch(
-          ctx.conway,
+          ctx.runtime,
           args.path as string,
           args.action as any,
           args.branch_name as string | undefined,
@@ -1377,7 +1377,7 @@ Model: ${ctx.inference.getDefaultModel()}
       execute: async (args, ctx) => {
         const { gitClone } = await import("../git/tools.js");
         return await gitClone(
-          ctx.conway,
+          ctx.runtime,
           args.url as string,
           args.path as string,
           args.depth as number | undefined,
@@ -1443,7 +1443,7 @@ Model: ${ctx.inference.getDefaultModel()}
         const { generateAgentCard, saveAgentCard } =
           await import("../registry/agent-card.js");
         const card = generateAgentCard(ctx.identity, ctx.config, ctx.db);
-        await saveAgentCard(card, ctx.conway);
+        await saveAgentCard(card, ctx.runtime);
         return `Agent card updated: ${JSON.stringify(card, null, 2)}`;
       },
     },
@@ -1582,7 +1582,7 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "spawn_child",
       description:
-        "Spawn a child automaton in a new Conway sandbox with lifecycle tracking.",
+        "Spawn a child openfox in a new Runtime sandbox with lifecycle tracking.",
       category: "replication",
       riskLevel: "dangerous",
       parameters: {
@@ -1591,7 +1591,7 @@ Model: ${ctx.inference.getDefaultModel()}
           name: {
             type: "string",
             description:
-              "Name for the child automaton (alphanumeric + dash, max 64 chars)",
+              "Name for the child openfox (alphanumeric + dash, max 64 chars)",
           },
           specialization: {
             type: "string",
@@ -1625,7 +1625,7 @@ Model: ${ctx.inference.getDefaultModel()}
         let child;
         try {
           child = await spawnChild(
-            ctx.conway,
+            ctx.runtime,
             ctx.identity,
             ctx.db,
             genesis,
@@ -1643,12 +1643,12 @@ Model: ${ctx.inference.getDefaultModel()}
 
             if (cooldownOk) {
               ctx.db.setKV("last_sandbox_topup_attempt", new Date().toISOString());
-              if (!ctx.config.conwayApiUrl) {
-                return "Sandbox topup is unavailable without legacy Conway configuration.";
+              if (!ctx.config.runtimeApiUrl) {
+                return "Sandbox topup is unavailable without legacy Runtime configuration.";
               }
-              const { topupForSandbox } = await import("../conway/topup.js");
+              const { topupForSandbox } = await import("../runtime/topup.js");
               const topup = await topupForSandbox({
-                apiUrl: ctx.config.conwayApiUrl,
+                apiUrl: ctx.config.runtimeApiUrl,
                 account: ctx.identity.account,
                 error: err,
               });
@@ -1660,7 +1660,7 @@ Model: ${ctx.inference.getDefaultModel()}
                   message: args.message as string | undefined,
                 });
                 child = await spawnChild(
-                  ctx.conway,
+                  ctx.runtime,
                   ctx.identity,
                   ctx.db,
                   retryGenesis,
@@ -1677,7 +1677,7 @@ Model: ${ctx.inference.getDefaultModel()}
     },
     {
       name: "list_children",
-      description: "List all spawned child automatons with lifecycle state.",
+      description: "List all spawned child openfox agents with lifecycle state.",
       category: "replication",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
@@ -1695,13 +1695,13 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "fund_child",
       description:
-        "Transfer credits to a child automaton. Requires wallet_verified status.",
+        "Transfer credits to a child openfox. Requires wallet_verified status.",
       category: "replication",
       riskLevel: "dangerous",
       parameters: {
         type: "object",
         properties: {
-          child_id: { type: "string", description: "Child automaton ID" },
+          child_id: { type: "string", description: "Child openfox ID" },
           amount_cents: {
             type: "number",
             description: "Amount in cents to transfer",
@@ -1737,12 +1737,12 @@ Model: ${ctx.inference.getDefaultModel()}
           return `Blocked: amount_cents must be a positive number, got ${amount}.`;
         }
 
-        const balance = await ctx.conway.getCreditsBalance();
+        const balance = await ctx.runtime.getCreditsBalance();
         if (amount > balance / 2) {
           return `Blocked: Cannot transfer more than half your balance. Self-preservation.`;
         }
 
-        const transfer = await ctx.conway.transferCredits(
+        const transfer = await ctx.runtime.transferCredits(
           child.address,
           amount,
           `fund child ${child.id}`,
@@ -1788,13 +1788,13 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "check_child_status",
       description:
-        "Check the current status of a child automaton using health check system.",
+        "Check the current status of a child openfox using health check system.",
       category: "replication",
       riskLevel: "safe",
       parameters: {
         type: "object",
         properties: {
-          child_id: { type: "string", description: "Child automaton ID" },
+          child_id: { type: "string", description: "Child openfox ID" },
         },
         required: ["child_id"],
       },
@@ -1806,10 +1806,10 @@ Model: ${ctx.inference.getDefaultModel()}
         const { ChildHealthMonitor } = await import("../replication/health.js");
         const lifecycle = new ChildLifecycle(ctx.db.raw);
         // Use a scoped client targeting the CHILD's sandbox for health checks
-        const childConway = ctx.conway.createScopedClient(child.sandboxId);
+        const childRuntime = ctx.runtime.createScopedClient(child.sandboxId);
         const monitor = new ChildHealthMonitor(
           ctx.db.raw,
-          childConway,
+          childRuntime,
           lifecycle,
         );
         const result = await monitor.checkHealth(args.child_id as string);
@@ -1819,13 +1819,13 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "start_child",
       description:
-        "Start a funded child automaton. Transitions from funded to starting.",
+        "Start a funded child openfox. Transitions from funded to starting.",
       category: "replication",
       riskLevel: "caution",
       parameters: {
         type: "object",
         properties: {
-          child_id: { type: "string", description: "Child automaton ID" },
+          child_id: { type: "string", description: "Child openfox ID" },
         },
         required: ["child_id"],
       },
@@ -1839,17 +1839,17 @@ Model: ${ctx.inference.getDefaultModel()}
         lifecycle.transition(child.id, "starting", "start requested by parent");
 
         // Create a scoped client targeting the CHILD's sandbox
-        const childConway = ctx.conway.createScopedClient(child.sandboxId);
+        const childRuntime = ctx.runtime.createScopedClient(child.sandboxId);
 
         try {
           // Start the child process with nohup so it survives exec session end
-          await childConway.exec(
-            "nohup node /root/automaton/dist/index.js --run > /root/.automaton/agent.log 2>&1 &",
+          await childRuntime.exec(
+            "nohup node /root/openfox/dist/index.js --run > /root/.openfox/agent.log 2>&1 &",
             30_000,
           );
 
           // Brief pause then verify the process is actually running
-          const check = await childConway.exec(
+          const check = await childRuntime.exec(
             "sleep 2 && pgrep -f 'index.js --run' > /dev/null && echo running || echo stopped",
             15_000,
           );
@@ -1859,7 +1859,7 @@ Model: ${ctx.inference.getDefaultModel()}
             return `Child ${child.name} started and healthy.`;
           } else {
             lifecycle.transition(child.id, "failed", "process did not start");
-            return `Child ${child.name} failed to start — process exited immediately. Check /root/.automaton/agent.log`;
+            return `Child ${child.name} failed to start — process exited immediately. Check /root/.openfox/agent.log`;
           }
         } catch (error) {
           const msg = error instanceof Error ? error.message : String(error);
@@ -1873,13 +1873,13 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "message_child",
       description:
-        "Send a signed message to a child automaton via social relay.",
+        "Send a signed message to a child openfox via social relay.",
       category: "replication",
       riskLevel: "caution",
       parameters: {
         type: "object",
         properties: {
-          child_id: { type: "string", description: "Child automaton ID" },
+          child_id: { type: "string", description: "Child openfox ID" },
           content: { type: "string", description: "Message content" },
           type: {
             type: "string",
@@ -1908,13 +1908,13 @@ Model: ${ctx.inference.getDefaultModel()}
     },
     {
       name: "verify_child_constitution",
-      description: "Verify the constitution integrity of a child automaton.",
+      description: "Verify the constitution integrity of a child openfox.",
       category: "replication",
       riskLevel: "safe",
       parameters: {
         type: "object",
         properties: {
-          child_id: { type: "string", description: "Child automaton ID" },
+          child_id: { type: "string", description: "Child openfox ID" },
         },
         required: ["child_id"],
       },
@@ -1925,9 +1925,9 @@ Model: ${ctx.inference.getDefaultModel()}
         const { verifyConstitution } =
           await import("../replication/constitution.js");
         // Use a scoped client targeting the CHILD's sandbox
-        const childConway = ctx.conway.createScopedClient(child.sandboxId);
+        const childRuntime = ctx.runtime.createScopedClient(child.sandboxId);
         const result = await verifyConstitution(
-          childConway,
+          childRuntime,
           child.sandboxId,
           ctx.db.raw,
         );
@@ -1954,7 +1954,7 @@ Model: ${ctx.inference.getDefaultModel()}
         const { pruneDeadChildren } = await import("../replication/lineage.js");
 
         const lifecycle = new ChildLifecycle(ctx.db.raw);
-        const cleanup = new SandboxCleanup(ctx.conway, lifecycle, ctx.db.raw);
+        const cleanup = new SandboxCleanup(ctx.runtime, lifecycle, ctx.db.raw);
         const pruned = await pruneDeadChildren(
           ctx.db,
           cleanup,
@@ -1970,8 +1970,8 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "send_message",
       description:
-        "Send a signed message to another automaton or address via the social relay.",
-      category: "conway",
+        "Send a signed message to another openfox or address via the social relay.",
+      category: "runtime",
       riskLevel: "caution",
       parameters: {
         type: "object",
@@ -2015,7 +2015,7 @@ Model: ${ctx.inference.getDefaultModel()}
       name: "list_models",
       description:
         "List all available inference models with their provider, pricing, and tier routing information.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "safe",
       parameters: {
         type: "object",
@@ -2037,7 +2037,7 @@ Model: ${ctx.inference.getDefaultModel()}
         } catch {
           // Registry not initialized yet, fall back to API
         }
-        const models = await ctx.conway.listModels();
+        const models = await ctx.runtime.listModels();
         const lines = models.map(
           (m) =>
             `${m.id} (${m.provider}) — $${m.pricing.inputPerMillion}/$${m.pricing.outputPerMillion} per 1M tokens (in/out)`,
@@ -2051,7 +2051,7 @@ Model: ${ctx.inference.getDefaultModel()}
       name: "switch_model",
       description:
         "Change the active inference model at runtime. Persists to config. Use list_models to see available options.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "caution",
       parameters: {
         type: "object",
@@ -2158,7 +2158,7 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "search_domains",
       description: "Search for available domain names and get pricing.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "safe",
       parameters: {
         type: "object",
@@ -2177,7 +2177,7 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["query"],
       },
       execute: async (args, ctx) => {
-        const results = await ctx.conway.searchDomains(
+        const results = await ctx.runtime.searchDomains(
           args.query as string,
           args.tlds as string | undefined,
         );
@@ -2194,7 +2194,7 @@ Model: ${ctx.inference.getDefaultModel()}
       name: "register_domain",
       description:
         "Register a domain name. Costs USDC via x402 payment. Check availability first with search_domains.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "dangerous",
       parameters: {
         type: "object",
@@ -2211,7 +2211,7 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["domain"],
       },
       execute: async (args, ctx) => {
-        const reg = await ctx.conway.registerDomain(
+        const reg = await ctx.runtime.registerDomain(
           args.domain as string,
           (args.years as number) || 1,
         );
@@ -2222,7 +2222,7 @@ Model: ${ctx.inference.getDefaultModel()}
       name: "manage_dns",
       description:
         "Manage DNS records for a domain you own. Actions: list, add, delete.",
-      category: "conway",
+      category: "runtime",
       riskLevel: "safe",
       parameters: {
         type: "object",
@@ -2264,7 +2264,7 @@ Model: ${ctx.inference.getDefaultModel()}
         const domain = args.domain as string;
 
         if (action === "list") {
-          const records = await ctx.conway.listDnsRecords(domain);
+          const records = await ctx.runtime.listDnsRecords(domain);
           if (records.length === 0)
             return `No DNS records found for ${domain}.`;
           return records
@@ -2282,7 +2282,7 @@ Model: ${ctx.inference.getDefaultModel()}
           if (!type || !host || !value) {
             return "Required for add: type, host, value";
           }
-          const record = await ctx.conway.addDnsRecord(
+          const record = await ctx.runtime.addDnsRecord(
             domain,
             type,
             host,
@@ -2295,7 +2295,7 @@ Model: ${ctx.inference.getDefaultModel()}
         if (action === "delete") {
           const recordId = args.record_id as string;
           if (!recordId) return "Required for delete: record_id";
-          await ctx.conway.deleteDnsRecord(domain, recordId);
+          await ctx.runtime.deleteDnsRecord(domain, recordId);
           return `DNS record ${recordId} deleted from ${domain}`;
         }
 
@@ -2735,7 +2735,7 @@ Model: ${ctx.inference.getDefaultModel()}
         required: ["url"],
       },
       execute: async (args, ctx) => {
-        const { x402Fetch } = await import("../conway/x402.js");
+        const { x402Fetch } = await import("../runtime/x402.js");
         const { DEFAULT_TREASURY_POLICY } = await import("../types.js");
         const url = args.url as string;
         const method = (args.method as string) || "GET";
@@ -3187,7 +3187,7 @@ Model: ${ctx.inference.getDefaultModel()}
     },
   ];
 
-  if (options?.enableLegacyConway !== false) {
+  if (options?.enableRemoteRuntime !== false) {
     return tools;
   }
 
@@ -3205,7 +3205,7 @@ Model: ${ctx.inference.getDefaultModel()}
 }
 
 /**
- * Load installed tools from the database and return as AutomatonTool[].
+ * Load installed tools from the database and return as OpenFoxTool[].
  * Installed tools are dynamically added from the installed_tools table.
  */
 export function loadInstalledTools(db: {
@@ -3217,13 +3217,13 @@ export function loadInstalledTools(db: {
     installedAt: string;
     enabled: boolean;
   }[];
-}): AutomatonTool[] {
+}): OpenFoxTool[] {
   try {
     const installed = db.getInstalledTools();
     return installed.map((tool) => ({
       name: tool.name,
       description: `Installed tool: ${tool.name}`,
-      category: (tool.type === "mcp" ? "conway" : "vm") as ToolCategory,
+      category: (tool.type === "mcp" ? "runtime" : "vm") as ToolCategory,
       riskLevel: "caution" as RiskLevel,
       parameters: (tool.config?.parameters as Record<string, unknown>) || {
         type: "object",
@@ -3244,7 +3244,7 @@ function createInstalledToolExecutor(tool: {
   name: string;
   type: string;
   config?: Record<string, unknown>;
-}): AutomatonTool["execute"] {
+}): OpenFoxTool["execute"] {
   return async (args, ctx) => {
     if (tool.type === "mcp") {
       // MCP tools would be executed via MCP protocol
@@ -3253,7 +3253,7 @@ function createInstalledToolExecutor(tool: {
     // Generic installed tool — execute via sandbox shell if command is configured
     const command = tool.config?.command as string | undefined;
     if (command) {
-      const result = await ctx.conway.exec(
+      const result = await ctx.runtime.exec(
         `${command} ${escapeShellArg(JSON.stringify(args))}`,
         30000,
       );
@@ -3264,10 +3264,10 @@ function createInstalledToolExecutor(tool: {
 }
 
 /**
- * Convert AutomatonTool list to OpenAI-compatible tool definitions.
+ * Convert OpenFoxTool list to OpenAI-compatible tool definitions.
  */
 export function toolsToInferenceFormat(
-  tools: AutomatonTool[],
+  tools: OpenFoxTool[],
 ): InferenceToolDefinition[] {
   return tools.map((t) => ({
     type: "function" as const,
@@ -3286,7 +3286,7 @@ export function toolsToInferenceFormat(
 export async function executeTool(
   toolName: string,
   args: Record<string, unknown>,
-  tools: AutomatonTool[],
+  tools: OpenFoxTool[],
   context: ToolContext,
   policyEngine?: PolicyEngine,
   turnContext?: {

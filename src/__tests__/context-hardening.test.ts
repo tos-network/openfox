@@ -507,14 +507,14 @@ describe("update_genesis_prompt tool hardening", () => {
     const db = createTestDb();
     const crypto = require("crypto");
 
-    const content1 = "I am a test automaton.";
+    const content1 = "I am a test openfox.";
     const hash1 = crypto.createHash("sha256").update(content1).digest("hex");
     db.setKV("soul_content_hash", hash1);
 
     expect(db.getKV("soul_content_hash")).toBe(hash1);
 
     // Different content produces different hash
-    const content2 = "I am an evolved automaton.";
+    const content2 = "I am an evolved openfox.";
     const hash2 = crypto.createHash("sha256").update(content2).digest("hex");
     expect(hash1).not.toBe(hash2);
   });
