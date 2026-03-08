@@ -1,6 +1,6 @@
 # OpenFox
 
-![OpenFox logo](LOGO.png)
+<img src="LOGO.png" alt="OpenFox logo" width="296" />
 
 **While you sleep, Fox keeps working and brings the coins back.**
 
