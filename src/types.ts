@@ -38,12 +38,13 @@ export interface AutomatonConfig {
   creatorAddress: Address;
   registeredWithConway: boolean;
   sandboxId: string;
-  conwayApiUrl: string;
-  conwayApiKey: string;
+  conwayApiUrl?: string;
+  conwayApiKey?: string;
   openaiApiKey?: string;
   anthropicApiKey?: string;
   ollamaBaseUrl?: string;
   inferenceModel: string;
+  inferenceModelRef?: string;
   maxTokensPerTurn: number;
   heartbeatConfigPath: string;
   dbPath: string;
@@ -70,7 +71,6 @@ export interface AutomatonConfig {
 }
 
 export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
-  conwayApiUrl: "https://api.conway.tech",
   inferenceModel: "gpt-5.2",
   maxTokensPerTurn: 4096,
   heartbeatConfigPath: "~/.automaton/heartbeat.yml",
@@ -81,7 +81,6 @@ export const DEFAULT_CONFIG: Partial<AutomatonConfig> = {
   maxChildren: 3,
   maxTurnsPerCycle: 25,
   childSandboxMemoryMb: 1024,
-  socialRelayUrl: "https://social.conway.tech",
   tosRpcUrl: process.env.TOS_RPC_URL,
 };
 

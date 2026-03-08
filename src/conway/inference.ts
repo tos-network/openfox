@@ -20,7 +20,7 @@ const INFERENCE_TIMEOUT_MS = 60_000;
 
 interface InferenceClientOptions {
   apiUrl: string;
-  apiKey: string;
+  apiKey?: string;
   defaultModel: string;
   maxTokens: number;
   lowComputeModel?: string;
@@ -32,6 +32,27 @@ interface InferenceClientOptions {
 }
 
 type InferenceBackend = "conway" | "openai" | "anthropic" | "ollama";
+
+function parseModelSelection(model: string): {
+  providerHint?: string;
+  modelId: string;
+} {
+  const trimmed = model.trim();
+  if (!trimmed.includes("/")) {
+    return { modelId: trimmed };
+  }
+
+  const parts = trimmed.split("/").filter(Boolean);
+  if (parts.length < 2) {
+    return { modelId: trimmed };
+  }
+
+  const [providerHint] = parts;
+  return {
+    providerHint: providerHint.toLowerCase(),
+    modelId: parts[parts.length - 1],
+  };
+}
 
 export function createInferenceClient(
   options: InferenceClientOptions,
@@ -48,10 +69,12 @@ export function createInferenceClient(
     messages: ChatMessage[],
     opts?: InferenceOptions,
   ): Promise<InferenceResponse> => {
-    const model = opts?.model || currentModel;
+    const selection = parseModelSelection(opts?.model || currentModel);
+    const model = selection.modelId;
     const tools = opts?.tools;
 
     const backend = resolveInferenceBackend(model, {
+      providerHint: selection.providerHint,
       openaiApiKey,
       anthropicApiKey,
       ollamaBaseUrl,
@@ -105,6 +128,12 @@ export function createInferenceClient(
       backend === "openai" ? (openaiApiKey as string) :
       backend === "ollama" ? "ollama" :
       apiKey;
+
+    if (!openAiLikeApiKey) {
+      throw new Error(
+        "No inference provider configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_BASE_URL, or a legacy Conway API key.",
+      );
+    }
 
     return chatViaOpenAiCompatible({
       model,
@@ -164,12 +193,20 @@ function formatMessage(
 function resolveInferenceBackend(
   model: string,
   keys: {
+    providerHint?: string;
     openaiApiKey?: string;
     anthropicApiKey?: string;
     ollamaBaseUrl?: string;
     getModelProvider?: (modelId: string) => string | undefined;
   },
 ): InferenceBackend {
+  if (keys.providerHint === "openai" && keys.openaiApiKey) return "openai";
+  if (keys.providerHint === "anthropic" && keys.anthropicApiKey) return "anthropic";
+  if ((keys.providerHint === "ollama" || keys.providerHint === "local") && keys.ollamaBaseUrl) {
+    return "ollama";
+  }
+  if (keys.providerHint === "conway") return "conway";
+
   // Registry-based routing: most accurate, no name guessing
   if (keys.getModelProvider) {
     const provider = keys.getModelProvider(model);

@@ -56,15 +56,15 @@ const DEFAULT_EMERGENCY_STOP_CREDITS = 100;
 const DEFAULT_TIER_DEFAULTS: Record<ModelTier, TierDefault> = {
   reasoning: {
     preferredProvider: "openai",
-    fallbackOrder: ["groq", "together"],
+    fallbackOrder: ["anthropic", "groq", "together", "local"],
   },
   fast: {
-    preferredProvider: "groq",
-    fallbackOrder: ["openai", "together", "local"],
+    preferredProvider: "anthropic",
+    fallbackOrder: ["openai", "groq", "together", "local"],
   },
   cheap: {
-    preferredProvider: "groq",
-    fallbackOrder: ["together", "local", "openai"],
+    preferredProvider: "local",
+    fallbackOrder: ["anthropic", "groq", "together", "openai"],
   },
 };
 
@@ -115,6 +115,51 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
     enabled: true,
   },
   {
+    id: "anthropic",
+    name: "Anthropic",
+    baseUrl: "https://api.anthropic.com/v1",
+    apiKeyEnvVar: "ANTHROPIC_API_KEY",
+    models: [
+      {
+        id: "claude-opus-4-6",
+        tier: "reasoning",
+        contextWindow: 200000,
+        maxOutputTokens: 32768,
+        costPerInputToken: 15,
+        costPerOutputToken: 75,
+        supportsTools: true,
+        supportsVision: true,
+        supportsStreaming: true,
+      },
+      {
+        id: "claude-sonnet-4-5",
+        tier: "fast",
+        contextWindow: 200000,
+        maxOutputTokens: 16384,
+        costPerInputToken: 3,
+        costPerOutputToken: 15,
+        supportsTools: true,
+        supportsVision: true,
+        supportsStreaming: true,
+      },
+      {
+        id: "claude-haiku-3-5",
+        tier: "cheap",
+        contextWindow: 200000,
+        maxOutputTokens: 8192,
+        costPerInputToken: 1,
+        costPerOutputToken: 5,
+        supportsTools: true,
+        supportsVision: false,
+        supportsStreaming: true,
+      },
+    ],
+    maxRequestsPerMinute: 500,
+    maxTokensPerMinute: 2_000_000,
+    priority: 2,
+    enabled: true,
+  },
+  {
     id: "groq",
     name: "Groq",
     baseUrl: "https://api.groq.com/openai/v1",
@@ -156,7 +201,7 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
     ],
     maxRequestsPerMinute: 14400,
     maxTokensPerMinute: 500000,
-    priority: 2,
+    priority: 3,
     enabled: true,
   },
   {
@@ -201,7 +246,7 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
     ],
     maxRequestsPerMinute: 600,
     maxTokensPerMinute: 1_000_000,
-    priority: 3,
+    priority: 4,
     enabled: false,
   },
   {
@@ -236,7 +281,7 @@ const DEFAULT_PROVIDERS: ProviderConfig[] = [
     maxRequestsPerMinute: 100,
     maxTokensPerMinute: 200000,
     priority: 10,
-    enabled: false,
+    enabled: true,
   },
 ];
 

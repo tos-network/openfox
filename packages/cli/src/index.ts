@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Conway Automaton CLI
+ * Automaton CLI
  *
  * Creator-facing CLI for interacting with an automaton.
  * Usage: automaton-cli <command> [args]
@@ -31,12 +31,12 @@ async function main(): Promise<void> {
       break;
     default:
       console.log(`
-Conway Automaton CLI - Creator Tools
+Automaton CLI - Creator Tools
 
 Usage:
   automaton-cli status              Show automaton status
   automaton-cli logs [--tail N]     View automaton logs
-  automaton-cli fund <amount> [--to 0x...]  Transfer Conway credits
+  automaton-cli fund <amount> [--to 0x...]  Legacy Conway credits transfer
   automaton-cli send <to-address> <message> Send a social message
   automaton-cli tos-status          Show TOS wallet status
   automaton-cli tos-send <to> <amount> [--wait]   Send native TOS transfer

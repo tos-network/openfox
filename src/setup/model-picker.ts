@@ -18,7 +18,6 @@ import { promptOptional, closePrompts } from "./prompts.js";
 const PROVIDER_LABEL: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
-  conway: "Conway",
   ollama: "Ollama",
   other: "Other",
 };
@@ -74,6 +73,7 @@ export async function runModelPicker(): Promise<void> {
 
   const selected = models[idx];
   config.inferenceModel = selected.modelId;
+  config.inferenceModelRef = `${selected.provider}/${selected.modelId}`;
   if (config.modelStrategy) {
     config.modelStrategy.inferenceModel = selected.modelId;
   }

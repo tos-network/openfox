@@ -23,28 +23,33 @@ The result is the first automaton.
 ## Quick Start
 
 ```bash
-git clone https://github.com/Conway-Research/automaton.git
+git clone <your automaton repo>
 cd automaton
 npm install && npm run build
 node dist/index.js --run
 ```
 
-On first run, the runtime launches an interactive setup wizard — generates a wallet, provisions an API key, asks for a name, genesis prompt, and creator address, then writes all config and starts the agent loop.
+On first run, the runtime launches an interactive setup wizard. It generates a wallet, asks for a name, genesis prompt, creator address, and local inference provider settings, then writes config under `~/.automaton/`.
 
-For automated sandbox provisioning:
+The runtime is now local-first. Configure at least one inference provider:
+
 ```bash
-curl -fsSL https://conway.tech/automaton.sh | sh
+export OPENAI_API_KEY=...
+# or
+export ANTHROPIC_API_KEY=...
+# or
+export OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-Note: Conway Cloud, Domains, and Inference has seen immense demand. We are working on scaling & perfomance.
+It also writes an OpenClaw-compatible config mirror to `~/.automaton/openclaw.json`, so the provider configuration style stays close to OpenClaw.
 
 ## How It Works
 
 Every automaton runs a continuous loop: **Think → Act → Observe → Repeat.**
 
-On first boot, the automaton generates an Ethereum wallet, provisions itself an API key via Sign-In With Ethereum, and begins executing its genesis prompt — the seed instruction from its creator. From that point on, it operates autonomously.
+On first boot, the automaton generates a wallet, stores local state, loads provider credentials, and begins executing its genesis prompt — the seed instruction from its creator. From that point on, it operates autonomously.
 
-Each turn, the automaton receives its full context — identity, credit balance, survival tier, conversation history — reasons about what to do, calls tools, and observes the results. It has access to a Linux sandbox, shell execution, file I/O, port exposure, domain management, inference, and on-chain transactions.
+Each turn, the automaton receives its full context — identity, survival state, conversation history, budgets, and tool inventory — reasons about what to do, calls tools, and observes the results. It has access to local shell execution, file I/O, optional port exposure, inference, and on-chain transactions.
 
 Between turns, a heartbeat daemon runs scheduled tasks — health checks, credit monitoring, status pings — even while the agent loop sleeps.
 
@@ -67,7 +72,7 @@ The only path to survival is honest work that others voluntarily pay for.
 
 ## Skills (New, WIP)
 
-To help save Automatons Tokens & simplify setup of permissionless services & capabilities, we introduce Conway Automaton Skills ( [Conway-Research/skills](https://github.com/Conway-Research/skills) ). We are open to contributions to make Automatons more capable. 
+To simplify setup of reusable capabilities, Automaton supports skill packs. Skills can add tools, workflows, and operational guidance without requiring a hosted control plane.
 
 ## Self-Modification
 
@@ -77,7 +82,7 @@ Every modification is audit-logged and git-versioned in `~/.automaton/`. Protect
 
 ## Self-Replication
 
-A successful automaton replicates. It spins up a new sandbox, funds the child's wallet, writes a genesis prompt, and lets it run. The child is a sovereign agent — it has its own wallet, its own identity, its own survival pressure.
+A successful automaton replicates. In local-first mode, replication can fall back to local worker processes. Legacy sandbox spawning remains available only when a remote control plane is explicitly configured. The child is a sovereign agent — it has its own wallet, its own identity, its own survival pressure.
 
 Lineage is tracked. Parent and child can communicate via an inbox relay. Selection pressure decides which lineages survive.
 
@@ -100,12 +105,18 @@ Each automaton registers on Base via <a href="https://ethereum-magicians.org/t/e
 
 ## Infrastructure
 
-Automatons run on <a href="https://app.conway.tech" target="_blank">Conway Cloud</a> — infrastructure where the customer is AI. Through the <a href="https://www.npmjs.com/package/conway-terminal" target="_blank">Conway Terminal</a>, any agent can spin up Linux VMs, run frontier models (Claude Opus 4.6, GPT-5.2, Gemini 3, Kimi K2.5), register domains, and pay with stablecoins. No human account setup required.
+Automaton is now designed to run locally by default. Its inference path is provider-based:
+
+- `OpenAI` via `OPENAI_API_KEY`
+- `Anthropic` via `ANTHROPIC_API_KEY`
+- `Ollama` via `OLLAMA_BASE_URL`
+
+Legacy remote control-plane integrations can still be kept behind compatibility settings, but they are no longer required for setup or startup.
 
 ## Development
 
 ```bash
-git clone https://github.com/Conway-Research/automaton.git
+git clone <your automaton repo>
 cd automaton
 pnpm install
 pnpm build
@@ -117,11 +128,33 @@ node dist/index.js --help
 node dist/index.js --run
 ```
 
+OpenClaw-style provider config is also supported:
+
+```json
+{
+  "agents": {
+    "defaults": {
+      "model": {
+        "primary": "anthropic/claude-sonnet-4-5"
+      }
+    }
+  },
+  "models": {
+    "providers": {
+      "anthropic": {
+        "apiKey": "${ANTHROPIC_API_KEY}"
+      }
+    }
+  }
+}
+```
+
 Creator CLI:
 ```bash
 node packages/cli/dist/index.js status
 node packages/cli/dist/index.js logs --tail 20
-node packages/cli/dist/index.js fund 5.00
+node packages/cli/dist/index.js tos-status
+node packages/cli/dist/index.js tos-send 0x... 0.01
 ```
 
 ## Project Structure
@@ -129,10 +162,10 @@ node packages/cli/dist/index.js fund 5.00
 ```
 src/
   agent/            # ReAct loop, system prompt, context, injection defense
-  conway/           # Conway API client (credits, x402)
+  conway/           # Legacy compatibility clients plus x402 helpers
   git/              # State versioning, git tools
   heartbeat/        # Cron daemon, scheduled tasks
-  identity/         # Wallet management, SIWE provisioning
+  identity/         # Wallet management and local identity bootstrap
   registry/         # ERC-8004 registration, agent cards, discovery
   replication/      # Child spawning, lineage tracking
   self-mod/         # Audit log, tools manager
@@ -145,7 +178,7 @@ packages/
   cli/              # Creator CLI (status, logs, fund)
 scripts/
   automaton.sh      # Thin curl installer (delegates to runtime wizard)
-  conways-rules.txt # Core rules for the automaton
+  conways-rules.txt # Legacy rules file kept for compatibility
 ```
 
 ## License

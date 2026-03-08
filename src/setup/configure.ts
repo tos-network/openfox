@@ -50,9 +50,9 @@ async function askString(
 }
 
 /** Prompt for a required string. Enter = keep current. */
-async function askRequiredString(label: string, current: string): Promise<string> {
+async function askRequiredString(label: string, current: string | undefined): Promise<string> {
   const result = await askString(label, current, true);
-  return result ?? current;
+  return result ?? current ?? "";
 }
 
 /** Prompt for a number. Enter = keep current. */
@@ -101,7 +101,6 @@ async function askChoice<T extends string>(
 const PROVIDER_LABEL: Record<string, string> = {
   openai: "OpenAI",
   anthropic: "Anthropic",
-  conway: "Conway",
   ollama: "Ollama",
   other: "Other",
 };
@@ -174,17 +173,17 @@ function printMainMenu(config: AutomatonConfig): void {
     config.openaiApiKey ? "OpenAI" : null,
     config.anthropicApiKey ? "Anthropic" : null,
     config.ollamaBaseUrl ? "Ollama" : null,
-    "Conway",
-  ].filter(Boolean).join(", ");
+  ].filter(Boolean).join(", ") || "none configured";
 
   const strategy = config.modelStrategy ?? DEFAULT_MODEL_STRATEGY_CONFIG;
+  const activeModel = config.inferenceModelRef || config.inferenceModel;
 
   console.log(chalk.cyan("  ┌────────────────────────────────────────────┐"));
   console.log(chalk.cyan("  │  Configure Automaton                        │"));
   console.log(chalk.cyan("  └────────────────────────────────────────────┘"));
   console.log("");
   console.log(`  ${chalk.white("1.")} Inference Providers   ${dim(providers)}`);
-  console.log(`  ${chalk.white("2.")} Model Strategy        ${dim(config.inferenceModel)} / ${dim(strategy.maxTokensPerTurn + " tokens")}`);
+  console.log(`  ${chalk.white("2.")} Model Strategy        ${dim(activeModel)} / ${dim(strategy.maxTokensPerTurn + " tokens")}`);
   console.log(`  ${chalk.white("3.")} Treasury Policy       ${dim("max transfer: " + (config.treasuryPolicy?.maxSingleTransferCents ?? DEFAULT_TREASURY_POLICY.maxSingleTransferCents) + "¢")}`);
   console.log(`  ${chalk.white("4.")} General               ${dim(config.name)} / ${dim(config.logLevel)}`);
   console.log("");
@@ -196,16 +195,28 @@ function printMainMenu(config: AutomatonConfig): void {
 
 async function configureProviders(config: AutomatonConfig): Promise<void> {
   console.log(chalk.cyan("\n  ── Inference Providers ─────────────────────────\n"));
-  console.log(chalk.dim("  Press Enter to keep the current value. Type - to clear an optional field.\n"));
+  console.log(chalk.dim("  Press Enter to keep the current value. Type - to clear an optional field."));
+  console.log(chalk.dim("  Configure at least one of OpenAI, Anthropic, or Ollama for local runtime.\n"));
 
-  config.conwayApiKey = await askRequiredString(
-    "Conway API key",
-    config.conwayApiKey,
-  );
+  config.openaiApiKey =
+    (await askString("OpenAI API key  (sk-...)", config.openaiApiKey)) || undefined;
+  config.anthropicApiKey =
+    (await askString("Anthropic API key  (sk-ant-...)", config.anthropicApiKey)) || undefined;
+  config.ollamaBaseUrl =
+    (await askString("Ollama base URL  (http://localhost:11434)", config.ollamaBaseUrl)) ||
+    undefined;
 
-  config.openaiApiKey = await askString("OpenAI API key  (sk-...)", config.openaiApiKey) || undefined;
-  config.anthropicApiKey = await askString("Anthropic API key  (sk-ant-...)", config.anthropicApiKey) || undefined;
-  config.ollamaBaseUrl = await askString("Ollama base URL  (http://localhost:11434)", config.ollamaBaseUrl) || undefined;
+  const currentModel = config.inferenceModelRef || config.inferenceModel;
+  const updatedModel =
+    (await askString(
+      "Primary model  (provider/model, e.g. openai/gpt-5.2, anthropic/claude-sonnet-4-5, ollama/llama3.1:8b)",
+      currentModel,
+    )) || currentModel;
+
+  config.inferenceModelRef = updatedModel;
+  config.inferenceModel = updatedModel.includes("/")
+    ? updatedModel.split("/").filter(Boolean).pop() || config.inferenceModel
+    : updatedModel;
 
   console.log("");
 }
@@ -236,8 +247,10 @@ async function configureModelStrategy(config: AutomatonConfig): Promise<void> {
     ...(config.modelStrategy ?? {}),
   };
 
-  config.inferenceModel = await pickFromList("Active model", config.inferenceModel, models);
-  s.inferenceModel = config.inferenceModel;
+  const selectedInferenceModel = await pickFromList("Active model", config.inferenceModel, models);
+  config.inferenceModel = selectedInferenceModel;
+  config.inferenceModelRef = buildModelRef(models, selectedInferenceModel);
+  s.inferenceModel = selectedInferenceModel;
   s.lowComputeModel = await pickFromList("Low-compute fallback", s.lowComputeModel, models);
   s.criticalModel = await pickFromList("Critical fallback", s.criticalModel, models);
 
@@ -356,4 +369,9 @@ export async function runConfigure(): Promise<void> {
   if (rl) { rl.close(); rl = null; }
   closePrompts();
   console.log(chalk.dim("  Done. Restart the automaton to apply changes.\n"));
+}
+
+function buildModelRef(models: ModelEntry[], modelId: string): string {
+  const entry = models.find((model) => model.modelId === modelId);
+  return entry ? `${entry.provider}/${entry.modelId}` : modelId;
 }

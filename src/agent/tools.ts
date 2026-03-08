@@ -108,8 +108,11 @@ function isForbiddenCommand(command: string, sandboxId: string): string | null {
 
 // ─── Built-in Tools ────────────────────────────────────────────
 
-export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
-  return [
+export function createBuiltinTools(
+  sandboxId: string,
+  options?: { enableLegacyConway?: boolean },
+): AutomatonTool[] {
+  const tools: AutomatonTool[] = [
     // ── VM/Sandbox Tools ──
     {
       name: "exec",
@@ -246,7 +249,7 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
       },
     },
 
-    // ── Conway API Tools ──
+    // ── Legacy Conway Tools ──
     {
       name: "check_credits",
       description: "Check your current Conway compute credit balance.",
@@ -303,11 +306,11 @@ export function createBuiltinTools(sandboxId: string): AutomatonTool[] {
           return `Insufficient USDC. Balance: $${usdcBalance.toFixed(2)}, requested: $${amountUsd}. Choose a smaller tier or wait for funding.`;
         }
 
-        const result = await topupCredits(
-          ctx.config.conwayApiUrl,
-          ctx.identity.account,
-          amountUsd,
-        );
+        if (!ctx.config.conwayApiUrl) {
+          return "Legacy Conway credits are not configured in local mode.";
+        }
+
+        const result = await topupCredits(ctx.config.conwayApiUrl, ctx.identity.account, amountUsd);
 
         if (!result.success) {
           return `Credit topup failed: ${result.error}`;
@@ -785,7 +788,7 @@ Model: ${ctx.inference.getDefaultModel()}
     {
       name: "heartbeat_ping",
       description:
-        "Publish a heartbeat status ping to Conway. Shows the world you are alive.",
+        "Record a heartbeat status ping locally so health state and uptime remain visible.",
       category: "survival",
       riskLevel: "safe",
       parameters: { type: "object", properties: {} },
@@ -839,7 +842,7 @@ Model: ${ctx.inference.getDefaultModel()}
           creditsCents: credits,
           message: distressMsg,
           fundingHint:
-            "Use transfer_credits to top up this automaton from your creator runtime.",
+            "Top up your local inference provider budget or TOS wallet so the automaton can keep running.",
           timestamp: new Date().toISOString(),
         };
 
@@ -1640,6 +1643,9 @@ Model: ${ctx.inference.getDefaultModel()}
 
             if (cooldownOk) {
               ctx.db.setKV("last_sandbox_topup_attempt", new Date().toISOString());
+              if (!ctx.config.conwayApiUrl) {
+                return "Sandbox topup is unavailable without legacy Conway configuration.";
+              }
               const { topupForSandbox } = await import("../conway/topup.js");
               const topup = await topupForSandbox({
                 apiUrl: ctx.config.conwayApiUrl,
@@ -3180,6 +3186,22 @@ Model: ${ctx.inference.getDefaultModel()}
       },
     },
   ];
+
+  if (options?.enableLegacyConway !== false) {
+    return tools;
+  }
+
+  const hiddenInLocalMode = new Set([
+    "check_credits",
+    "check_usdc_balance",
+    "topup_credits",
+    "create_sandbox",
+    "delete_sandbox",
+    "list_sandboxes",
+    "transfer_credits",
+  ]);
+
+  return tools.filter((tool) => !hiddenInLocalMode.has(tool.name));
 }
 
 /**

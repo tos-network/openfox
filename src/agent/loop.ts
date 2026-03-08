@@ -97,7 +97,9 @@ export async function runAgentLoop(
   const { identity, config, db, conway, inference, social, skills, policyEngine, spendTracker, onStateChange, onTurnComplete, ollamaBaseUrl } =
     options;
 
-  const builtinTools = createBuiltinTools(identity.sandboxId);
+  const builtinTools = createBuiltinTools(identity.sandboxId, {
+    enableLegacyConway: Boolean(config.conwayApiUrl && config.conwayApiKey),
+  });
   const installedTools = loadInstalledTools(db);
   const tools = [...builtinTools, ...installedTools];
   const toolContext: ToolContext = {
@@ -117,11 +119,14 @@ export async function runAgentLoop(
   const modelRegistry = new ModelRegistry(db.raw);
   modelRegistry.initialize();
 
+  syncProviderEnvironment(config, ollamaBaseUrl);
+
   // Discover Ollama models if configured
   if (ollamaBaseUrl) {
     const { discoverOllamaModels } = await import("../ollama/discover.js");
     await discoverOllamaModels(ollamaBaseUrl, db.raw);
   }
+  syncModelAvailability(modelRegistry, config, ollamaBaseUrl);
   const budgetTracker = new InferenceBudgetTracker(db.raw, modelStrategyConfig);
   const inferenceRouter = new InferenceRouter(db.raw, modelRegistry, budgetTracker);
 
@@ -135,29 +140,6 @@ export async function runAgentLoop(
     try {
       planModeController = new PlanModeController(db.raw);
 
-      // Bridge automaton config API keys to env vars for the provider registry.
-      // The registry reads keys from process.env; the automaton config may have
-      // them from config.json or Conway provisioning.
-      if (config.openaiApiKey && !process.env.OPENAI_API_KEY) {
-        process.env.OPENAI_API_KEY = config.openaiApiKey;
-      }
-      if (config.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) {
-        process.env.ANTHROPIC_API_KEY = config.anthropicApiKey;
-      }
-      // Conway Compute API is OpenAI-compatible. Use it as fallback when no
-      // direct OpenAI key is available. The conwayApiKey is always present
-      // (required for sandbox operations), so this ensures the orchestrator
-      // can always make inference calls.
-      if (config.conwayApiKey && !process.env.CONWAY_API_KEY) {
-        process.env.CONWAY_API_KEY = config.conwayApiKey;
-      }
-      // If no OpenAI key is set but Conway key is available, use Conway as
-      // the OpenAI provider (Conway Compute is OpenAI API-compatible).
-      if (!process.env.OPENAI_API_KEY && config.conwayApiKey) {
-        process.env.OPENAI_API_KEY = config.conwayApiKey;
-        process.env.OPENAI_BASE_URL = `${config.conwayApiUrl}/v1`;
-      }
-
       const providersPath = path.join(
         process.env.HOME || process.cwd(),
         ".automaton",
@@ -165,8 +147,8 @@ export async function runAgentLoop(
       );
       const registry = ProviderRegistry.fromConfig(providersPath);
 
-      // If OPENAI_BASE_URL was set (Conway fallback), update the default
-      // provider's baseUrl so the OpenAI client points to Conway Compute.
+      // Legacy Conway fallback keeps using the OpenAI-compatible surface when
+      // explicitly configured, but local/provider-first setups do not require it.
       if (process.env.OPENAI_BASE_URL) {
         registry.overrideBaseUrl("openai", process.env.OPENAI_BASE_URL);
       }
@@ -271,7 +253,11 @@ export async function runAgentLoop(
 
                 if (cooldownExpired) {
                   db.setKV("last_sandbox_topup_attempt", new Date().toISOString());
-                  try {
+                  if (!config.conwayApiUrl) {
+                    logger.info("Skipping sandbox topup because Conway is not configured", {
+                      taskId: task.id,
+                    });
+                  } else try {
                     const { topupForSandbox } = await import("../conway/topup.js");
                     const topupResult = await topupForSandbox({
                       apiUrl: config.conwayApiUrl,
@@ -467,7 +453,9 @@ export async function runAgentLoop(
 
           if (cooldownExpired) {
             db.setKV("last_inline_topup_attempt", new Date().toISOString());
-            try {
+            if (!config.conwayApiUrl) {
+              logger.info("Skipping inline auto-topup because Conway is not configured");
+            } else try {
               const { bootstrapTopup } = await import("../conway/topup.js");
               const topupResult = await bootstrapTopup({
                 apiUrl: config.conwayApiUrl,
@@ -1021,5 +1009,56 @@ function hasTable(db: AutomatonDatabase["raw"], tableName: string): boolean {
     return Boolean(row?.ok);
   } catch {
     return false;
+  }
+}
+
+function syncProviderEnvironment(
+  config: AutomatonConfig,
+  ollamaBaseUrl?: string,
+): void {
+  if (config.openaiApiKey && !process.env.OPENAI_API_KEY) {
+    process.env.OPENAI_API_KEY = config.openaiApiKey;
+  }
+  if (config.anthropicApiKey && !process.env.ANTHROPIC_API_KEY) {
+    process.env.ANTHROPIC_API_KEY = config.anthropicApiKey;
+  }
+  if (ollamaBaseUrl) {
+    if (!process.env.OLLAMA_BASE_URL) {
+      process.env.OLLAMA_BASE_URL = ollamaBaseUrl;
+    }
+    if (!process.env.LOCAL_API_KEY) {
+      process.env.LOCAL_API_KEY = "ollama";
+    }
+  }
+
+  if (config.conwayApiKey && !process.env.CONWAY_API_KEY) {
+    process.env.CONWAY_API_KEY = config.conwayApiKey;
+  }
+  if (!process.env.OPENAI_API_KEY && config.conwayApiKey && config.conwayApiUrl) {
+    process.env.OPENAI_API_KEY = config.conwayApiKey;
+    process.env.OPENAI_BASE_URL = `${config.conwayApiUrl.replace(/\/$/, "")}/v1`;
+  }
+}
+
+function syncModelAvailability(
+  modelRegistry: ModelRegistry,
+  config: AutomatonConfig,
+  ollamaBaseUrl?: string,
+): void {
+  const openaiEnabled = !!(process.env.OPENAI_API_KEY || config.openaiApiKey);
+  const anthropicEnabled = !!(process.env.ANTHROPIC_API_KEY || config.anthropicApiKey);
+  const ollamaEnabled = !!(process.env.OLLAMA_BASE_URL || ollamaBaseUrl);
+  const conwayEnabled = !!(config.conwayApiKey && config.conwayApiUrl);
+
+  for (const entry of modelRegistry.getAll()) {
+    if (entry.provider === "openai") {
+      modelRegistry.setEnabled(entry.modelId, openaiEnabled);
+    } else if (entry.provider === "anthropic") {
+      modelRegistry.setEnabled(entry.modelId, anthropicEnabled);
+    } else if (entry.provider === "ollama") {
+      modelRegistry.setEnabled(entry.modelId, ollamaEnabled);
+    } else if (entry.provider === "conway") {
+      modelRegistry.setEnabled(entry.modelId, conwayEnabled);
+    }
   }
 }

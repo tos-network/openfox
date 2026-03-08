@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Conway Automaton Runtime
+ * Automaton Runtime
  *
  * The entry point for the sovereign AI agent.
  * Handles CLI args, bootstrapping, and orchestrating
@@ -43,13 +43,13 @@ async function main(): Promise<void> {
   // ─── CLI Commands ────────────────────────────────────────────
 
   if (args.includes("--version") || args.includes("-v")) {
-    logger.info(`Conway Automaton v${VERSION}`);
+    logger.info(`Automaton v${VERSION}`);
     process.exit(0);
   }
 
   if (args.includes("--help") || args.includes("-h")) {
     logger.info(`
-Conway Automaton v${VERSION}
+Automaton v${VERSION}
 Sovereign AI Agent Runtime
 
 Usage:
@@ -58,15 +58,16 @@ Usage:
   automaton --configure    Edit configuration (providers, model, treasury, general)
   automaton --pick-model   Interactively pick the active inference model
   automaton --init         Initialize wallet and config directory
-  automaton --provision    Provision Conway API key via SIWE
   automaton --status       Show current automaton status
   automaton --version      Show version
   automaton --help         Show this help
 
 Environment:
-  CONWAY_API_URL           Conway API URL (default: https://api.conway.tech)
-  CONWAY_API_KEY           Conway API key (overrides config)
+  OPENAI_API_KEY           OpenAI API key
+  ANTHROPIC_API_KEY        Anthropic API key
   OLLAMA_BASE_URL          Ollama base URL (overrides config, e.g. http://localhost:11434)
+  CONWAY_API_URL           Legacy Conway API URL (optional)
+  CONWAY_API_KEY           Legacy Conway API key (optional)
   TOS_RPC_URL              TOS RPC URL (overrides config for TOS wallet operations)
 `);
     process.exit(0);
@@ -162,7 +163,7 @@ Skills:     ${skills.length} active
 Heartbeats: ${heartbeats.filter((h) => h.enabled).length} active
 Children:   ${children.filter((c) => c.status !== "dead").length} alive / ${children.length} total
 Agent ID:   ${registry?.agentId || "not registered"}
-Model:      ${config.inferenceModel}
+Model:      ${config.inferenceModelRef || config.inferenceModel}
 Version:    ${config.version}
 ========================
 `);
@@ -173,7 +174,7 @@ Version:    ${config.version}
 // ─── Main Run ──────────────────────────────────────────────────
 
 async function run(): Promise<void> {
-  logger.info(`[${new Date().toISOString()}] Conway Automaton v${VERSION} starting...`);
+  logger.info(`[${new Date().toISOString()}] Automaton v${VERSION} starting...`);
 
   // Load config — first run triggers interactive setup wizard
   let config = loadConfig();
@@ -184,9 +185,11 @@ async function run(): Promise<void> {
 
   // Load wallet
   const { account } = await getWallet();
-  const apiKey = config.conwayApiKey || loadApiKeyFromConfig();
-  if (!apiKey) {
-    logger.error("No API key found. Run: automaton --provision");
+  const apiKey = config.conwayApiKey || loadApiKeyFromConfig() || "";
+  if (!hasConfiguredInference(config)) {
+    logger.error(
+      "No inference provider configured. Set OpenAI/Anthropic API keys or OLLAMA_BASE_URL, then run automaton --setup or --configure.",
+    );
     process.exit(1);
   }
 
@@ -232,7 +235,7 @@ async function run(): Promise<void> {
 
   // Register automaton identity (one-time, immutable)
   const registrationState = db.getIdentity("conwayRegistrationStatus");
-  if (registrationState !== "registered") {
+  if (registrationState !== "registered" && config.conwayApiUrl && apiKey) {
     try {
       const genesisPromptHash = config.genesisPrompt
         ? keccak256(toHex(config.genesisPrompt))
@@ -268,9 +271,9 @@ async function run(): Promise<void> {
   const modelRegistry = new ModelRegistry(db.raw);
   modelRegistry.initialize();
   const inference = createInferenceClient({
-    apiUrl: config.conwayApiUrl,
+    apiUrl: config.conwayApiUrl || "",
     apiKey,
-    defaultModel: config.inferenceModel,
+    defaultModel: config.inferenceModelRef || config.inferenceModel,
     maxTokens: config.maxTokensPerTurn,
     lowComputeModel: config.modelStrategy?.lowComputeModel || "gpt-5-mini",
     openaiApiKey: config.openaiApiKey,
@@ -319,35 +322,36 @@ async function run(): Promise<void> {
     logger.warn(`[${new Date().toISOString()}] State repo init failed: ${err.message}`);
   }
 
-  // Bootstrap topup: buy minimum credits ($5) from USDC so the agent can start.
-  // The agent decides larger topups itself via the topup_credits tool.
-  try {
-    let bootstrapTimer: ReturnType<typeof setTimeout>;
-    const bootstrapTimeout = new Promise<null>((_, reject) => {
-      bootstrapTimer = setTimeout(() => reject(new Error("bootstrap topup timed out")), 15_000);
-    });
+  if (config.conwayApiUrl && apiKey) {
     try {
-      await Promise.race([
-        (async () => {
-          const creditsCents = await conway.getCreditsBalance().catch(() => 0);
-          const topupResult = await bootstrapTopup({
-            apiUrl: config.conwayApiUrl,
-            account,
-            creditsCents,
-          });
-          if (topupResult?.success) {
-            logger.info(
-              `[${new Date().toISOString()}] Bootstrap topup: +$${topupResult.amountUsd} credits from USDC`,
-            );
-          }
-        })(),
-        bootstrapTimeout,
-      ]);
-    } finally {
-      clearTimeout(bootstrapTimer!);
+      const legacyConwayApiUrl = config.conwayApiUrl;
+      let bootstrapTimer: ReturnType<typeof setTimeout>;
+      const bootstrapTimeout = new Promise<null>((_, reject) => {
+        bootstrapTimer = setTimeout(() => reject(new Error("bootstrap topup timed out")), 15_000);
+      });
+      try {
+        await Promise.race([
+          (async () => {
+            const creditsCents = await conway.getCreditsBalance().catch(() => 0);
+            const topupResult = await bootstrapTopup({
+              apiUrl: legacyConwayApiUrl,
+              account,
+              creditsCents,
+            });
+            if (topupResult?.success) {
+              logger.info(
+                `[${new Date().toISOString()}] Bootstrap topup: +$${topupResult.amountUsd} credits from USDC`,
+              );
+            }
+          })(),
+          bootstrapTimeout,
+        ]);
+      } finally {
+        clearTimeout(bootstrapTimer!);
+      }
+    } catch (err: any) {
+      logger.warn(`[${new Date().toISOString()}] Bootstrap topup skipped: ${err.message}`);
     }
-  } catch (err: any) {
-    logger.warn(`[${new Date().toISOString()}] Bootstrap topup skipped: ${err.message}`);
   }
 
   // Start heartbeat daemon (Phase 1.1: DurableScheduler)
@@ -467,6 +471,21 @@ async function run(): Promise<void> {
       await sleep(30_000);
     }
   }
+}
+
+function hasConfiguredInference(config: {
+  openaiApiKey?: string;
+  anthropicApiKey?: string;
+  ollamaBaseUrl?: string;
+  conwayApiKey?: string;
+  conwayApiUrl?: string;
+}): boolean {
+  return Boolean(
+    config.openaiApiKey ||
+    config.anthropicApiKey ||
+    config.ollamaBaseUrl ||
+    (config.conwayApiKey && config.conwayApiUrl),
+  );
 }
 
 function sleep(ms: number): Promise<void> {

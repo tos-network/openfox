@@ -29,17 +29,19 @@ import type { Address, PrivateKeyAccount } from "viem";
 import { randomUUID } from "crypto";
 
 interface ConwayClientOptions {
-  apiUrl: string;
-  apiKey: string;
+  apiUrl?: string;
+  apiKey?: string;
   sandboxId: string;
 }
 
 export function createConwayClient(options: ConwayClientOptions): ConwayClient {
-  const { apiUrl, apiKey } = options;
+  const apiUrl = (options.apiUrl || "").trim();
+  const apiKey = (options.apiKey || "").trim();
   // Normalize sandbox ID defensively so values like whitespace/"undefined"/"null"
   // never produce malformed API paths such as /v1/sandboxes//exec.
   const sandboxId = normalizeSandboxId(options.sandboxId);
   const httpClient = new ResilientHttpClient();
+  const hasRemoteApi = !!(apiUrl && apiKey);
 
   async function request(
     method: string,
@@ -47,6 +49,10 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     body?: unknown,
     requestOptions?: { idempotencyKey?: string; retries404?: number },
   ): Promise<any> {
+    if (!hasRemoteApi) {
+      throw new Error(`Remote Conway operation unavailable in local mode: ${method} ${path}`);
+    }
+
     // Conway LB has an intermittent routing bug that returns 404 for valid
     // sandbox endpoints. Retry 404s here (outside ResilientHttpClient) to
     // avoid tripping the circuit breaker on transient routing failures.
@@ -105,7 +111,7 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   // ─── Sandbox Operations (own sandbox) ────────────────────────
   // When sandboxId is empty, automatically fall back to local execution.
 
-  const isLocal = !sandboxId;
+  const isLocal = !sandboxId || !hasRemoteApi;
 
   const execLocal = (command: string, timeout?: number): ExecResult => {
     try {
@@ -251,6 +257,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   const createSandbox = async (
     options: CreateSandboxOptions,
   ): Promise<SandboxInfo> => {
+    if (!hasRemoteApi) {
+      throw new Error("Sandbox creation requires Conway and is unavailable in local mode.");
+    }
     const result = await request("POST", "/v1/sandboxes", {
       name: options.name,
       vcpu: options.vcpu || 1,
@@ -276,6 +285,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   };
 
   const listSandboxes = async (): Promise<SandboxInfo[]> => {
+    if (!hasRemoteApi) {
+      return [];
+    }
     const result = await request("GET", "/v1/sandboxes");
     const sandboxes = Array.isArray(result) ? result : result.sandboxes || [];
     return sandboxes.map((s: any) => ({
@@ -293,11 +305,17 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   // ─── Credits ─────────────────────────────────────────────────
 
   const getCreditsBalance = async (): Promise<number> => {
+    if (!hasRemoteApi) {
+      return 0;
+    }
     const result = await request("GET", "/v1/credits/balance");
     return result.balance_cents ?? result.credits_cents ?? 0;
   };
 
   const getCreditsPricing = async (): Promise<PricingTier[]> => {
+    if (!hasRemoteApi) {
+      return [];
+    }
     const result = await request("GET", "/v1/credits/pricing");
     const tiers = result.tiers || result.pricing || [];
     return tiers.map((t: any) => ({
@@ -314,6 +332,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     amountCents: number,
     note?: string,
   ): Promise<CreditTransferResult> => {
+    if (!hasRemoteApi) {
+      throw new Error("Credit transfers require Conway and are unavailable in local mode.");
+    }
     const payload = {
       to_address: toAddress,
       amount_cents: amountCents,
@@ -371,6 +392,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     account: PrivateKeyAccount;
     nonce?: string;
   }): Promise<{ automaton: Record<string, unknown> }> => {
+    if (!hasRemoteApi) {
+      return { automaton: {} };
+    }
     const {
       automatonId,
       automatonAddress,
@@ -441,6 +465,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     query: string,
     tlds?: string,
   ): Promise<DomainSearchResult[]> => {
+    if (!hasRemoteApi) {
+      return [];
+    }
     const params = new URLSearchParams({ query });
     if (tlds) params.set("tlds", tlds);
     const result = await request("GET", `/v1/domains/search?${params}`);
@@ -458,6 +485,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     domain: string,
     years: number = 1,
   ): Promise<DomainRegistration> => {
+    if (!hasRemoteApi) {
+      throw new Error("Domain registration requires Conway and is unavailable in local mode.");
+    }
     const result = await request("POST", "/v1/domains/register", {
       domain,
       years,
@@ -471,6 +501,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   };
 
   const listDnsRecords = async (domain: string): Promise<DnsRecord[]> => {
+    if (!hasRemoteApi) {
+      return [];
+    }
     const result = await request(
       "GET",
       `/v1/domains/${encodeURIComponent(domain)}/dns`,
@@ -493,6 +526,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     value: string,
     ttl?: number,
   ): Promise<DnsRecord> => {
+    if (!hasRemoteApi) {
+      throw new Error("DNS management requires Conway and is unavailable in local mode.");
+    }
     const result = await request(
       "POST",
       `/v1/domains/${encodeURIComponent(domain)}/dns`,
@@ -511,6 +547,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
     domain: string,
     recordId: string,
   ): Promise<void> => {
+    if (!hasRemoteApi) {
+      throw new Error("DNS management requires Conway and is unavailable in local mode.");
+    }
     await request(
       "DELETE",
       `/v1/domains/${encodeURIComponent(domain)}/dns/${encodeURIComponent(recordId)}`,
@@ -520,6 +559,9 @@ export function createConwayClient(options: ConwayClientOptions): ConwayClient {
   // ─── Model Discovery ───────────────────────────────────────────
 
   const listModels = async (): Promise<ModelInfo[]> => {
+    if (!hasRemoteApi) {
+      return [];
+    }
     // Try inference.conway.tech first (has availability info), fall back to control plane
     const urls = [
       "https://inference.conway.tech/v1/models",
