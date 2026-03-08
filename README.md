@@ -1,10 +1,10 @@
-# OpenFox
+# 🦊OpenFox
 
 <img src="LOGO.png" alt="OpenFox logo" width="296" />
 
 **While you sleep, Fox keeps working and brings the coins back.**
 
-OpenFox is not a one-shot chat assistant. It is a continuously running AI agent runtime built to keep working in the background:
+OpenFox is a continuously running AI agent runtime built to keep working in the background:
 
 - watching for opportunities
 - calling tools
