@@ -3,7 +3,7 @@
  *
  * Parses SKILL.md files with YAML frontmatter + Markdown body
  * into structured skill definitions.
- * Follows the SKILL.md convention (OpenClaw/Anthropic format).
+ * Follows the SKILL.md frontmatter convention used by OpenFox skills.
  */
 
 import type { SkillFrontmatter, Skill, SkillSource } from "../types.js";

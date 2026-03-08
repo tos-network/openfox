@@ -51,7 +51,7 @@ export async function runSetupWizard(): Promise<OpenFoxConfig> {
   const creatorAddress = await promptAddress("Creator wallet address (0x...)");
   console.log(chalk.green(`  Creator: ${creatorAddress}\n`));
 
-  console.log(chalk.white("  Configure local/provider inference (OpenClaw-style)."));
+  console.log(chalk.white("  Configure local/provider inference."));
   console.log(chalk.dim("  Use OpenAI, Anthropic, or Ollama. Legacy remote integrations are optional and no longer required.\n"));
   const openaiApiKey = await promptOptional("OpenAI API key (sk-..., optional)");
   if (openaiApiKey && !openaiApiKey.startsWith("sk-")) {
@@ -157,7 +157,6 @@ export async function runSetupWizard(): Promise<OpenFoxConfig> {
 
   saveConfig(config);
   console.log(chalk.green("  openfox.json written"));
-  console.log(chalk.green("  openclaw.json compatibility file written"));
 
   writeDefaultHeartbeatConfig();
   console.log(chalk.green("  heartbeat.yml written"));

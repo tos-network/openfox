@@ -191,7 +191,7 @@ That path is still inherited from the earlier runtime and can be renamed later.
 
 ## Configure Inference
 
-OpenFox now supports an OpenClaw-style provider-first configuration model.
+OpenFox now supports a provider-first configuration model.
 
 You need at least one inference provider configured.
 
@@ -213,13 +213,14 @@ export ANTHROPIC_API_KEY=...
 export OLLAMA_BASE_URL=http://localhost:11434
 ```
 
-OpenFox also writes an OpenClaw-compatible config mirror:
+Provider settings live in:
 
 ```bash
-~/.openfox/openclaw.json
+~/.openfox/openfox.json
 ```
 
-Example:
+You can still express provider settings using a nested provider/model structure
+inside the OpenFox config file. Example:
 
 ```json
 {
@@ -346,7 +347,7 @@ OpenFox has already completed several key transitions:
 
 - from Runtime-first to local-first startup
 - support for OpenAI / Anthropic / Ollama provider configuration
-- support for OpenClaw-style compatibility config
+- support for OpenFox-native provider config in `~/.openfox/openfox.json`
 - support for TOS wallet and TOS `x402`
 - operation as a continuously running agent runtime
 

@@ -1,8 +1,9 @@
 /**
  * OpenFox Configuration
  *
- * Loads and saves ~/.openfox/openfox.json, while also supporting a
- * minimal OpenClaw-compatible config surface in ~/.openfox/openclaw.json.
+ * Loads and saves ~/.openfox/openfox.json.
+ * Provider settings may still be expressed using a nested provider/model
+ * config shape, but the filename remains OpenFox-native.
  */
 
 import fs from "fs";
@@ -26,11 +27,10 @@ import { createLogger } from "./observability/logger.js";
 
 const logger = createLogger("config");
 const OPENFOX_CONFIG_FILENAME = "openfox.json";
-const OPENCLAW_COMPAT_FILENAME = "openclaw.json";
 
 type JsonRecord = Record<string, unknown>;
 
-interface OpenClawCompatConfig {
+interface ProviderConfigCompat {
   model?: string;
   modelRef?: string;
   openaiApiKey?: string;
@@ -40,14 +40,6 @@ interface OpenClawCompatConfig {
 
 export function getConfigPath(): string {
   return path.join(getOpenFoxDir(), OPENFOX_CONFIG_FILENAME);
-}
-
-export function getOpenClawCompatConfigPath(): string {
-  return path.join(getOpenFoxDir(), OPENCLAW_COMPAT_FILENAME);
-}
-
-function resolveStateDirPath(...parts: string[]): string {
-  return path.join(process.env.HOME || "/root", ...parts);
 }
 
 function readJsonFile(filePath: string): JsonRecord | null {
@@ -125,73 +117,48 @@ function parseModelRef(modelRef: string | undefined): { model?: string; modelRef
   };
 }
 
-function inferModelRef(config: Pick<OpenFoxConfig, "inferenceModel" | "inferenceModelRef" | "openaiApiKey" | "anthropicApiKey" | "ollamaBaseUrl">): string {
-  if (config.inferenceModelRef && config.inferenceModelRef.trim()) {
-    return config.inferenceModelRef.trim();
-  }
-  if (config.anthropicApiKey) {
-    return `anthropic/${config.inferenceModel}`;
-  }
-  if (config.ollamaBaseUrl) {
-    return `ollama/${config.inferenceModel}`;
-  }
-  return `openai/${config.inferenceModel}`;
-}
-
-function loadOpenClawCompatConfig(): OpenClawCompatConfig {
-  const configuredPath = process.env.OPENCLAW_CONFIG_PATH?.trim();
-  const candidates = [
-    configuredPath,
-    getOpenClawCompatConfigPath(),
-    resolveStateDirPath(".openclaw", "openclaw.json"),
-  ].filter((value): value is string => !!value);
-
-  for (const filePath of candidates) {
-    const raw = readJsonFile(filePath);
-    if (!raw) {
-      continue;
-    }
-
-    const providerRoot = getNestedRecord(getNestedRecord(raw, "models"), "providers");
-    const openaiProvider = providerRoot ? getNestedRecord(providerRoot, "openai") : null;
-    const anthropicProvider = providerRoot ? getNestedRecord(providerRoot, "anthropic") : null;
-    const ollamaProvider =
-      (providerRoot ? getNestedRecord(providerRoot, "ollama") : null) ||
-      (providerRoot ? getNestedRecord(providerRoot, "local") : null);
-
-    const modelRef =
-      getNestedString(raw, "agents", "defaults", "model", "primary") ||
-      getNestedString(raw, "agent", "model") ||
-      getNestedString(raw, "agent", "model", "primary");
-
-    const { model } = parseModelRef(modelRef);
-    const env = getNestedRecord(raw, "env");
-
-    return {
-      model,
-      modelRef,
-      openaiApiKey:
-        resolveSecretRef(getNestedString(env, "OPENAI_API_KEY")) ||
-        resolveSecretRef(getNestedString(openaiProvider, "apiKey")),
-      anthropicApiKey:
-        resolveSecretRef(getNestedString(env, "ANTHROPIC_API_KEY")) ||
-        resolveSecretRef(getNestedString(anthropicProvider, "apiKey")),
-      ollamaBaseUrl:
-        resolveSecretRef(getNestedString(env, "OLLAMA_BASE_URL")) ||
-        resolveSecretRef(getNestedString(ollamaProvider, "baseUrl")),
-    };
+function extractProviderCompatConfig(raw: JsonRecord | null): ProviderConfigCompat {
+  if (!raw) {
+    return {};
   }
 
-  return {};
+  const providerRoot = getNestedRecord(getNestedRecord(raw, "models"), "providers");
+  const openaiProvider = providerRoot ? getNestedRecord(providerRoot, "openai") : null;
+  const anthropicProvider = providerRoot ? getNestedRecord(providerRoot, "anthropic") : null;
+  const ollamaProvider =
+    (providerRoot ? getNestedRecord(providerRoot, "ollama") : null) ||
+    (providerRoot ? getNestedRecord(providerRoot, "local") : null);
+
+  const modelRef =
+    getNestedString(raw, "agents", "defaults", "model", "primary") ||
+    getNestedString(raw, "agent", "model") ||
+    getNestedString(raw, "agent", "model", "primary");
+
+  const { model } = parseModelRef(modelRef);
+  const env = getNestedRecord(raw, "env");
+
+  return {
+    model,
+    modelRef,
+    openaiApiKey:
+      resolveSecretRef(getNestedString(env, "OPENAI_API_KEY")) ||
+      resolveSecretRef(getNestedString(openaiProvider, "apiKey")),
+    anthropicApiKey:
+      resolveSecretRef(getNestedString(env, "ANTHROPIC_API_KEY")) ||
+      resolveSecretRef(getNestedString(anthropicProvider, "apiKey")),
+    ollamaBaseUrl:
+      resolveSecretRef(getNestedString(env, "OLLAMA_BASE_URL")) ||
+      resolveSecretRef(getNestedString(ollamaProvider, "baseUrl")),
+  };
 }
 
 /**
  * Load the openfox config from disk.
- * Merges with defaults and OpenClaw-compatible provider settings.
+ * Merges with defaults and provider settings embedded in openfox.json.
  */
 export function loadConfig(): OpenFoxConfig | null {
   const raw = readJsonFile(getConfigPath());
-  const compat = loadOpenClawCompatConfig();
+  const compat = extractProviderCompatConfig(raw);
 
   if (!raw) {
     return null;
@@ -295,44 +262,8 @@ export function loadConfig(): OpenFoxConfig | null {
   } as OpenFoxConfig;
 }
 
-function buildOpenClawCompatConfig(config: OpenFoxConfig): JsonRecord {
-  const modelRef = inferModelRef(config);
-  const providers: JsonRecord = {};
-
-  if (config.openaiApiKey) {
-    providers.openai = { apiKey: config.openaiApiKey };
-  }
-  if (config.anthropicApiKey) {
-    providers.anthropic = { apiKey: config.anthropicApiKey };
-  }
-  if (config.ollamaBaseUrl) {
-    providers.ollama = {
-      baseUrl: config.ollamaBaseUrl.replace(/\/$/, ""),
-      apiKey: "ollama",
-    };
-  }
-
-  return {
-    agents: {
-      defaults: {
-        model: {
-          primary: modelRef,
-        },
-      },
-    },
-    ...(Object.keys(providers).length > 0
-      ? {
-          models: {
-            providers,
-          },
-        }
-      : {}),
-  };
-}
-
 /**
- * Save the openfox config to disk and mirror a minimal OpenClaw-compatible
- * config for local/provider-first runtime setup.
+ * Save the openfox config to disk.
  */
 export function saveConfig(config: OpenFoxConfig): void {
   const dir = getOpenFoxDir();
@@ -350,12 +281,6 @@ export function saveConfig(config: OpenFoxConfig): void {
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2), {
     mode: 0o600,
   });
-
-  fs.writeFileSync(
-    getOpenClawCompatConfigPath(),
-    JSON.stringify(buildOpenClawCompatConfig(config), null, 2),
-    { mode: 0o600 },
-  );
 }
 
 /**
