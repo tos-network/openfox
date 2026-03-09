@@ -371,6 +371,10 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     );
   };
 
+  const setSkillEnabled = (name: string, enabled: boolean): void => {
+    db.prepare("UPDATE skills SET enabled = ? WHERE name = ?").run(enabled ? 1 : 0, name);
+  };
+
   const removeSkill = (name: string): void => {
     db.prepare("UPDATE skills SET enabled = 0 WHERE name = ?").run(name);
   };
@@ -518,6 +522,7 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     getSkills,
     getSkillByName,
     upsertSkill,
+    setSkillEnabled,
     removeSkill,
     getChildren,
     getChildById,

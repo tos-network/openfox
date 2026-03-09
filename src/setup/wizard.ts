@@ -173,10 +173,10 @@ export async function runSetupWizard(): Promise<OpenFoxConfig> {
   fs.writeFileSync(soulPath, generateSoulMd(name, address, creatorAddress, genesisPrompt), { mode: 0o600 });
   console.log(chalk.green("  SOUL.md written"));
 
-  // Default skills
+  // Bundled skills
   const skillsDir = config.skillsDir || "~/.openfox/skills";
   installDefaultSkills(skillsDir);
-  console.log(chalk.green("  Default skills installed (local-runtime, provider-payments, survival)\n"));
+  console.log(chalk.green("  Bundled skills synced to the managed skills directory\n"));
 
   // ─── 5. Funding guidance ──────────────────────────────────────
   console.log(chalk.cyan("  [5/5] Funding & providers\n"));

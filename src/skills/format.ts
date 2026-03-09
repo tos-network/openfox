@@ -1,11 +1,12 @@
 /**
  * SKILL.md Parser
  *
- * Parses SKILL.md files with YAML frontmatter + Markdown body
- * into structured skill definitions.
- * Follows the SKILL.md frontmatter convention used by OpenFox skills.
+ * Parses SKILL.md files with YAML frontmatter + Markdown body into structured
+ * skill definitions. This parser intentionally supports a richer frontmatter
+ * subset so OpenFox can move closer to the OpenClaw skill catalog shape.
  */
 
+import { parse as parseYaml } from "yaml";
 import type { SkillFrontmatter, Skill, SkillSource } from "../types.js";
 
 /**
@@ -15,7 +16,7 @@ import type { SkillFrontmatter, Skill, SkillSource } from "../types.js";
 export function parseSkillMd(
   content: string,
   filePath: string,
-  source: SkillSource = "builtin",
+  source: SkillSource = "bundled",
 ): Skill | null {
   const trimmed = content.trim();
   if (!trimmed.startsWith("---")) {
@@ -53,7 +54,11 @@ export function parseSkillMd(
     name: frontmatter.name || extractNameFromPath(filePath),
     description: frontmatter.description || "",
     autoActivate: frontmatter["auto-activate"] !== false,
+    always: frontmatter.always === true,
+    homepage: frontmatter.homepage,
+    primaryEnv: frontmatter["primary-env"],
     requires: frontmatter.requires,
+    install: frontmatter.install,
     instructions: body,
     source,
     path: filePath,
@@ -62,93 +67,13 @@ export function parseSkillMd(
   };
 }
 
-/**
- * Parse simple YAML frontmatter without a full YAML parser.
- * Handles the subset used by SKILL.md files.
- */
 function parseYamlFrontmatter(raw: string): SkillFrontmatter | null {
   try {
-    const result: Record<string, any> = {};
-    const lines = raw.split("\n");
-    let currentKey = "";
-    let inList = false;
-    let listKey = "";
-
-    for (const line of lines) {
-      const trimmedLine = line.trim();
-      if (!trimmedLine || trimmedLine.startsWith("#")) continue;
-
-      // Check for list items
-      if (trimmedLine.startsWith("- ") && inList) {
-        const value = trimmedLine.slice(2).trim().replace(/^["']|["']$/g, "");
-        // listKey is "requires.bins" or "requires.env" — push to the nested object
-        if (listKey.startsWith("requires.")) {
-          const nestedKey = listKey.slice("requires.".length);
-          if (result.requires && Array.isArray(result.requires[nestedKey])) {
-            result.requires[nestedKey].push(value);
-          }
-        } else {
-          if (!result[listKey]) result[listKey] = [];
-          if (Array.isArray(result[listKey])) {
-            result[listKey].push(value);
-          }
-        }
-        continue;
-      }
-
-      // Check for key: value
-      const colonIndex = trimmedLine.indexOf(":");
-      if (colonIndex === -1) continue;
-
-      const key = trimmedLine.slice(0, colonIndex).trim();
-      const value = trimmedLine.slice(colonIndex + 1).trim();
-
-      if (key === "requires") {
-        result.requires = {};
-        currentKey = "requires";
-        inList = false;
-        continue;
-      }
-
-      if (currentKey === "requires" && line.startsWith("  ")) {
-        // Nested under requires
-        const nestedKey = key.trim();
-        if (!value || value === "") {
-          // Start of list
-          inList = true;
-          listKey = `requires.${nestedKey}`;
-          if (!result.requires) result.requires = {};
-          result.requires[nestedKey] = [];
-        } else {
-          // Inline list: [item1, item2]
-          if (value.startsWith("[") && value.endsWith("]")) {
-            const items = value
-              .slice(1, -1)
-              .split(",")
-              .map((s) => s.trim().replace(/^["']|["']$/g, ""));
-            if (!result.requires) result.requires = {};
-            result.requires[nestedKey] = items;
-          }
-        }
-        continue;
-      }
-
-      inList = false;
-      currentKey = key;
-
-      if (!value) continue;
-
-      // Parse value
-      if (value === "true") {
-        result[key] = true;
-      } else if (value === "false") {
-        result[key] = false;
-      } else {
-        result[key] = value.replace(/^["']|["']$/g, "");
-      }
+    const parsed = parseYaml(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
     }
-
-    return result as SkillFrontmatter;
+    return parsed as SkillFrontmatter;
   } catch {
     return null;
   }

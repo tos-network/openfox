@@ -992,6 +992,7 @@ export interface OpenFoxDatabase {
   getSkills(enabledOnly?: boolean): Skill[];
   getSkillByName(name: string): Skill | undefined;
   upsertSkill(skill: Skill): void;
+  setSkillEnabled(name: string, enabled: boolean): void;
   removeSkill(name: string): void;
 
   // Children
@@ -1051,7 +1052,11 @@ export interface Skill {
   name: string;
   description: string;
   autoActivate: boolean;
+  always?: boolean;
+  homepage?: string;
+  primaryEnv?: string;
   requires?: SkillRequirements;
+  install?: SkillInstallSpec[];
   instructions: string;
   source: SkillSource;
   path: string;
@@ -1061,16 +1066,68 @@ export interface Skill {
 
 export interface SkillRequirements {
   bins?: string[];
+  anyBins?: string[];
   env?: string[];
 }
 
-export type SkillSource = "builtin" | "git" | "url" | "self";
+export interface SkillInstallSpec {
+  id?: string;
+  kind: "brew" | "node" | "go" | "uv" | "download";
+  label?: string;
+  bins?: string[];
+  formula?: string;
+  package?: string;
+  module?: string;
+  url?: string;
+}
 
-export interface SkillFrontmatter {
+export interface SkillPromptEntry {
   name: string;
   description: string;
+  location: string;
+  source: SkillSource;
+}
+
+export interface SkillSnapshot {
+  prompt: string;
+  skills: SkillPromptEntry[];
+  resolvedSkills: Skill[];
+}
+
+export interface SkillStatusEntry {
+  name: string;
+  description: string;
+  source: SkillSource;
+  path: string;
+  enabled: boolean;
+  eligible: boolean;
+  always: boolean;
+  homepage?: string;
+  primaryEnv?: string;
+  missingBins: string[];
+  missingAnyBins: string[];
+  missingEnv: string[];
+  install: SkillInstallSpec[];
+}
+
+export type SkillSource =
+  | "bundled"
+  | "managed"
+  | "workspace"
+  | "builtin"
+  | "git"
+  | "url"
+  | "self";
+
+export interface SkillFrontmatter {
+  name?: string;
+  description?: string;
   "auto-activate"?: boolean;
+  homepage?: string;
+  always?: boolean;
+  "primary-env"?: string;
   requires?: SkillRequirements;
+  install?: SkillInstallSpec[];
 }
 
 // ─── Git ────────────────────────────────────────────────────────

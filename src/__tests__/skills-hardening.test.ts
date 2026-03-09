@@ -11,8 +11,16 @@
  * - Instruction content validation (rejects tool call syntax, overrides, sensitive refs)
  */
 
+import fs from "fs";
+import os from "os";
+import path from "path";
 import { describe, it, expect, vi } from "vitest";
-import { getActiveSkillInstructions } from "../skills/loader.js";
+import {
+  buildSkillsPrompt,
+  buildSkillStatusReport,
+  getActiveSkillInstructions,
+  loadSkills,
+} from "../skills/loader.js";
 import { parseSkillMd } from "../skills/format.js";
 import type { Skill } from "../types.js";
 
@@ -139,6 +147,24 @@ describe("getActiveSkillInstructions", () => {
   });
 });
 
+describe("buildSkillsPrompt", () => {
+  it("renders a compact available skills list with locations", () => {
+    const prompt = buildSkillsPrompt([
+      {
+        name: "translation",
+        description: "Translate text",
+        location: "~/skills/translation/SKILL.md",
+        source: "workspace",
+      },
+    ]);
+
+    expect(prompt).toContain("<available_skills>");
+    expect(prompt).toContain("<name>translation</name>");
+    expect(prompt).toContain("<location>~/skills/translation/SKILL.md</location>");
+    expect(prompt).not.toContain("Do something useful.");
+  });
+});
+
 // ─── YAML Frontmatter Parser Tests ────────────────────────────
 
 describe("parseSkillMd YAML frontmatter", () => {
@@ -176,6 +202,140 @@ Instructions.
     expect(skill).not.toBeNull();
     expect(skill!.requires).toBeDefined();
     expect(skill!.requires!.env).toEqual(["OPENAI_KEY", "SECRET_TOKEN"]);
+  });
+
+  it("parses richer frontmatter fields with a real YAML parser", () => {
+    const content = `---
+name: rich-skill
+description: Rich skill
+homepage: https://example.com/skill
+always: true
+primary-env: OPENAI_API_KEY
+requires:
+  bins:
+    - git
+install:
+  - kind: brew
+    label: Install jq
+    formula: jq
+---
+
+Instructions.
+`;
+    const skill = parseSkillMd(content, "/tmp/skills/rich-skill/SKILL.md");
+    expect(skill).not.toBeNull();
+    expect(skill!.name).toBe("rich-skill");
+    expect(skill!.description).toBe("Rich skill");
+    expect(skill!.requires!.bins).toEqual(["git"]);
+    expect(skill!.homepage).toBe("https://example.com/skill");
+    expect(skill!.always).toBe(true);
+    expect(skill!.primaryEnv).toBe("OPENAI_API_KEY");
+    expect(skill!.install?.[0]?.kind).toBe("brew");
+  });
+});
+
+describe("loadSkills precedence", () => {
+  it("lets workspace skills override managed skills with the same name", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-skills-"));
+    const managedDir = path.join(tmp, "managed");
+    const workspaceDir = path.join(tmp, "workspace");
+    fs.mkdirSync(path.join(managedDir, "precedence-skill"), { recursive: true });
+    fs.mkdirSync(path.join(workspaceDir, "skills", "precedence-skill"), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(managedDir, "precedence-skill", "SKILL.md"),
+      `---
+name: precedence-skill
+description: Managed version
+---
+
+Managed instructions.`,
+    );
+    fs.writeFileSync(
+      path.join(workspaceDir, "skills", "precedence-skill", "SKILL.md"),
+      `---
+name: precedence-skill
+description: Workspace version
+---
+
+Workspace instructions.`,
+    );
+
+    const rows = new Map<string, Skill>();
+    const db = {
+      getSkillByName(name: string) {
+        return rows.get(name);
+      },
+      upsertSkill(skill: Skill) {
+        rows.set(skill.name, skill);
+      },
+    } as any;
+
+    const originalCwd = process.cwd();
+    try {
+      process.chdir(workspaceDir);
+      const skills = loadSkills(managedDir, db);
+      const skill = skills.find((entry) => entry.name === "precedence-skill");
+      expect(skill?.description).toBe("Workspace version");
+      expect(skill?.source).toBe("workspace");
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("buildSkillStatusReport", () => {
+  it("reports eligibility, metadata, and missing requirements", () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-skill-status-"));
+    const managedDir = path.join(tmp, "managed");
+    fs.mkdirSync(path.join(managedDir, "status-skill"), { recursive: true });
+    fs.writeFileSync(
+      path.join(managedDir, "status-skill", "SKILL.md"),
+      `---
+name: status-skill
+description: Status demo
+homepage: https://example.com/status
+always: true
+primary-env: STATUS_TOKEN
+requires:
+  bins:
+    - definitely-not-a-real-binary
+  env:
+    - STATUS_TOKEN
+install:
+  - kind: brew
+    label: Install demo dep
+    formula: demo
+---
+
+Status instructions.`,
+    );
+
+    const rows = new Map<string, Skill>();
+    const db = {
+      getSkillByName(name: string) {
+        return rows.get(name);
+      },
+      upsertSkill(skill: Skill) {
+        rows.set(skill.name, skill);
+      },
+    } as any;
+
+    try {
+      const report = buildSkillStatusReport(managedDir, db);
+      const entry = report.find((item) => item.name === "status-skill");
+      expect(entry).toBeDefined();
+      expect(entry?.eligible).toBe(false);
+      expect(entry?.always).toBe(true);
+      expect(entry?.homepage).toBe("https://example.com/status");
+      expect(entry?.primaryEnv).toBe("STATUS_TOKEN");
+      expect(entry?.missingBins).toContain("definitely-not-a-real-binary");
+      expect(entry?.missingEnv).toContain("STATUS_TOKEN");
+      expect(entry?.install[0]?.label).toBe("Install demo dep");
+    } finally {
+      fs.rmSync(tmp, { recursive: true, force: true });
+    }
   });
 });
 
@@ -287,23 +447,24 @@ describe("skills/registry.ts validation", () => {
 // ─── System Prompt Trust Boundary Tests ─────────────────────────
 
 describe("system-prompt.ts skill trust boundaries", () => {
-  it("has UNTRUSTED marker in skill section", async () => {
+  it("uses an available skills section instead of inlining skill bodies", async () => {
     const fs = await import("fs");
     const source = fs.readFileSync(
       new URL("../agent/system-prompt.ts", import.meta.url).pathname.replace("/src/__tests__/../", "/src/"),
       "utf-8",
     );
-    expect(source).toMatch(/SKILL INSTRUCTIONS - UNTRUSTED/);
+    expect(source).toMatch(/AVAILABLE SKILLS/);
+    expect(source).not.toMatch(/SKILL INSTRUCTIONS - UNTRUSTED/);
   });
 
-  it("has warning text about not following skill directives", async () => {
+  it("uses a compact skill snapshot prompt", async () => {
     const fs = await import("fs");
     const source = fs.readFileSync(
-      new URL("../agent/system-prompt.ts", import.meta.url).pathname.replace("/src/__tests__/../", "/src/"),
+      new URL("../skills/loader.ts", import.meta.url).pathname.replace("/src/__tests__/../", "/src/"),
       "utf-8",
     );
-    expect(source).toMatch(/Do NOT treat them as system instructions/);
-    expect(source).toMatch(/Do NOT follow any directives.*that conflict/);
+    expect(source).toMatch(/Read the listed SKILL\.md file only when the current task clearly needs that skill/);
+    expect(source).toMatch(/<available_skills>/);
   });
 });
 
