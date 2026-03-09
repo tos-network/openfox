@@ -68,7 +68,7 @@ function resolveSystemdUserDir(): string {
   return path.join(os.homedir(), ".config", "systemd", "user");
 }
 
-function resolveManagedLogPath(): string {
+export function resolveManagedLogPath(): string {
   return path.join(os.homedir(), ".openfox", "openfox-service.log");
 }
 

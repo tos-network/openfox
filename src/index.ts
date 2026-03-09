@@ -63,9 +63,13 @@ import { randomUUID } from "crypto";
 import { keccak256, toHex } from "tosdk";
 import {
   addCronTask,
+  buildCronListSnapshot,
+  buildCronRunsSnapshot,
+  buildCronTaskSnapshot,
   buildCronListReport,
   buildCronRunsReport,
   buildCronTaskReport,
+  buildHeartbeatStatusSnapshot,
   buildHeartbeatStatusReport,
   disableHeartbeat,
   editCronTask,
@@ -76,8 +80,12 @@ import {
   setCronTaskEnabled,
 } from "./heartbeat/operator.js";
 import {
+  buildCombinedServiceStatusSnapshot,
+  buildGatewayBootnodesSnapshot,
+  buildGatewayStatusSnapshot,
   buildGatewayBootnodesReport,
   buildGatewayStatusReport,
+  buildServiceHealthSnapshot,
   buildServiceStatusReport,
   runServiceHealthChecks,
 } from "./service/operator.js";
@@ -90,6 +98,14 @@ import {
   stopManagedService,
   uninstallManagedService,
 } from "./service/daemon.js";
+import { buildServiceLogsReport } from "./service/logs.js";
+import {
+  buildDoctorReport,
+  buildHealthSnapshot,
+  buildHealthSnapshotReport,
+} from "./doctor/report.js";
+import { buildModelStatusReport, buildModelStatusSnapshot } from "./models/status.js";
+import { runOnboard } from "./commands/onboard.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -129,6 +145,36 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "health") {
+    await handleHealthCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "doctor") {
+    await handleDoctorCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "models") {
+    await handleModelsCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "onboard") {
+    await handleOnboardCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "logs") {
+    await handleLogsCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "status") {
+    await showStatus({ asJson: args.includes("--json") });
+    process.exit(0);
+  }
+
   if (args.includes("--help") || args.includes("-h")) {
     logger.info(`
 OpenFox v${VERSION}
@@ -146,6 +192,12 @@ Usage:
   openfox cron ...       Inspect and manage scheduled heartbeat tasks
   openfox service ...    Inspect service roles, health, and lifecycle
   openfox gateway ...    Inspect gateway configuration and bootnodes
+  openfox health         Show a runtime health snapshot
+  openfox doctor         Diagnose runtime/operator issues and next steps
+  openfox models ...     Inspect model/provider readiness
+  openfox onboard        Run setup and optionally install the managed service
+  openfox logs           Show recent OpenFox service logs
+  openfox status         Show the current runtime status
   openfox --version      Show version
   openfox --help         Show this help
 
@@ -185,7 +237,7 @@ Environment:
   }
 
   if (args.includes("--status")) {
-    await showStatus();
+    await showStatus({ asJson: args.includes("--json") });
     process.exit(0);
   }
 
@@ -444,23 +496,30 @@ async function runHeartbeatTaskNow(
 
 async function handleHeartbeatCommand(args: string[]): Promise<void> {
   const command = args[0] || "status";
+  const asJson = args.includes("--json");
   if (command === "--help" || command === "-h" || command === "help") {
     logger.info(`
 OpenFox heartbeat
 
 Usage:
-  openfox heartbeat status
+  openfox heartbeat status [--json]
   openfox heartbeat enable
   openfox heartbeat disable
   openfox heartbeat wake --reason <text>
-  openfox heartbeat tasks
-  openfox heartbeat history [task] [--limit N]
+  openfox heartbeat tasks [--json]
+  openfox heartbeat history [task] [--limit N] [--json]
 `);
     return;
   }
 
   await withHeartbeatContext(async ({ db, heartbeatConfig }) => {
     if (command === "status") {
+      if (asJson) {
+        logger.info(
+          JSON.stringify(buildHeartbeatStatusSnapshot(db.raw, heartbeatConfig), null, 2),
+        );
+        return;
+      }
       logger.info(buildHeartbeatStatusReport(db.raw, heartbeatConfig));
       return;
     }
@@ -485,6 +544,10 @@ Usage:
     }
 
     if (command === "tasks") {
+      if (asJson) {
+        logger.info(JSON.stringify(getBuiltinHeartbeatTasks(), null, 2));
+        return;
+      }
       logger.info("=== OPENFOX HEARTBEAT TASKS ===");
       for (const task of getBuiltinHeartbeatTasks()) {
         logger.info(`${task.name}`);
@@ -496,6 +559,10 @@ Usage:
     if (command === "history") {
       const taskName = args[1]?.startsWith("--") ? undefined : args[1];
       const limit = readNumberOption(args, "--limit", 20);
+      if (asJson) {
+        logger.info(JSON.stringify(buildCronRunsSnapshot(db.raw, taskName, limit), null, 2));
+        return;
+      }
       logger.info(buildCronRunsReport(db.raw, taskName, limit));
       return;
     }
@@ -506,19 +573,20 @@ Usage:
 
 async function handleCronCommand(args: string[]): Promise<void> {
   const command = args[0] || "list";
+  const asJson = args.includes("--json");
   if (command === "--help" || command === "-h" || command === "help") {
     logger.info(`
 OpenFox cron
 
 Usage:
-  openfox cron list
-  openfox cron status <task>
+  openfox cron list [--json]
+  openfox cron status <task> [--json]
   openfox cron add --task <name> --cron "<expr>"
   openfox cron edit <task> [--cron "<expr>"] [--enable|--disable]
   openfox cron remove <task>
   openfox cron enable <task>
   openfox cron disable <task>
-  openfox cron runs [task] [--limit N]
+  openfox cron runs [task] [--limit N] [--json]
   openfox cron run <task>
 `);
     return;
@@ -526,6 +594,10 @@ Usage:
 
   await withHeartbeatContext(async ({ config, db, heartbeatConfigPath }) => {
     if (command === "list") {
+      if (asJson) {
+        logger.info(JSON.stringify(buildCronListSnapshot(db.raw), null, 2));
+        return;
+      }
       logger.info(buildCronListReport(db.raw));
       return;
     }
@@ -534,6 +606,10 @@ Usage:
       const taskName = args[1];
       if (!taskName) {
         throw new Error("Usage: openfox cron status <task>");
+      }
+      if (asJson) {
+        logger.info(JSON.stringify(buildCronTaskSnapshot(db.raw, taskName), null, 2));
+        return;
       }
       logger.info(buildCronTaskReport(db.raw, taskName));
       return;
@@ -609,6 +685,10 @@ Usage:
     if (command === "runs") {
       const taskName = args[1]?.startsWith("--") ? undefined : args[1];
       const limit = readNumberOption(args, "--limit", 20);
+      if (asJson) {
+        logger.info(JSON.stringify(buildCronRunsSnapshot(db.raw, taskName, limit), null, 2));
+        return;
+      }
       logger.info(buildCronRunsReport(db.raw, taskName, limit));
       return;
     }
@@ -629,14 +709,15 @@ Usage:
 
 async function handleServiceCommand(args: string[]): Promise<void> {
   const command = args[0] || "status";
+  const asJson = args.includes("--json");
   if (command === "--help" || command === "-h" || command === "help") {
     logger.info(`
 OpenFox service
 
 Usage:
-  openfox service status
-  openfox service roles
-  openfox service check
+  openfox service status [--json]
+  openfox service roles [--json]
+  openfox service check [--json]
   openfox service install [--force] [--no-start]
   openfox service uninstall
   openfox service start
@@ -681,12 +762,26 @@ Usage:
 
   await withHeartbeatContext(async ({ config, db }) => {
     if (command === "status" || command === "roles") {
+      if (asJson) {
+        logger.info(
+          JSON.stringify(
+            buildCombinedServiceStatusSnapshot(getManagedServiceStatus(), config, db.raw),
+            null,
+            2,
+          ),
+        );
+        return;
+      }
       logger.info(buildManagedServiceStatusReport(getManagedServiceStatus()));
       logger.info(buildServiceStatusReport(config, db.raw));
       return;
     }
 
     if (command === "check") {
+      if (asJson) {
+        logger.info(JSON.stringify(await buildServiceHealthSnapshot(config), null, 2));
+        return;
+      }
       logger.info(await runServiceHealthChecks(config));
       return;
     }
@@ -697,30 +792,43 @@ Usage:
 
 async function handleGatewayCommand(args: string[]): Promise<void> {
   const command = args[0] || "status";
+  const asJson = args.includes("--json");
   if (command === "--help" || command === "-h" || command === "help") {
     logger.info(`
 OpenFox gateway
 
 Usage:
-  openfox gateway status
-  openfox gateway bootnodes
-  openfox gateway check
+  openfox gateway status [--json]
+  openfox gateway bootnodes [--json]
+  openfox gateway check [--json]
 `);
     return;
   }
 
   await withHeartbeatContext(async ({ config, db }) => {
     if (command === "status") {
+      if (asJson) {
+        logger.info(JSON.stringify(await buildGatewayStatusSnapshot(config, db.raw), null, 2));
+        return;
+      }
       logger.info(await buildGatewayStatusReport(config, db.raw));
       return;
     }
 
     if (command === "bootnodes") {
+      if (asJson) {
+        logger.info(JSON.stringify(await buildGatewayBootnodesSnapshot(config), null, 2));
+        return;
+      }
       logger.info(await buildGatewayBootnodesReport(config));
       return;
     }
 
     if (command === "check") {
+      if (asJson) {
+        logger.info(JSON.stringify(await buildServiceHealthSnapshot(config), null, 2));
+        return;
+      }
       logger.info(await runServiceHealthChecks(config));
       return;
     }
@@ -729,12 +837,112 @@ Usage:
   });
 }
 
-// ─── Status Command ────────────────────────────────────────────
+async function handleHealthCommand(args: string[]): Promise<void> {
+  const asJson = args.includes("--json");
+  const snapshot = await buildHealthSnapshot();
+  if (asJson) {
+    logger.info(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+  logger.info(buildHealthSnapshotReport(snapshot));
+}
 
-async function showStatus(): Promise<void> {
+async function handleDoctorCommand(args: string[]): Promise<void> {
+  const asJson = args.includes("--json");
+  const snapshot = await buildHealthSnapshot();
+  if (asJson) {
+    logger.info(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+  logger.info(buildDoctorReport(snapshot));
+}
+
+async function handleModelsCommand(args: string[]): Promise<void> {
+  const command = args[0] || "status";
+  if (command === "--help" || command === "-h" || command === "help") {
+    logger.info(`
+OpenFox models
+
+Usage:
+  openfox models status
+  openfox models status --check
+  openfox models status --json
+`);
+    return;
+  }
+
+  if (command !== "status") {
+    throw new Error(`Unknown models command: ${command}`);
+  }
+
   const config = loadConfig();
   if (!config) {
-    logger.info("OpenFox is not configured. Run the setup script first.");
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+
+  const snapshot = await buildModelStatusSnapshot(config, {
+    check: args.includes("--check"),
+  });
+  if (args.includes("--json")) {
+    logger.info(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+  logger.info(buildModelStatusReport(snapshot));
+}
+
+async function handleOnboardCommand(args: string[]): Promise<void> {
+  if (args.includes("--help") || args.includes("-h") || args.includes("help")) {
+    logger.info(`
+OpenFox onboard
+
+Usage:
+  openfox onboard
+  openfox onboard --install-daemon
+  openfox onboard --force-setup
+`);
+    return;
+  }
+
+  const result = await runOnboard({
+    installDaemon: args.includes("--install-daemon"),
+    forceSetup: args.includes("--force-setup"),
+  });
+
+  logger.info(
+    result.daemonInstalled
+      ? "OpenFox onboarding complete. Managed service installed."
+      : "OpenFox onboarding complete.",
+  );
+}
+
+async function handleLogsCommand(args: string[]): Promise<void> {
+  if (args.includes("--help") || args.includes("-h") || args.includes("help")) {
+    logger.info(`
+OpenFox logs
+
+Usage:
+  openfox logs
+  openfox logs --tail 200
+`);
+    return;
+  }
+
+  const tail = readNumberOption(args, "--tail", 200);
+  logger.info(buildServiceLogsReport({ tail }));
+}
+
+// ─── Status Command ────────────────────────────────────────────
+
+async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
+  const config = loadConfig();
+  if (!config) {
+    if (options.asJson) {
+      logger.info(
+        JSON.stringify({ configured: false, message: "OpenFox is not configured." }, null, 2),
+      );
+    } else {
+      logger.info("OpenFox is not configured. Run the setup script first.");
+    }
     return;
   }
 
@@ -756,6 +964,39 @@ async function showStatus(): Promise<void> {
       ? discovery.gatewayServer.publicBaseUrl
       : "disabled";
   const managedService = getManagedServiceStatus();
+
+  const snapshot = {
+    configured: true,
+    name: config.name,
+    wallet: config.walletAddress,
+    service: managedService,
+    discovery: {
+      enabled: discovery?.enabled === true,
+      gateway: gatewaySummary,
+      agentId: config.agentId || null,
+    },
+    creator: config.creatorAddress || null,
+    sandboxId: config.sandboxId || null,
+    state,
+    turns: turnCount,
+    toolsInstalled: tools.length,
+    activeSkills: skills.length,
+    activeHeartbeats: heartbeats.filter((h) => h.enabled).length,
+    heartbeatPaused,
+    pendingWakes: pendingWakes.length,
+    children: {
+      alive: children.filter((c) => c.status !== "dead").length,
+      total: children.length,
+    },
+    model: config.inferenceModelRef || config.inferenceModel,
+    version: config.version,
+  };
+
+  if (options.asJson) {
+    logger.info(JSON.stringify(snapshot, null, 2));
+    db.close();
+    return;
+  }
 
   logger.info(`
 === OPENFOX STATUS ===

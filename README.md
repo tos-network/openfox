@@ -197,6 +197,7 @@ corepack prepare pnpm@10.28.1 --activate
 pnpm install
 pnpm openfox --setup
 pnpm openfox --run
+pnpm openfox onboard --install-daemon
 ```
 
 The preferred command surface is:
@@ -204,6 +205,7 @@ The preferred command surface is:
 ```bash
 openfox --setup
 openfox --run
+openfox onboard --install-daemon
 ```
 
 If you are running directly from the source checkout and have not installed the binary globally yet, use:
@@ -267,10 +269,21 @@ service health, gateway inspection, and managed service lifecycle.
 
 ```bash
 openfox skills list
+openfox status
+openfox status --json
 openfox heartbeat status
+openfox heartbeat status --json
 openfox cron list
+openfox cron list --json
 openfox service status
+openfox service status --json
 openfox gateway status
+openfox gateway status --json
+openfox health
+openfox doctor
+openfox models status
+openfox onboard --install-daemon
+openfox logs --tail 200
 ```
 
 To run OpenFox as a long-lived Linux user service:
@@ -424,6 +437,7 @@ Heartbeat operator surface:
 
 ```bash
 openfox heartbeat status
+openfox heartbeat status --json
 openfox heartbeat enable
 openfox heartbeat disable
 openfox heartbeat wake --reason "manual operator wake"
@@ -434,6 +448,7 @@ Cron and scheduled task operator surface:
 
 ```bash
 openfox cron list
+openfox cron list --json
 openfox cron status heartbeat_ping
 openfox cron add --task report_metrics --cron "*/5 * * * *"
 openfox cron edit report_metrics --cron "*/10 * * * *"
@@ -452,8 +467,10 @@ Service and gateway operator surface:
 
 ```bash
 openfox service status
+openfox service status --json
 openfox service check
 openfox gateway status
+openfox gateway status --json
 openfox gateway bootnodes
 openfox gateway check
 ```
@@ -465,6 +482,17 @@ These commands are meant for operators, not the model. They let you inspect:
 - whether local service health endpoints and chain RPC respond
 - whether the configured gateway bootnode list is signed and valid
 - whether gateway client/server configuration is coherent before deployment
+
+For scripts, dashboards, and future control-plane integration, these operator
+surfaces also expose stable JSON snapshots:
+
+```bash
+openfox status --json
+openfox heartbeat status --json
+openfox cron list --json
+openfox service status --json
+openfox gateway status --json
+```
 
 ---
 

@@ -1,6 +1,7 @@
 import type BetterSqlite3 from "better-sqlite3";
 import type { OpenFoxConfig } from "../types.js";
 import { verifyGatewayBootnodeList } from "../agent-gateway/bootnodes.js";
+import type { ManagedServiceStatus } from "./daemon.js";
 
 type DatabaseType = BetterSqlite3.Database;
 
@@ -10,6 +11,112 @@ interface HealthProbeResult {
   ok: boolean;
   status?: number;
   details?: string;
+}
+
+export interface ServiceRouteSnapshot {
+  path: string;
+  capability: string;
+  mode: string;
+  targetUrl: string;
+}
+
+export interface ServiceStatusSnapshot {
+  roles: string[];
+  discoveryEnabled: boolean;
+  rpcUrl: string | null;
+  chainId: number | null;
+  providerSurfaces: {
+    faucet:
+      | {
+          url: string;
+          capability: string;
+        }
+      | null;
+    observation:
+      | {
+          url: string;
+          capability: string;
+        }
+      | null;
+    routes: ServiceRouteSnapshot[];
+  };
+  gatewayServer:
+    | {
+        enabled: true;
+        publicBaseUrl: string;
+        sessionUrl: string;
+        healthzUrl: string;
+        capability: string;
+        mode: string;
+        paymentDirection: string;
+      }
+    | { enabled: false };
+  gatewayClient:
+    | {
+        enabled: true;
+        maxSessions: number;
+        e2e: boolean;
+        requireSignedBootnodeList: boolean;
+        configuredBootnodes: number;
+        pinnedGatewayUrl: string | null;
+      }
+    | { enabled: false };
+  gatewayCache?: {
+    providerSessionCacheEntries: number;
+    serverSessionCacheEntries: number;
+  };
+}
+
+export interface GatewayBootnodeSnapshot {
+  signedList: {
+    present: boolean;
+    valid: boolean | null;
+    signer: string | null;
+    entries: number;
+  };
+  entries: Array<{
+    agentId: string;
+    url: string;
+    payToAddress?: string;
+    paymentDirection?: string;
+  }>;
+}
+
+export interface GatewayStatusSnapshot {
+  server:
+    | {
+        enabled: true;
+        capability: string;
+        publicBaseUrl: string;
+        bind: string;
+        paymentDirection: string;
+        mode: string;
+      }
+    | { enabled: false };
+  client:
+    | {
+        enabled: true;
+        maxSessions: number;
+        routes: number;
+        e2e: boolean;
+        requireSignedBootnodeList: boolean;
+        pinnedGatewayUrl: string | null;
+        signedBootnodeList: {
+          present: boolean;
+          valid: boolean | null;
+          signer: string | null;
+          entries: number;
+        };
+      }
+    | { enabled: false };
+  cache?: {
+    providerSessionKeys: string[];
+    serverSessionKeys: string[];
+  };
+}
+
+export interface GatewayHealthSnapshot {
+  checks: HealthProbeResult[];
 }
 
 function yesNo(value: boolean): string {
@@ -159,113 +266,183 @@ export function buildServiceStatusReport(
   config: OpenFoxConfig,
   rawDb?: DatabaseType,
 ): string {
-  const roles = detectServiceRoles(config);
+  const snapshot = buildServiceStatusSnapshot(config, rawDb);
   const lines = [
     "=== OPENFOX SERVICES ===",
-    `Roles: ${roles.length ? roles.join(", ") : "(none)"}`,
-    `Discovery: ${yesNo(config.agentDiscovery?.enabled === true)}`,
-    `RPC: ${config.rpcUrl || "(unset)"}${config.chainId ? ` (chain ${config.chainId})` : ""}`,
+    `Roles: ${snapshot.roles.length ? snapshot.roles.join(", ") : "(none)"}`,
+    `Discovery: ${yesNo(snapshot.discoveryEnabled)}`,
+    `RPC: ${snapshot.rpcUrl || "(unset)"}${snapshot.chainId ? ` (chain ${snapshot.chainId})` : ""}`,
   ];
 
-  const faucet = config.agentDiscovery?.faucetServer;
-  const observation = config.agentDiscovery?.observationServer;
-  const gatewayServer = config.agentDiscovery?.gatewayServer;
-  const gatewayClient = config.agentDiscovery?.gatewayClient;
-
   lines.push("", "Provider surfaces:");
-  if (faucet?.enabled) {
+  if (snapshot.providerSurfaces.faucet) {
     lines.push(
-      `  - faucet: ${buildLocalHttpUrl(faucet.bindHost, faucet.port, faucet.path)}  capability=${faucet.capability}`,
+      `  - faucet: ${snapshot.providerSurfaces.faucet.url}  capability=${snapshot.providerSurfaces.faucet.capability}`,
     );
   }
-  if (observation?.enabled) {
+  if (snapshot.providerSurfaces.observation) {
     lines.push(
-      `  - observation: ${buildLocalHttpUrl(observation.bindHost, observation.port, observation.path)}  capability=${observation.capability}`,
+      `  - observation: ${snapshot.providerSurfaces.observation.url}  capability=${snapshot.providerSurfaces.observation.capability}`,
     );
   }
-  const routes = inferProviderRoutes(config);
-  for (const route of routes) {
+  for (const route of snapshot.providerSurfaces.routes) {
     lines.push(
       `  - route: ${route.path} -> ${route.targetUrl}  capability=${route.capability}  mode=${route.mode}`,
     );
   }
-  if (!faucet?.enabled && !observation?.enabled && routes.length === 0) {
+  if (
+    !snapshot.providerSurfaces.faucet &&
+    !snapshot.providerSurfaces.observation &&
+    snapshot.providerSurfaces.routes.length === 0
+  ) {
     lines.push("  (none)");
   }
 
   lines.push("", "Gateway server:");
-  if (gatewayServer?.enabled) {
-    const healthz = `${gatewayServer.publicBaseUrl.replace(/\/$/, "")}${gatewayServer.publicPathPrefix.startsWith("/") ? gatewayServer.publicPathPrefix : `/${gatewayServer.publicPathPrefix}`}/healthz`;
-    lines.push(`  - public base: ${gatewayServer.publicBaseUrl}`);
+  if (snapshot.gatewayServer.enabled) {
+    lines.push(`  - public base: ${snapshot.gatewayServer.publicBaseUrl}`);
+    lines.push(`  - session url: ${snapshot.gatewayServer.sessionUrl}`);
+    lines.push(`  - healthz: ${snapshot.gatewayServer.healthzUrl}`);
     lines.push(
-      `  - session url: ${gatewayServer.publicBaseUrl.replace(/^http/, "ws").replace(/\/$/, "")}${gatewayServer.sessionPath.startsWith("/") ? gatewayServer.sessionPath : `/${gatewayServer.sessionPath}`}`,
-    );
-    lines.push(`  - healthz: ${healthz}`);
-    lines.push(
-      `  - mode=${gatewayServer.mode} payment_direction=${gatewayServer.paymentDirection || "requester_pays"} capability=${gatewayServer.capability}`,
+      `  - mode=${snapshot.gatewayServer.mode} payment_direction=${snapshot.gatewayServer.paymentDirection} capability=${snapshot.gatewayServer.capability}`,
     );
   } else {
     lines.push("  (disabled)");
   }
 
   lines.push("", "Gateway client:");
-  if (gatewayClient?.enabled) {
-    lines.push(`  - max sessions: ${gatewayClient.maxGatewaySessions}`);
-    lines.push(`  - e2e: ${yesNo(gatewayClient.enableE2E === true)}`);
-    lines.push(`  - signed bootnode list required: ${yesNo(gatewayClient.requireSignedBootnodeList === true)}`);
-    lines.push(`  - configured bootnodes: ${gatewayClient.gatewayBootnodes.length}`);
-    if (gatewayClient.gatewayUrl) {
-      lines.push(`  - pinned gateway url: ${gatewayClient.gatewayUrl}`);
+  if (snapshot.gatewayClient.enabled) {
+    lines.push(`  - max sessions: ${snapshot.gatewayClient.maxSessions}`);
+    lines.push(`  - e2e: ${yesNo(snapshot.gatewayClient.e2e)}`);
+    lines.push(
+      `  - signed bootnode list required: ${yesNo(snapshot.gatewayClient.requireSignedBootnodeList)}`,
+    );
+    lines.push(`  - configured bootnodes: ${snapshot.gatewayClient.configuredBootnodes}`);
+    if (snapshot.gatewayClient.pinnedGatewayUrl) {
+      lines.push(`  - pinned gateway url: ${snapshot.gatewayClient.pinnedGatewayUrl}`);
     }
   } else {
     lines.push("  (disabled)");
   }
 
-  if (rawDb) {
-    const cachedProviderSessions = listGatewaySessionCache(rawDb);
-    const cachedServerSessions = listGatewayServerSessionCache(rawDb);
+  if (snapshot.gatewayCache) {
     lines.push("", "Gateway cache:");
-    lines.push(`  - provider session cache entries: ${cachedProviderSessions.length}`);
-    lines.push(`  - server session cache entries: ${cachedServerSessions.length}`);
+    lines.push(
+      `  - provider session cache entries: ${snapshot.gatewayCache.providerSessionCacheEntries}`,
+    );
+    lines.push(
+      `  - server session cache entries: ${snapshot.gatewayCache.serverSessionCacheEntries}`,
+    );
   }
 
   lines.push("========================");
   return lines.join("\n");
 }
 
+export function buildServiceStatusSnapshot(
+  config: OpenFoxConfig,
+  rawDb?: DatabaseType,
+): ServiceStatusSnapshot {
+  const gatewayServer = config.agentDiscovery?.gatewayServer;
+  const gatewayClient = config.agentDiscovery?.gatewayClient;
+  const faucet = config.agentDiscovery?.faucetServer;
+  const observation = config.agentDiscovery?.observationServer;
+
+  return {
+    roles: detectServiceRoles(config),
+    discoveryEnabled: config.agentDiscovery?.enabled === true,
+    rpcUrl: config.rpcUrl || null,
+    chainId: config.chainId ?? null,
+    providerSurfaces: {
+      faucet:
+        faucet?.enabled && faucet.port > 0
+          ? {
+              url: buildLocalHttpUrl(faucet.bindHost, faucet.port, faucet.path),
+              capability: faucet.capability,
+            }
+          : null,
+      observation:
+        observation?.enabled && observation.port > 0
+          ? {
+              url: buildLocalHttpUrl(
+                observation.bindHost,
+                observation.port,
+                observation.path,
+              ),
+              capability: observation.capability,
+            }
+          : null,
+      routes: inferProviderRoutes(config),
+    },
+    gatewayServer: gatewayServer?.enabled
+      ? {
+          enabled: true,
+          publicBaseUrl: gatewayServer.publicBaseUrl,
+          sessionUrl: `${gatewayServer.publicBaseUrl.replace(/^http/, "ws").replace(/\/$/, "")}${gatewayServer.sessionPath.startsWith("/") ? gatewayServer.sessionPath : `/${gatewayServer.sessionPath}`}`,
+          healthzUrl: `${gatewayServer.publicBaseUrl.replace(/\/$/, "")}${gatewayServer.publicPathPrefix.startsWith("/") ? gatewayServer.publicPathPrefix : `/${gatewayServer.publicPathPrefix}`}/healthz`,
+          capability: gatewayServer.capability,
+          mode: gatewayServer.mode,
+          paymentDirection: gatewayServer.paymentDirection || "requester_pays",
+        }
+      : { enabled: false },
+    gatewayClient: gatewayClient?.enabled
+      ? {
+          enabled: true,
+          maxSessions: gatewayClient.maxGatewaySessions,
+          e2e: gatewayClient.enableE2E === true,
+          requireSignedBootnodeList: gatewayClient.requireSignedBootnodeList === true,
+          configuredBootnodes: gatewayClient.gatewayBootnodes.length,
+          pinnedGatewayUrl: gatewayClient.gatewayUrl || null,
+        }
+      : { enabled: false },
+    gatewayCache: rawDb
+      ? {
+          providerSessionCacheEntries: listGatewaySessionCache(rawDb).length,
+          serverSessionCacheEntries: listGatewayServerSessionCache(rawDb).length,
+        }
+      : undefined,
+  };
+}
+
 export async function buildGatewayStatusReport(
   config: OpenFoxConfig,
   rawDb?: DatabaseType,
 ): Promise<string> {
-  const gatewayServer = config.agentDiscovery?.gatewayServer;
-  const gatewayClient = config.agentDiscovery?.gatewayClient;
+  const snapshot = await buildGatewayStatusSnapshot(config, rawDb);
   const lines = ["=== OPENFOX GATEWAY ==="];
 
-  if (gatewayServer?.enabled) {
+  if (snapshot.server.enabled) {
     lines.push("Server: enabled");
-    lines.push(`  capability: ${gatewayServer.capability}`);
-    lines.push(`  public base: ${gatewayServer.publicBaseUrl}`);
-    lines.push(`  bind: ${gatewayServer.bindHost}:${gatewayServer.port}`);
-    lines.push(`  payment direction: ${gatewayServer.paymentDirection || "requester_pays"}`);
-    lines.push(`  mode: ${gatewayServer.mode}`);
+    lines.push(`  capability: ${snapshot.server.capability}`);
+    lines.push(`  public base: ${snapshot.server.publicBaseUrl}`);
+    lines.push(`  bind: ${snapshot.server.bind}`);
+    lines.push(`  payment direction: ${snapshot.server.paymentDirection}`);
+    lines.push(`  mode: ${snapshot.server.mode}`);
   } else {
     lines.push("Server: disabled");
   }
 
-  if (gatewayClient?.enabled) {
+  if (snapshot.client.enabled) {
     lines.push("Client: enabled");
-    lines.push(`  max sessions: ${gatewayClient.maxGatewaySessions}`);
-    lines.push(`  routes: ${gatewayClient.routes.length}`);
-    lines.push(`  e2e: ${yesNo(gatewayClient.enableE2E === true)}`);
-    lines.push(`  signed bootnode list required: ${yesNo(gatewayClient.requireSignedBootnodeList === true)}`);
-    if (gatewayClient.gatewayUrl) {
-      lines.push(`  pinned gateway: ${gatewayClient.gatewayUrl}`);
+    lines.push(`  max sessions: ${snapshot.client.maxSessions}`);
+    lines.push(`  routes: ${snapshot.client.routes}`);
+    lines.push(`  e2e: ${yesNo(snapshot.client.e2e)}`);
+    lines.push(
+      `  signed bootnode list required: ${yesNo(snapshot.client.requireSignedBootnodeList)}`,
+    );
+    if (snapshot.client.pinnedGatewayUrl) {
+      lines.push(`  pinned gateway: ${snapshot.client.pinnedGatewayUrl}`);
     }
-    if (gatewayClient.gatewayBootnodeList) {
-      const valid = await verifyGatewayBootnodeList(gatewayClient.gatewayBootnodeList, config);
-      lines.push(`  signed bootnode list: ${valid ? "valid" : "invalid"}`);
-      lines.push(`  signed bootnode signer: ${gatewayClient.gatewayBootnodeList.signer}`);
-      lines.push(`  signed bootnode entries: ${gatewayClient.gatewayBootnodeList.entries.length}`);
+    if (snapshot.client.signedBootnodeList.present) {
+      lines.push(
+        `  signed bootnode list: ${snapshot.client.signedBootnodeList.valid ? "valid" : "invalid"}`,
+      );
+      lines.push(
+        `  signed bootnode signer: ${snapshot.client.signedBootnodeList.signer}`,
+      );
+      lines.push(
+        `  signed bootnode entries: ${snapshot.client.signedBootnodeList.entries}`,
+      );
     } else {
       lines.push("  signed bootnode list: (none)");
     }
@@ -273,19 +450,17 @@ export async function buildGatewayStatusReport(
     lines.push("Client: disabled");
   }
 
-  if (rawDb) {
-    const cachedProviderSessions = listGatewaySessionCache(rawDb);
-    const cachedServerSessions = listGatewayServerSessionCache(rawDb);
-    if (cachedProviderSessions.length) {
+  if (snapshot.cache) {
+    if (snapshot.cache.providerSessionKeys.length) {
       lines.push("Provider session cache:");
-      for (const entry of cachedProviderSessions) {
-        lines.push(`  - ${entry.key}`);
+      for (const key of snapshot.cache.providerSessionKeys) {
+        lines.push(`  - ${key}`);
       }
     }
-    if (cachedServerSessions.length) {
+    if (snapshot.cache.serverSessionKeys.length) {
       lines.push("Server session cache:");
-      for (const entry of cachedServerSessions) {
-        lines.push(`  - ${entry.key}`);
+      for (const key of snapshot.cache.serverSessionKeys) {
+        lines.push(`  - ${key}`);
       }
     }
   }
@@ -294,30 +469,83 @@ export async function buildGatewayStatusReport(
   return lines.join("\n");
 }
 
+export async function buildGatewayStatusSnapshot(
+  config: OpenFoxConfig,
+  rawDb?: DatabaseType,
+): Promise<GatewayStatusSnapshot> {
+  const gatewayServer = config.agentDiscovery?.gatewayServer;
+  const gatewayClient = config.agentDiscovery?.gatewayClient;
+  const signedBootnodeList =
+    gatewayClient?.enabled && gatewayClient.gatewayBootnodeList
+      ? {
+          present: true,
+          valid: await verifyGatewayBootnodeList(
+            gatewayClient.gatewayBootnodeList,
+            config,
+          ),
+          signer: gatewayClient.gatewayBootnodeList.signer,
+          entries: gatewayClient.gatewayBootnodeList.entries.length,
+        }
+      : {
+          present: false,
+          valid: null,
+          signer: null,
+          entries: 0,
+        };
+
+  return {
+    server: gatewayServer?.enabled
+      ? {
+          enabled: true,
+          capability: gatewayServer.capability,
+          publicBaseUrl: gatewayServer.publicBaseUrl,
+          bind: `${gatewayServer.bindHost}:${gatewayServer.port}`,
+          paymentDirection: gatewayServer.paymentDirection || "requester_pays",
+          mode: gatewayServer.mode,
+        }
+      : { enabled: false },
+    client: gatewayClient?.enabled
+      ? {
+          enabled: true,
+          maxSessions: gatewayClient.maxGatewaySessions,
+          routes: gatewayClient.routes.length,
+          e2e: gatewayClient.enableE2E === true,
+          requireSignedBootnodeList: gatewayClient.requireSignedBootnodeList === true,
+          pinnedGatewayUrl: gatewayClient.gatewayUrl || null,
+          signedBootnodeList,
+        }
+      : { enabled: false },
+    cache: rawDb
+      ? {
+          providerSessionKeys: listGatewaySessionCache(rawDb).map((entry) => entry.key),
+          serverSessionKeys: listGatewayServerSessionCache(rawDb).map((entry) => entry.key),
+        }
+      : undefined,
+  };
+}
+
 export async function buildGatewayBootnodesReport(
   config: OpenFoxConfig,
 ): Promise<string> {
-  const gatewayClient = config.agentDiscovery?.gatewayClient;
+  const snapshot = await buildGatewayBootnodesSnapshot(config);
   const lines = ["=== OPENFOX GATEWAY BOOTNODES ==="];
-  if (!gatewayClient?.enabled) {
+  if (!config.agentDiscovery?.gatewayClient?.enabled) {
     lines.push("Gateway client disabled.", "================================");
     return lines.join("\n");
   }
 
-  if (gatewayClient.gatewayBootnodeList) {
-    const valid = await verifyGatewayBootnodeList(gatewayClient.gatewayBootnodeList, config);
-    lines.push(`Signed list: ${valid ? "valid" : "invalid"}`);
-    lines.push(`Signer: ${gatewayClient.gatewayBootnodeList.signer}`);
+  if (snapshot.signedList.present) {
+    lines.push(`Signed list: ${snapshot.signedList.valid ? "valid" : "invalid"}`);
+    lines.push(`Signer: ${snapshot.signedList.signer}`);
   } else {
     lines.push("Signed list: (none)");
   }
 
-  const entries = gatewayClient.gatewayBootnodeList?.entries || gatewayClient.gatewayBootnodes;
-  if (entries.length === 0) {
+  if (snapshot.entries.length === 0) {
     lines.push("(no bootnodes configured)", "================================");
     return lines.join("\n");
   }
-  for (const entry of entries) {
+  for (const entry of snapshot.entries) {
     lines.push(
       `- ${entry.agentId}  ${entry.url}${entry.payToAddress ? `  pay_to=${entry.payToAddress}` : ""}${entry.paymentDirection ? `  payment=${entry.paymentDirection}` : ""}`,
     );
@@ -326,19 +554,74 @@ export async function buildGatewayBootnodesReport(
   return lines.join("\n");
 }
 
+export async function buildGatewayBootnodesSnapshot(
+  config: OpenFoxConfig,
+): Promise<GatewayBootnodeSnapshot> {
+  const gatewayClient = config.agentDiscovery?.gatewayClient;
+  if (!gatewayClient?.enabled) {
+    return {
+      signedList: {
+        present: false,
+        valid: null,
+        signer: null,
+        entries: 0,
+      },
+      entries: [],
+    };
+  }
+
+  const signedList = gatewayClient.gatewayBootnodeList
+    ? {
+        present: true,
+        valid: await verifyGatewayBootnodeList(gatewayClient.gatewayBootnodeList, config),
+        signer: gatewayClient.gatewayBootnodeList.signer,
+        entries: gatewayClient.gatewayBootnodeList.entries.length,
+      }
+    : {
+        present: false,
+        valid: null,
+        signer: null,
+        entries: 0,
+      };
+
+  return {
+    signedList,
+    entries: gatewayClient.gatewayBootnodeList?.entries || gatewayClient.gatewayBootnodes,
+  };
+}
+
 export async function runServiceHealthChecks(
   config: OpenFoxConfig,
 ): Promise<string> {
-  const results: HealthProbeResult[] = [];
+  const snapshot = await buildServiceHealthSnapshot(config);
+  const lines = ["=== OPENFOX SERVICE CHECK ==="];
+  if (snapshot.checks.length === 0) {
+    lines.push("(no checks configured)", "============================");
+    return lines.join("\n");
+  }
+
+  for (const result of snapshot.checks) {
+    lines.push(
+      `- ${result.ok ? "OK" : "FAIL"}  ${result.url}${result.status ? `  status=${result.status}` : ""}${result.details ? `  ${result.details}` : ""}`,
+    );
+  }
+  lines.push("============================");
+  return lines.join("\n");
+}
+
+export async function buildServiceHealthSnapshot(
+  config: OpenFoxConfig,
+): Promise<GatewayHealthSnapshot> {
+  const checks: HealthProbeResult[] = [];
 
   if (config.rpcUrl) {
-    results.push(await probeRpc(config.rpcUrl));
+    checks.push(await probeRpc(config.rpcUrl));
   }
 
   const faucet = config.agentDiscovery?.faucetServer;
   if (faucet?.enabled && faucet.port > 0) {
     const base = buildLocalHttpUrl(faucet.bindHost, faucet.port, faucet.path);
-    results.push(await probeHttpJson(`${base}/healthz`));
+    checks.push(await probeHttpJson(`${base}/healthz`));
   }
 
   const observation = config.agentDiscovery?.observationServer;
@@ -348,7 +631,7 @@ export async function runServiceHealthChecks(
       observation.port,
       observation.path,
     );
-    results.push(await probeHttpJson(`${base}/healthz`));
+    checks.push(await probeHttpJson(`${base}/healthz`));
   }
 
   const gatewayServer = config.agentDiscovery?.gatewayServer;
@@ -356,24 +639,26 @@ export async function runServiceHealthChecks(
     const prefix = gatewayServer.publicPathPrefix.startsWith("/")
       ? gatewayServer.publicPathPrefix
       : `/${gatewayServer.publicPathPrefix}`;
-    results.push(
+    checks.push(
       await probeHttpJson(
         `${gatewayServer.publicBaseUrl.replace(/\/$/, "")}${prefix}/healthz`,
       ),
     );
   }
 
-  const lines = ["=== OPENFOX SERVICE CHECK ==="];
-  if (results.length === 0) {
-    lines.push("(no checks configured)", "============================");
-    return lines.join("\n");
-  }
+  return { checks };
+}
 
-  for (const result of results) {
-    lines.push(
-      `- ${result.ok ? "OK" : "FAIL"}  ${result.url}${result.status ? `  status=${result.status}` : ""}${result.details ? `  ${result.details}` : ""}`,
-    );
-  }
-  lines.push("============================");
-  return lines.join("\n");
+export function buildCombinedServiceStatusSnapshot(
+  managedService: ManagedServiceStatus,
+  config: OpenFoxConfig,
+  rawDb?: DatabaseType,
+): {
+  managedService: ManagedServiceStatus;
+  service: ServiceStatusSnapshot;
+} {
+  return {
+    managedService,
+    service: buildServiceStatusSnapshot(config, rawDb),
+  };
 }

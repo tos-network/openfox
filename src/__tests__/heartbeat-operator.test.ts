@@ -4,6 +4,10 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   addCronTask,
+  buildCronListSnapshot,
+  buildCronRunsSnapshot,
+  buildCronTaskSnapshot,
+  buildHeartbeatStatusSnapshot,
   buildCronListReport,
   buildHeartbeatStatusReport,
   disableHeartbeat,
@@ -14,6 +18,7 @@ import {
 import { writeDefaultHeartbeatConfig } from "../heartbeat/config.js";
 import { createTestDb } from "./mocks.js";
 import type { OpenFoxDatabase } from "../types.js";
+import { insertHeartbeatHistory } from "../state/database.js";
 
 describe("heartbeat operator", () => {
   let db: OpenFoxDatabase;
@@ -61,6 +66,15 @@ describe("heartbeat operator", () => {
     disableHeartbeat(db.raw);
     queueManualWake(db.raw, "manual wake for review");
 
+    const snapshot = buildHeartbeatStatusSnapshot(db.raw, {
+      entries: [],
+      defaultIntervalMs: 60_000,
+      lowComputeMultiplier: 4,
+    });
+    expect(snapshot.enabled).toBe(false);
+    expect(snapshot.pendingWakes).toBe(1);
+    expect(snapshot.recentWakeEvents[0]?.reason).toBe("manual wake for review");
+
     const report = buildHeartbeatStatusReport(db.raw, {
       entries: [],
       defaultIntervalMs: 60_000,
@@ -77,5 +91,38 @@ describe("heartbeat operator", () => {
       lowComputeMultiplier: 4,
     });
     expect(enabledReport).toContain("Enabled: yes");
+  });
+
+  it("builds machine-readable cron snapshots", () => {
+    addCronTask({
+      heartbeatConfigPath,
+      db,
+      rawDb: db.raw,
+      taskName: "report_metrics",
+      schedule: "*/5 * * * *",
+    });
+    insertHeartbeatHistory(db.raw, {
+      id: "hb-test-1",
+      taskName: "report_metrics",
+      startedAt: "2026-03-09T00:00:00.000Z",
+      completedAt: "2026-03-09T00:00:01.000Z",
+      result: "success",
+      durationMs: 1000,
+      error: null,
+      idempotencyKey: null,
+    });
+
+    const list = buildCronListSnapshot(db.raw);
+    const scheduled = list.find((entry) => entry.taskName === "report_metrics");
+    expect(scheduled?.enabled).toBe(true);
+
+    const task = buildCronTaskSnapshot(db.raw, "report_metrics");
+    expect(task.taskName).toBe("report_metrics");
+    expect(task.recentRuns.length).toBe(1);
+    expect(task.recentRuns[0]?.result).toBe("success");
+
+    const runs = buildCronRunsSnapshot(db.raw, "report_metrics", 5);
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.taskName).toBe("report_metrics");
   });
 });

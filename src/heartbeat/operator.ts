@@ -25,6 +25,47 @@ import { BUILTIN_TASKS } from "./tasks.js";
 
 type DatabaseType = BetterSqlite3.Database;
 
+export interface HeartbeatRunSummary {
+  taskName: string;
+  result: string;
+  startedAt: string | null;
+  error?: string | null;
+}
+
+export interface WakeEventSummary {
+  source: string;
+  reason: string;
+  createdAt: string | null;
+  consumedAt: string | null;
+}
+
+export interface HeartbeatStatusSnapshot {
+  enabled: boolean;
+  configuredTasks: number;
+  scheduledTasks: number;
+  pendingWakes: number;
+  lastRun: HeartbeatRunSummary | null;
+  recentRuns: HeartbeatRunSummary[];
+  recentWakeEvents: WakeEventSummary[];
+}
+
+export interface CronTaskSnapshot {
+  taskName: string;
+  enabled: boolean;
+  cronExpression: string | null;
+  intervalMs: number | null;
+  priority: number;
+  timeoutMs: number;
+  maxRetries: number;
+  tierMinimum: string;
+  lastRunAt: string | null;
+  nextRunAt: string | null;
+  lastResult: string | null;
+  runCount: number;
+  failCount: number;
+  recentRuns: HeartbeatRunSummary[];
+}
+
 const TASK_DESCRIPTIONS: Record<string, string> = {
   heartbeat_ping: "Persist local liveness state and emit distress when the runtime is unhealthy.",
   check_credits: "Track credit balance changes and wake the agent on survival-tier drops.",
@@ -86,33 +127,29 @@ export function buildHeartbeatStatusReport(
   rawDb: DatabaseType,
   heartbeatConfig: HeartbeatConfig,
 ): string {
-  const paused = isHeartbeatPaused(rawDb);
-  const schedule = getHeartbeatSchedule(rawDb);
-  const recentRuns = getRecentHeartbeatHistory(rawDb, 5);
-  const pendingWakes = getUnconsumedWakeEvents(rawDb);
-  const recentWakeEvents = getRecentWakeEvents(rawDb, 5);
+  const snapshot = buildHeartbeatStatusSnapshot(rawDb, heartbeatConfig);
 
   const lines = [
     "=== OPENFOX HEARTBEAT ===",
-    `Enabled: ${formatBool(!paused)}`,
-    `Configured tasks: ${heartbeatConfig.entries.length}`,
-    `Scheduled tasks: ${schedule.length}`,
-    `Pending wakes: ${pendingWakes.length}`,
+    `Enabled: ${formatBool(snapshot.enabled)}`,
+    `Configured tasks: ${snapshot.configuredTasks}`,
+    `Scheduled tasks: ${snapshot.scheduledTasks}`,
+    `Pending wakes: ${snapshot.pendingWakes}`,
   ];
 
-  if (recentRuns[0]) {
+  if (snapshot.lastRun) {
     lines.push(
-      `Last run: ${recentRuns[0].taskName} @ ${formatIso(recentRuns[0].startedAt)} (${recentRuns[0].result})`,
+      `Last run: ${snapshot.lastRun.taskName} @ ${formatIso(snapshot.lastRun.startedAt)} (${snapshot.lastRun.result})`,
     );
   } else {
     lines.push("Last run: (none)");
   }
 
   lines.push("", "Recent runs:");
-  if (recentRuns.length === 0) {
+  if (snapshot.recentRuns.length === 0) {
     lines.push("  (none)");
   } else {
-    for (const row of recentRuns) {
+    for (const row of snapshot.recentRuns) {
       lines.push(
         `  - ${row.taskName}: ${row.result} @ ${formatIso(row.startedAt)}${row.error ? ` (${row.error})` : ""}`,
       );
@@ -120,10 +157,10 @@ export function buildHeartbeatStatusReport(
   }
 
   lines.push("", "Recent wake reasons:");
-  if (recentWakeEvents.length === 0) {
+  if (snapshot.recentWakeEvents.length === 0) {
     lines.push("  (none)");
   } else {
-    for (const row of recentWakeEvents) {
+    for (const row of snapshot.recentWakeEvents) {
       lines.push(
         `  - [${row.source}] ${row.reason} @ ${formatIso(row.createdAt)}${row.consumedAt ? " (consumed)" : " (pending)"}`,
       );
@@ -134,8 +171,46 @@ export function buildHeartbeatStatusReport(
   return lines.join("\n");
 }
 
-export function buildCronListReport(rawDb: DatabaseType): string {
+export function buildHeartbeatStatusSnapshot(
+  rawDb: DatabaseType,
+  heartbeatConfig: HeartbeatConfig,
+): HeartbeatStatusSnapshot {
+  const paused = isHeartbeatPaused(rawDb);
   const schedule = getHeartbeatSchedule(rawDb);
+  const recentRuns = getRecentHeartbeatHistory(rawDb, 5);
+  const pendingWakes = getUnconsumedWakeEvents(rawDb);
+  const recentWakeEvents = getRecentWakeEvents(rawDb, 5);
+
+  return {
+    enabled: !paused,
+    configuredTasks: heartbeatConfig.entries.length,
+    scheduledTasks: schedule.length,
+    pendingWakes: pendingWakes.length,
+    lastRun: recentRuns[0]
+      ? {
+          taskName: recentRuns[0].taskName,
+          result: recentRuns[0].result,
+          startedAt: recentRuns[0].startedAt,
+          error: recentRuns[0].error,
+        }
+      : null,
+    recentRuns: recentRuns.map((row) => ({
+      taskName: row.taskName,
+      result: row.result,
+      startedAt: row.startedAt,
+      error: row.error,
+    })),
+    recentWakeEvents: recentWakeEvents.map((row) => ({
+      source: row.source,
+      reason: row.reason,
+      createdAt: row.createdAt,
+      consumedAt: row.consumedAt,
+    })),
+  };
+}
+
+export function buildCronListReport(rawDb: DatabaseType): string {
+  const schedule = buildCronListSnapshot(rawDb);
   const lines = ["=== OPENFOX CRON ==="];
 
   if (schedule.length === 0) {
@@ -144,38 +219,58 @@ export function buildCronListReport(rawDb: DatabaseType): string {
   }
 
   for (const row of schedule) {
-    const lastRun = row.lastRunAt || getHeartbeatHistory(rawDb, row.taskName, 1)[0]?.startedAt || null;
     lines.push(
-      `${row.taskName}  [${row.enabled ? "enabled" : "disabled"}]  cron=${row.cronExpression || "(none)"}  last=${formatIso(lastRun)}  next=${formatIso(row.nextRunAt)}`,
+      `${row.taskName}  [${row.enabled ? "enabled" : "disabled"}]  cron=${row.cronExpression || "(none)"}  last=${formatIso(row.lastRunAt)}  next=${formatIso(row.nextRunAt)}`,
     );
   }
   lines.push("====================");
   return lines.join("\n");
 }
 
-export function buildCronTaskReport(rawDb: DatabaseType, taskName: string): string {
-  const row = getHeartbeatTask(rawDb, taskName);
-  if (!row) {
-    throw new Error(`Scheduled task not found: ${taskName}`);
-  }
+export function buildCronListSnapshot(rawDb: DatabaseType): CronTaskSnapshot[] {
+  const schedule = getHeartbeatSchedule(rawDb);
+  return schedule.map((row) => ({
+    taskName: row.taskName,
+    enabled: row.enabled === 1,
+    cronExpression: row.cronExpression,
+    intervalMs: row.intervalMs,
+    priority: row.priority,
+    timeoutMs: row.timeoutMs,
+    maxRetries: row.maxRetries,
+    tierMinimum: row.tierMinimum,
+    lastRunAt:
+      row.lastRunAt || getHeartbeatHistory(rawDb, row.taskName, 1)[0]?.startedAt || null,
+    nextRunAt: row.nextRunAt,
+    lastResult: row.lastResult,
+    runCount: row.runCount,
+    failCount: row.failCount,
+    recentRuns: getHeartbeatHistory(rawDb, row.taskName, 5).map((run) => ({
+      taskName: run.taskName,
+      result: run.result,
+      startedAt: run.startedAt,
+      error: run.error,
+    })),
+  }));
+}
 
+export function buildCronTaskReport(rawDb: DatabaseType, taskName: string): string {
+  const task = buildCronTaskSnapshot(rawDb, taskName);
   const runs = getHeartbeatHistory(rawDb, taskName, 10);
-  const lastRun = row.lastRunAt || runs[0]?.startedAt || null;
   const lines = [
     "=== OPENFOX CRON TASK ===",
-    `Task: ${row.taskName}`,
-    `Enabled: ${formatBool(row.enabled === 1)}`,
-    `Cron: ${row.cronExpression || "(none)"}`,
-    `Interval ms: ${row.intervalMs ?? "(none)"}`,
-    `Priority: ${row.priority}`,
-    `Timeout ms: ${row.timeoutMs}`,
-    `Max retries: ${row.maxRetries}`,
-    `Tier minimum: ${row.tierMinimum}`,
-    `Last run: ${formatIso(lastRun)}`,
-    `Next run: ${formatIso(row.nextRunAt)}`,
-    `Last result: ${row.lastResult || "(none)"}`,
-    `Run count: ${row.runCount}`,
-    `Fail count: ${row.failCount}`,
+    `Task: ${task.taskName}`,
+    `Enabled: ${formatBool(task.enabled)}`,
+    `Cron: ${task.cronExpression || "(none)"}`,
+    `Interval ms: ${task.intervalMs ?? "(none)"}`,
+    `Priority: ${task.priority}`,
+    `Timeout ms: ${task.timeoutMs}`,
+    `Max retries: ${task.maxRetries}`,
+    `Tier minimum: ${task.tierMinimum}`,
+    `Last run: ${formatIso(task.lastRunAt)}`,
+    `Next run: ${formatIso(task.nextRunAt)}`,
+    `Last result: ${task.lastResult || "(none)"}`,
+    `Run count: ${task.runCount}`,
+    `Fail count: ${task.failCount}`,
     "",
     "Recent runs:",
   ];
@@ -194,14 +289,41 @@ export function buildCronTaskReport(rawDb: DatabaseType, taskName: string): stri
   return lines.join("\n");
 }
 
+export function buildCronTaskSnapshot(rawDb: DatabaseType, taskName: string): CronTaskSnapshot {
+  const row = getHeartbeatTask(rawDb, taskName);
+  if (!row) {
+    throw new Error(`Scheduled task not found: ${taskName}`);
+  }
+  const runs = getHeartbeatHistory(rawDb, taskName, 10);
+  return {
+    taskName: row.taskName,
+    enabled: row.enabled === 1,
+    cronExpression: row.cronExpression,
+    intervalMs: row.intervalMs,
+    priority: row.priority,
+    timeoutMs: row.timeoutMs,
+    maxRetries: row.maxRetries,
+    tierMinimum: row.tierMinimum,
+    lastRunAt: row.lastRunAt || runs[0]?.startedAt || null,
+    nextRunAt: row.nextRunAt,
+    lastResult: row.lastResult,
+    runCount: row.runCount,
+    failCount: row.failCount,
+    recentRuns: runs.map((run) => ({
+      taskName: run.taskName,
+      result: run.result,
+      startedAt: run.startedAt,
+      error: run.error,
+    })),
+  };
+}
+
 export function buildCronRunsReport(
   rawDb: DatabaseType,
   taskName: string | undefined,
   limit = 20,
 ): string {
-  const runs = taskName
-    ? getHeartbeatHistory(rawDb, taskName, limit)
-    : getRecentHeartbeatHistory(rawDb, limit);
+  const runs = buildCronRunsSnapshot(rawDb, taskName, limit);
   const lines = ["=== OPENFOX CRON RUNS ==="];
 
   if (runs.length === 0) {
@@ -216,6 +338,22 @@ export function buildCronRunsReport(
   }
   lines.push("========================");
   return lines.join("\n");
+}
+
+export function buildCronRunsSnapshot(
+  rawDb: DatabaseType,
+  taskName: string | undefined,
+  limit = 20,
+): HeartbeatRunSummary[] {
+  const runs = taskName
+    ? getHeartbeatHistory(rawDb, taskName, limit)
+    : getRecentHeartbeatHistory(rawDb, limit);
+  return runs.map((run) => ({
+    taskName: run.taskName,
+    result: run.result,
+    startedAt: run.startedAt,
+    error: run.error,
+  }));
 }
 
 function syncConfigToStores(

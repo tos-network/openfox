@@ -22,6 +22,27 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Make OpenFox easier to run as an always-on user service with
     install/start/stop/restart/uninstall flows closer to OpenClaw.
+- [x] Task 5: Add doctor and health diagnostics UX
+  - Status: Complete
+  - Goal: Give operators a one-command way to inspect config, wallet,
+    inference, RPC, service state, and next-step repair guidance.
+- [x] Task 6: Add model/provider status UX
+  - Status: Complete
+  - Goal: Make provider readiness visible with an operator command similar to
+    OpenClaw's model status surface, without expanding the provider matrix.
+- [x] Task 7: Add onboarding command UX
+  - Status: Complete
+  - Goal: Provide an OpenClaw-style onboarding entrypoint that can initialize
+    OpenFox and optionally install the managed service in one flow.
+- [x] Task 8: Add logs operator UX
+  - Status: Complete
+  - Goal: Give operators a direct way to inspect recent OpenFox runtime logs
+    without leaving the CLI.
+- [x] Task 9: Add machine-readable runtime status surfaces
+  - Status: Complete
+  - Goal: Expose heartbeat, cron, service, gateway, and top-level runtime
+    status as stable JSON snapshots for automation, dashboards, and future
+    control plane integrations.
 
 ## Task 1 Breakdown
 
@@ -58,3 +79,41 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add start/stop/restart lifecycle commands.
 - [x] Surface managed service state in the operator CLI.
 - [x] Document managed service installation and runtime expectations.
+
+## Task 5 Breakdown
+
+- [x] Add `openfox health` for a compact runtime health snapshot.
+- [x] Add `openfox doctor` for actionable diagnostic findings and repair hints.
+- [x] Cover config, wallet, inference, RPC, skills, heartbeat, and service state.
+- [x] Support machine-readable `--json` output for future UI/control plane use.
+
+## Task 6 Breakdown
+
+- [x] Add `openfox models status`.
+- [x] Show selected model/provider and provider readiness.
+- [x] Support `--check` for local Ollama probing.
+- [x] Support `--json` output for automation and future UI use.
+
+## Task 7 Breakdown
+
+- [x] Add `openfox onboard`.
+- [x] Support `openfox onboard --install-daemon`.
+- [x] Reuse the existing setup wizard instead of inventing a second init flow.
+- [x] Keep onboarding compatible with the managed service lifecycle.
+
+## Task 8 Breakdown
+
+- [x] Add `openfox logs`.
+- [x] Support `--tail` line count selection.
+- [x] Point the operator to the managed service log path.
+
+## Task 9 Breakdown
+
+- [x] Add `--json` output to `openfox heartbeat status|tasks|history`.
+- [x] Add `--json` output to `openfox cron list|status|runs`.
+- [x] Add `--json` output to `openfox service status|check`.
+- [x] Add `--json` output to `openfox gateway status|bootnodes|check`.
+- [x] Add `openfox status --json` as a top-level machine-readable status
+  surface.
+- [x] Back the JSON output with explicit snapshot builders instead of ad-hoc
+  report parsing.

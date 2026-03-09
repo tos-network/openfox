@@ -3,6 +3,10 @@ import { afterEach, describe, expect, it } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
 import { createTestConfig, createTestDb } from "./mocks.js";
 import {
+  buildGatewayBootnodesSnapshot,
+  buildGatewayStatusSnapshot,
+  buildServiceHealthSnapshot,
+  buildServiceStatusSnapshot,
   buildGatewayBootnodesReport,
   buildGatewayStatusReport,
   buildServiceStatusReport,
@@ -92,10 +96,19 @@ describe("service operator", () => {
       },
     });
 
+    const snapshot = buildServiceStatusSnapshot(config, db.raw);
+    expect(snapshot.roles).toEqual(["requester", "provider", "gateway"]);
+    expect(snapshot.gatewayCache?.providerSessionCacheEntries).toBe(1);
+    expect(snapshot.gatewayCache?.serverSessionCacheEntries).toBe(1);
+
     const report = buildServiceStatusReport(config, db.raw);
     expect(report).toContain("Roles: requester, provider, gateway");
     expect(report).toContain("provider session cache entries: 1");
     expect(report).toContain("server session cache entries: 1");
+
+    const gatewaySnapshot = await buildGatewayStatusSnapshot(config, db.raw);
+    expect(gatewaySnapshot.server.enabled).toBe(true);
+    expect(gatewaySnapshot.client.enabled).toBe(true);
 
     const gatewayReport = await buildGatewayStatusReport(config, db.raw);
     expect(gatewayReport).toContain("Server: enabled");
@@ -161,6 +174,9 @@ describe("service operator", () => {
       },
     });
 
+    const snapshot = await buildServiceHealthSnapshot(config);
+    expect(snapshot.checks.every((check) => check.ok)).toBe(true);
+
     const report = await runServiceHealthChecks(config);
     expect(report).toContain("OK");
     expect(report).toContain(rpc.url);
@@ -208,6 +224,11 @@ describe("service operator", () => {
         },
       },
     });
+
+    const snapshot = await buildGatewayBootnodesSnapshot(config);
+    expect(snapshot.signedList.present).toBe(true);
+    expect(snapshot.signedList.valid).toBe(true);
+    expect(snapshot.entries[0]?.url).toBe("wss://gw.example.com/agent-gateway/session");
 
     const report = await buildGatewayBootnodesReport(config);
     expect(report).toContain("Signed list: valid");
