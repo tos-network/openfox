@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 15;
+export const SCHEMA_VERSION = 16;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -255,6 +255,50 @@ export const CREATE_TABLES = `
 
   CREATE INDEX IF NOT EXISTS idx_settlement_callback_status
     ON settlement_callbacks(status, kind, next_attempt_at);
+
+  CREATE TABLE IF NOT EXISTS market_bindings (
+    binding_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
+    subject_id TEXT NOT NULL,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    callback_target TEXT,
+    callback_tx_hash TEXT,
+    callback_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_market_binding_subject
+    ON market_bindings(kind, subject_id);
+
+  CREATE TABLE IF NOT EXISTS market_contract_callbacks (
+    callback_id TEXT PRIMARY KEY,
+    binding_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
+    subject_id TEXT NOT NULL,
+    contract_address TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    function_signature TEXT NOT NULL,
+    payload_mode TEXT NOT NULL CHECK(payload_mode IN ('canonical_binding','binding_hash')),
+    payload_hex TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    callback_tx_hash TEXT,
+    callback_receipt_json TEXT,
+    last_error TEXT,
+    next_attempt_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_market_callback_binding
+    ON market_contract_callbacks(binding_id);
+
+  CREATE INDEX IF NOT EXISTS idx_market_callback_status
+    ON market_contract_callbacks(status, kind, next_attempt_at);
 `;
 
 export const MIGRATION_V3 = `
@@ -971,4 +1015,50 @@ export const MIGRATION_V15 = `
 
   CREATE INDEX IF NOT EXISTS idx_settlement_callback_status
     ON settlement_callbacks(status, kind, next_attempt_at);
+`;
+
+export const MIGRATION_V16 = `
+  CREATE TABLE IF NOT EXISTS market_bindings (
+    binding_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
+    subject_id TEXT NOT NULL,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    callback_target TEXT,
+    callback_tx_hash TEXT,
+    callback_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_market_binding_subject
+    ON market_bindings(kind, subject_id);
+
+  CREATE TABLE IF NOT EXISTS market_contract_callbacks (
+    callback_id TEXT PRIMARY KEY,
+    binding_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
+    subject_id TEXT NOT NULL,
+    contract_address TEXT NOT NULL,
+    package_name TEXT NOT NULL,
+    function_signature TEXT NOT NULL,
+    payload_mode TEXT NOT NULL CHECK(payload_mode IN ('canonical_binding','binding_hash')),
+    payload_hex TEXT NOT NULL,
+    payload_hash TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 3,
+    callback_tx_hash TEXT,
+    callback_receipt_json TEXT,
+    last_error TEXT,
+    next_attempt_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_market_callback_binding
+    ON market_contract_callbacks(binding_id);
+
+  CREATE INDEX IF NOT EXISTS idx_market_callback_status
+    ON market_contract_callbacks(status, kind, next_attempt_at);
 `;

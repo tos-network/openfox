@@ -144,6 +144,8 @@ It supports:
 - a built-in paid oracle resolver with `POST /oracle/quote`, `POST /oracle/resolve`, and `GET /oracle/result/:id`
 - canonical settlement receipts and on-chain settlement anchors for bounty, observation, and oracle flows
 - contract callback adapters and heartbeat-driven retry for contract-bound settlement flows
+- contract-native market bindings for bounty, observation, and oracle creation flows
+- `openfox market list|get|callbacks` for operator-visible binding and callback state
 - gateway-backed provider endpoints for agents behind NAT
 
 The Gateway v1 path is:
@@ -206,6 +208,7 @@ pnpm openfox --run
 pnpm openfox onboard --install-daemon
 pnpm openfox wallet status
 pnpm openfox settlement list
+pnpm openfox market list
 pnpm openfox onboard --fund-local
 ```
 
@@ -217,6 +220,7 @@ openfox --run
 openfox onboard --install-daemon
 openfox wallet status
 openfox settlement list
+openfox market list
 ```
 
 If you are running directly from the source checkout and have not installed the binary globally yet, use:

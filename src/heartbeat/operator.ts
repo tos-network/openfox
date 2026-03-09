@@ -71,6 +71,7 @@ const TASK_DESCRIPTIONS: Record<string, string> = {
   check_credits: "Track credit balance changes and wake the agent on survival-tier drops.",
   check_wallet_balance: "Check native wallet balance and wake when spendable funds become available.",
   retry_settlement_callbacks: "Retry or confirm pending settlement callback transactions for contract-bound results.",
+  retry_market_contract_callbacks: "Retry or confirm pending contract-native market binding callbacks for task and query creation events.",
   check_social_inbox: "Poll the social inbox and wake the agent for new inbound messages.",
   check_for_updates: "Check for upstream/runtime updates.",
   health_check: "Run local health checks and wake on degraded status.",

@@ -7,6 +7,8 @@
 import type {
   Address,
   Hex,
+  MarketBindingKind as NativeMarketBindingKind,
+  MarketBindingReceipt,
   PrivateKeyAccount,
   SettlementKind as NativeSettlementKind,
   SettlementReceipt,
@@ -427,6 +429,7 @@ export interface OpenFoxConfig {
   bounty?: BountyConfig;
   opportunityScout?: OpportunityScoutConfig;
   settlement?: SettlementConfig;
+  marketContracts?: MarketContractConfig;
 }
 
 export interface WalletFundingConfig {
@@ -566,6 +569,7 @@ export interface OpportunityScoutConfig {
 }
 
 export type SettlementKind = NativeSettlementKind;
+export type MarketBindingKind = NativeMarketBindingKind;
 
 export interface SettlementConfig {
   enabled: boolean;
@@ -630,6 +634,68 @@ export interface SettlementCallbackRecord {
   payloadHex: Hex;
   payloadHash: Hex;
   status: SettlementCallbackStatus;
+  attemptCount: number;
+  maxAttempts: number;
+  callbackTxHash?: Hex | null;
+  callbackReceipt?: Record<string, unknown> | null;
+  lastError?: string | null;
+  nextAttemptAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type MarketContractPayloadMode =
+  | "canonical_binding"
+  | "binding_hash";
+export type MarketContractStatus = "pending" | "confirmed" | "failed";
+
+export interface MarketContractTargetConfig {
+  enabled: boolean;
+  contractAddress?: Address;
+  packageName?: string;
+  functionSignature?: string;
+  gas: string;
+  valueWei: string;
+  waitForReceipt: boolean;
+  receiptTimeoutMs: number;
+  payloadMode: MarketContractPayloadMode;
+  maxAttempts: number;
+}
+
+export interface MarketContractConfig {
+  enabled: boolean;
+  retryBatchSize: number;
+  retryAfterSeconds: number;
+  bounty: MarketContractTargetConfig;
+  observation: MarketContractTargetConfig;
+  oracle: MarketContractTargetConfig;
+}
+
+export interface MarketBindingRecord {
+  bindingId: string;
+  kind: MarketBindingKind;
+  subjectId: string;
+  receipt: MarketBindingReceipt;
+  receiptHash: Hex;
+  callbackTarget?: Address | null;
+  callbackTxHash?: Hex | null;
+  callbackReceipt?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface MarketContractCallbackRecord {
+  callbackId: string;
+  bindingId: string;
+  kind: MarketBindingKind;
+  subjectId: string;
+  contractAddress: Address;
+  packageName: string;
+  functionSignature: string;
+  payloadMode: MarketContractPayloadMode;
+  payloadHex: Hex;
+  payloadHash: Hex;
+  status: MarketContractStatus;
   attemptCount: number;
   maxAttempts: number;
   callbackTxHash?: Hex | null;
@@ -737,6 +803,48 @@ export const DEFAULT_SETTLEMENT_CONFIG: SettlementConfig = {
   },
 };
 
+export const DEFAULT_MARKET_CONTRACT_CONFIG: MarketContractConfig = {
+  enabled: false,
+  retryBatchSize: 10,
+  retryAfterSeconds: 120,
+  bounty: {
+    enabled: false,
+    contractAddress: undefined,
+    packageName: undefined,
+    functionSignature: undefined,
+    gas: "260000",
+    valueWei: "0",
+    waitForReceipt: true,
+    receiptTimeoutMs: 60000,
+    payloadMode: "canonical_binding",
+    maxAttempts: 3,
+  },
+  observation: {
+    enabled: false,
+    contractAddress: undefined,
+    packageName: undefined,
+    functionSignature: undefined,
+    gas: "260000",
+    valueWei: "0",
+    waitForReceipt: true,
+    receiptTimeoutMs: 60000,
+    payloadMode: "canonical_binding",
+    maxAttempts: 3,
+  },
+  oracle: {
+    enabled: false,
+    contractAddress: undefined,
+    packageName: undefined,
+    functionSignature: undefined,
+    gas: "260000",
+    valueWei: "0",
+    waitForReceipt: true,
+    receiptTimeoutMs: 60000,
+    payloadMode: "canonical_binding",
+    maxAttempts: 3,
+  },
+};
+
 export const DEFAULT_WALLET_FUNDING_CONFIG: WalletFundingConfig = {
   localDefaultAmountWei: "5000000000000000000",
   localFunderAddress: undefined,
@@ -763,6 +871,7 @@ export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   bounty: DEFAULT_BOUNTY_CONFIG,
   opportunityScout: DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
   settlement: DEFAULT_SETTLEMENT_CONFIG,
+  marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
 };
 
 // ─── Agent State ─────────────────────────────────────────────────
@@ -1413,6 +1522,34 @@ export interface OpenFoxDatabase {
     limit: number,
     nowIso?: string,
   ): SettlementCallbackRecord[];
+  upsertMarketBinding(binding: MarketBindingRecord): void;
+  getMarketBinding(
+    kind: MarketBindingKind,
+    subjectId: string,
+  ): MarketBindingRecord | undefined;
+  getMarketBindingById(bindingId: string): MarketBindingRecord | undefined;
+  listMarketBindings(
+    limit: number,
+    kind?: MarketBindingKind,
+  ): MarketBindingRecord[];
+  upsertMarketContractCallback(callback: MarketContractCallbackRecord): void;
+  getMarketContractCallbackById(
+    callbackId: string,
+  ): MarketContractCallbackRecord | undefined;
+  getMarketContractCallbackByBindingId(
+    bindingId: string,
+  ): MarketContractCallbackRecord | undefined;
+  listMarketContractCallbacks(
+    limit: number,
+    filters?: {
+      status?: MarketContractStatus;
+      kind?: MarketBindingKind;
+    },
+  ): MarketContractCallbackRecord[];
+  listPendingMarketContractCallbacks(
+    limit: number,
+    nowIso?: string,
+  ): MarketContractCallbackRecord[];
 
   // Key-value atomic delete
   deleteKVReturning(key: string): string | undefined;

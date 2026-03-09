@@ -31,6 +31,8 @@ import {
 } from "./security.js";
 import type { SettlementPublisher } from "../settlement/publisher.js";
 import type { SettlementCallbackDispatcher } from "../settlement/callbacks.js";
+import type { MarketBindingPublisher } from "../market/publisher.js";
+import type { MarketContractDispatcher } from "../market/contracts.js";
 
 const logger = createLogger("agent-discovery.observation");
 
@@ -47,6 +49,8 @@ export interface StartAgentDiscoveryObservationServerParams {
   observationConfig: AgentDiscoveryObservationServerConfig;
   settlementPublisher?: SettlementPublisher;
   settlementCallbacks?: SettlementCallbackDispatcher;
+  marketBindingPublisher?: MarketBindingPublisher;
+  marketContracts?: MarketContractDispatcher;
 }
 
 const BODY_LIMIT_BYTES = 64 * 1024;
@@ -241,6 +245,8 @@ export async function startAgentDiscoveryObservationServer(
     address,
     settlementPublisher,
     settlementCallbacks,
+    marketBindingPublisher,
+    marketContracts,
   } = params;
   const path = observationConfig.path.startsWith("/") ? observationConfig.path : `/${observationConfig.path}`;
   const healthzPath = `${path}/healthz`;
@@ -354,6 +360,31 @@ export async function startAgentDiscoveryObservationServer(
       result.job_id = jobId;
       result.result_url = resultPath;
       result.payment_tx_hash = paid.txHash;
+      if (marketBindingPublisher) {
+        const binding = marketBindingPublisher.publish({
+          kind: "observation",
+          subjectId: jobId,
+          publisherAddress: address as `0x${string}`,
+          capability: body.capability,
+          requesterAddress:
+            body.requester.identity.kind === "tos"
+              ? (normalizeAddress(body.requester.identity.value) as `0x${string}`)
+              : undefined,
+          artifactUrl: resultPath,
+          paymentTxHash: paid.txHash,
+          metadata: {
+            requester_agent_id: body.requester.agent_id,
+            target_url: result.target_url,
+            reason: body.reason,
+          },
+        });
+        result.binding_id = binding.bindingId;
+        result.binding_hash = binding.receiptHash;
+        if (marketContracts) {
+          const dispatch = await marketContracts.dispatch(binding);
+          result.market_callback_tx_hash = dispatch.callback?.callbackTxHash ?? undefined;
+        }
+      }
       if (settlementPublisher) {
         const settlement = await settlementPublisher.publish({
           kind: "observation",

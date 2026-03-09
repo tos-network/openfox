@@ -46,6 +46,11 @@ export interface HealthSnapshot {
   settlementCallbacksEnabled: boolean;
   settlementPendingCallbacks: number;
   settlementMisconfiguredKinds: string[];
+  marketContractsEnabled: boolean;
+  marketContractsReady: boolean;
+  marketBindingsRecentCount: number;
+  marketPendingCallbacks: number;
+  marketMisconfiguredKinds: string[];
   opportunityScoutEnabled: boolean;
   managedService: ManagedServiceStatus;
   heartbeatPaused: boolean;
@@ -103,6 +108,11 @@ async function buildConfigSnapshot(
   settlementCallbacksEnabled: boolean;
   settlementPendingCallbacks: number;
   settlementMisconfiguredKinds: string[];
+  marketContractsEnabled: boolean;
+  marketContractsReady: boolean;
+  marketBindingsRecentCount: number;
+  marketPendingCallbacks: number;
+  marketMisconfiguredKinds: string[];
   opportunityScoutEnabled: boolean;
   skillCount: number;
   ineligibleEnabledSkills: string[];
@@ -155,6 +165,29 @@ async function buildConfigSnapshot(
             return target?.enabled && !target.contractAddress;
           })
         : [],
+    marketContractsEnabled: config.marketContracts?.enabled === true,
+    marketContractsReady: Boolean(
+      !config.marketContracts?.enabled ||
+        config.rpcUrl ||
+        !(["bounty", "observation", "oracle"] as const).some(
+          (kind) => config.marketContracts?.[kind]?.enabled,
+        ),
+    ),
+    marketBindingsRecentCount: config.marketContracts?.enabled
+      ? db.listMarketBindings(5).length
+      : 0,
+    marketPendingCallbacks: config.marketContracts?.enabled
+      ? db.listMarketContractCallbacks(100, { status: "pending" }).length
+      : 0,
+    marketMisconfiguredKinds: config.marketContracts?.enabled
+      ? (["bounty", "observation", "oracle"] as const).filter((kind) => {
+          const target = config.marketContracts?.[kind];
+          return (
+            target?.enabled &&
+            (!target.contractAddress || !target.packageName || !target.functionSignature)
+          );
+        })
+      : [],
     opportunityScoutEnabled: config.opportunityScout?.enabled === true,
     skillCount: enabledSkills.length,
     ineligibleEnabledSkills,
@@ -409,6 +442,31 @@ function collectFindings(
     });
   }
 
+  if (snapshot.marketContractsEnabled) {
+    findings.push({
+      id: "market-contracts-enabled",
+      severity: snapshot.marketContractsReady ? "ok" : "error",
+      summary: snapshot.marketContractsReady
+        ? `Contract-native market bindings are enabled (${snapshot.marketBindingsRecentCount} recent binding${snapshot.marketBindingsRecentCount === 1 ? "" : "s"}).`
+        : "Contract-native market bindings are enabled but no chain RPC is configured.",
+      recommendation: snapshot.marketContractsReady
+        ? undefined
+        : "Set `rpcUrl` so OpenFox can dispatch market contract callbacks on-chain.",
+    });
+    findings.push({
+      id: "market-contract-callbacks-enabled",
+      severity: snapshot.marketMisconfiguredKinds.length ? "error" : "ok",
+      summary: snapshot.marketMisconfiguredKinds.length
+        ? `Market contract callbacks are enabled but missing contract metadata for: ${snapshot.marketMisconfiguredKinds.join(", ")}.`
+        : `Market contract callbacks are enabled (${snapshot.marketPendingCallbacks} pending callback${snapshot.marketPendingCallbacks === 1 ? "" : "s"}).`,
+      recommendation: snapshot.marketMisconfiguredKinds.length
+        ? "Set contractAddress, packageName, and functionSignature for each enabled market callback target."
+        : snapshot.marketPendingCallbacks > 0
+          ? "Run `openfox market callbacks --status pending` to inspect pending contract delivery."
+          : undefined,
+    });
+  }
+
   return findings;
 }
 
@@ -441,6 +499,11 @@ export async function buildHealthSnapshot(
       settlementCallbacksEnabled: false,
       settlementPendingCallbacks: 0,
       settlementMisconfiguredKinds: [],
+      marketContractsEnabled: false,
+      marketContractsReady: false,
+      marketBindingsRecentCount: 0,
+      marketPendingCallbacks: 0,
+      marketMisconfiguredKinds: [],
       opportunityScoutEnabled: false,
       managedService,
       heartbeatPaused: false,
@@ -496,6 +559,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Bounty auto mode: ${yesNo(snapshot.bountyAutoEnabled)}`,
     `Settlement enabled: ${yesNo(snapshot.settlementEnabled)}${snapshot.settlementEnabled ? ` (${snapshot.settlementRecentCount} recent)` : ""}`,
     `Settlement callbacks: ${yesNo(snapshot.settlementCallbacksEnabled)}${snapshot.settlementCallbacksEnabled ? ` (${snapshot.settlementPendingCallbacks} pending)` : ""}`,
+    `Market bindings: ${yesNo(snapshot.marketContractsEnabled)}${snapshot.marketContractsEnabled ? ` (${snapshot.marketBindingsRecentCount} recent, ${snapshot.marketPendingCallbacks} pending callbacks)` : ""}`,
     `Opportunity scout: ${yesNo(snapshot.opportunityScoutEnabled)}`,
     `Heartbeat paused: ${yesNo(snapshot.heartbeatPaused)}`,
     `Pending wakes: ${snapshot.pendingWakes}`,

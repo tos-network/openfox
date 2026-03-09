@@ -17,6 +17,8 @@ import { evaluateBountySubmission } from "./evaluate.js";
 import type { BountyPayoutSender } from "./payout.js";
 import type { SettlementPublisher } from "../settlement/publisher.js";
 import type { SettlementCallbackDispatcher } from "../settlement/callbacks.js";
+import type { MarketBindingPublisher } from "../market/publisher.js";
+import type { MarketContractDispatcher } from "../market/contracts.js";
 
 export interface BountyEngine {
   openBounty(input: BountyCreateInput): BountyRecord;
@@ -119,6 +121,8 @@ export function createBountyEngine(params: {
   payoutSender?: BountyPayoutSender;
   settlementPublisher?: SettlementPublisher;
   settlementCallbacks?: SettlementCallbackDispatcher;
+  marketBindingPublisher?: MarketBindingPublisher;
+  marketContractDispatcher?: MarketContractDispatcher;
   now?: () => Date;
 }): BountyEngine {
   const now = params.now ?? (() => new Date());
@@ -160,6 +164,24 @@ export function createBountyEngine(params: {
       updatedAt: timestamp,
     };
     params.db.insertBounty(bounty);
+    if (params.marketBindingPublisher) {
+      const binding = params.marketBindingPublisher.publish({
+        kind: "bounty",
+        subjectId: bounty.bountyId,
+        publisherAddress: params.identity.address,
+        capability: "task.submit",
+        artifactUrl: `${params.bountyConfig.pathPrefix.replace(/\/+$/, "")}/bounties/${bounty.bountyId}`,
+        metadata: {
+          title: bounty.title,
+          kind: bounty.kind,
+          reward_wei: bounty.rewardWei,
+          judge_mode: bounty.judgeMode,
+        },
+      });
+      if (params.marketContractDispatcher) {
+        void params.marketContractDispatcher.dispatch(binding);
+      }
+    }
     return bounty;
   }
 

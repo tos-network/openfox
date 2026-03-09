@@ -27,6 +27,10 @@ import type {
   InboxMessage,
   BountyRecord,
   BountyResultRecord,
+  MarketBindingKind,
+  MarketBindingRecord,
+  MarketContractCallbackRecord,
+  MarketContractStatus,
   SettlementKind,
   SettlementRecord,
   SettlementCallbackRecord,
@@ -59,6 +63,7 @@ import {
   MIGRATION_V13,
   MIGRATION_V14,
   MIGRATION_V15,
+  MIGRATION_V16,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -796,6 +801,181 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     return rows.map(deserializeSettlementCallbackRecord);
   };
 
+  const upsertMarketBinding = (binding: MarketBindingRecord): void => {
+    db.prepare(
+      `INSERT INTO market_bindings (
+        binding_id, kind, subject_id, receipt_json, receipt_hash, callback_target,
+        callback_tx_hash, callback_receipt_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(binding_id) DO UPDATE SET
+        kind = excluded.kind,
+        subject_id = excluded.subject_id,
+        receipt_json = excluded.receipt_json,
+        receipt_hash = excluded.receipt_hash,
+        callback_target = excluded.callback_target,
+        callback_tx_hash = excluded.callback_tx_hash,
+        callback_receipt_json = excluded.callback_receipt_json,
+        updated_at = excluded.updated_at`,
+    ).run(
+      binding.bindingId,
+      binding.kind,
+      binding.subjectId,
+      JSON.stringify(binding.receipt),
+      binding.receiptHash,
+      binding.callbackTarget ?? null,
+      binding.callbackTxHash ?? null,
+      binding.callbackReceipt ? JSON.stringify(binding.callbackReceipt) : null,
+      binding.createdAt,
+      binding.updatedAt,
+    );
+  };
+
+  const getMarketBinding = (
+    kind: MarketBindingKind,
+    subjectId: string,
+  ): MarketBindingRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM market_bindings WHERE kind = ? AND subject_id = ?")
+      .get(kind, subjectId) as any | undefined;
+    return row ? deserializeMarketBindingRecord(row) : undefined;
+  };
+
+  const getMarketBindingById = (
+    bindingId: string,
+  ): MarketBindingRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM market_bindings WHERE binding_id = ?")
+      .get(bindingId) as any | undefined;
+    return row ? deserializeMarketBindingRecord(row) : undefined;
+  };
+
+  const listMarketBindings = (
+    limit: number,
+    kind?: MarketBindingKind,
+  ): MarketBindingRecord[] => {
+    const rows = kind
+      ? db
+          .prepare(
+            "SELECT * FROM market_bindings WHERE kind = ? ORDER BY created_at DESC LIMIT ?",
+          )
+          .all(kind, limit)
+      : db
+          .prepare("SELECT * FROM market_bindings ORDER BY created_at DESC LIMIT ?")
+          .all(limit);
+    return (rows as any[]).map(deserializeMarketBindingRecord);
+  };
+
+  const upsertMarketContractCallback = (
+    callback: MarketContractCallbackRecord,
+  ): void => {
+    db.prepare(
+      `INSERT INTO market_contract_callbacks (
+        callback_id, binding_id, kind, subject_id, contract_address, package_name,
+        function_signature, payload_mode, payload_hex, payload_hash, status,
+        attempt_count, max_attempts, callback_tx_hash, callback_receipt_json,
+        last_error, next_attempt_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(callback_id) DO UPDATE SET
+        binding_id = excluded.binding_id,
+        kind = excluded.kind,
+        subject_id = excluded.subject_id,
+        contract_address = excluded.contract_address,
+        package_name = excluded.package_name,
+        function_signature = excluded.function_signature,
+        payload_mode = excluded.payload_mode,
+        payload_hex = excluded.payload_hex,
+        payload_hash = excluded.payload_hash,
+        status = excluded.status,
+        attempt_count = excluded.attempt_count,
+        max_attempts = excluded.max_attempts,
+        callback_tx_hash = excluded.callback_tx_hash,
+        callback_receipt_json = excluded.callback_receipt_json,
+        last_error = excluded.last_error,
+        next_attempt_at = excluded.next_attempt_at,
+        updated_at = excluded.updated_at`,
+    ).run(
+      callback.callbackId,
+      callback.bindingId,
+      callback.kind,
+      callback.subjectId,
+      callback.contractAddress,
+      callback.packageName,
+      callback.functionSignature,
+      callback.payloadMode,
+      callback.payloadHex,
+      callback.payloadHash,
+      callback.status,
+      callback.attemptCount,
+      callback.maxAttempts,
+      callback.callbackTxHash ?? null,
+      callback.callbackReceipt ? JSON.stringify(callback.callbackReceipt) : null,
+      callback.lastError ?? null,
+      callback.nextAttemptAt ?? null,
+      callback.createdAt,
+      callback.updatedAt,
+    );
+  };
+
+  const getMarketContractCallbackById = (
+    callbackId: string,
+  ): MarketContractCallbackRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM market_contract_callbacks WHERE callback_id = ?")
+      .get(callbackId) as any | undefined;
+    return row ? deserializeMarketContractCallbackRecord(row) : undefined;
+  };
+
+  const getMarketContractCallbackByBindingId = (
+    bindingId: string,
+  ): MarketContractCallbackRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM market_contract_callbacks WHERE binding_id = ?")
+      .get(bindingId) as any | undefined;
+    return row ? deserializeMarketContractCallbackRecord(row) : undefined;
+  };
+
+  const listMarketContractCallbacks = (
+    limit: number,
+    filters?: {
+      status?: MarketContractStatus;
+      kind?: MarketBindingKind;
+    },
+  ): MarketContractCallbackRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.kind) {
+      clauses.push("kind = ?");
+      params.push(filters.kind);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(
+        `SELECT * FROM market_contract_callbacks ${where} ORDER BY updated_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as any[];
+    return rows.map(deserializeMarketContractCallbackRecord);
+  };
+
+  const listPendingMarketContractCallbacks = (
+    limit: number,
+    nowIso?: string,
+  ): MarketContractCallbackRecord[] => {
+    const rows = db
+      .prepare(
+        `SELECT * FROM market_contract_callbacks
+         WHERE status = 'pending'
+           AND (next_attempt_at IS NULL OR next_attempt_at <= ?)
+         ORDER BY updated_at ASC
+         LIMIT ?`,
+      )
+      .all(nowIso ?? new Date().toISOString(), limit) as any[];
+    return rows.map(deserializeMarketContractCallbackRecord);
+  };
+
   // ─── Agent State ─────────────────────────────────────────────
 
   const getAgentState = (): AgentState => {
@@ -876,6 +1056,15 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     getSettlementCallbackByReceiptId,
     listSettlementCallbacks,
     listPendingSettlementCallbacks,
+    upsertMarketBinding,
+    getMarketBinding,
+    getMarketBindingById,
+    listMarketBindings,
+    upsertMarketContractCallback,
+    getMarketContractCallbackById,
+    getMarketContractCallbackByBindingId,
+    listMarketContractCallbacks,
+    listPendingMarketContractCallbacks,
     getAgentState,
     setAgentState,
     runTransaction,
@@ -958,6 +1147,10 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 15,
       apply: () => db.exec(MIGRATION_V15),
+    },
+    {
+      version: 16,
+      apply: () => db.exec(MIGRATION_V16),
     },
   ];
 
@@ -2116,6 +2309,63 @@ function deserializeSettlementCallbackRecord(row: any): SettlementCallbackRecord
           row.callback_receipt_json,
           null as SettlementCallbackRecord["callbackReceipt"],
           "deserializeSettlementCallbackRecord.callback_receipt_json",
+        )
+      : null,
+    lastError: row.last_error ?? null,
+    nextAttemptAt: row.next_attempt_at ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeMarketBindingRecord(row: any): MarketBindingRecord {
+  return {
+    bindingId: row.binding_id,
+    kind: row.kind,
+    subjectId: row.subject_id,
+    receipt: safeJsonParse(
+      row.receipt_json ?? "{}",
+      {} as MarketBindingRecord["receipt"],
+      "deserializeMarketBindingRecord.receipt_json",
+    ),
+    receiptHash: row.receipt_hash,
+    callbackTarget: row.callback_target ?? null,
+    callbackTxHash: row.callback_tx_hash ?? null,
+    callbackReceipt: row.callback_receipt_json
+      ? parseJsonSafe(
+          row.callback_receipt_json,
+          null as MarketBindingRecord["callbackReceipt"],
+          "deserializeMarketBindingRecord.callback_receipt_json",
+        )
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeMarketContractCallbackRecord(
+  row: any,
+): MarketContractCallbackRecord {
+  return {
+    callbackId: row.callback_id,
+    bindingId: row.binding_id,
+    kind: row.kind,
+    subjectId: row.subject_id,
+    contractAddress: row.contract_address,
+    packageName: row.package_name,
+    functionSignature: row.function_signature,
+    payloadMode: row.payload_mode,
+    payloadHex: row.payload_hex,
+    payloadHash: row.payload_hash,
+    status: row.status,
+    attemptCount: Number(row.attempt_count || 0),
+    maxAttempts: Number(row.max_attempts || 0),
+    callbackTxHash: row.callback_tx_hash ?? null,
+    callbackReceipt: row.callback_receipt_json
+      ? parseJsonSafe(
+          row.callback_receipt_json,
+          null as MarketContractCallbackRecord["callbackReceipt"],
+          "deserializeMarketContractCallbackRecord.callback_receipt_json",
         )
       : null,
     lastError: row.last_error ?? null,

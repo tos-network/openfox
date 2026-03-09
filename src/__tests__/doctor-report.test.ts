@@ -34,6 +34,11 @@ describe("doctor report formatting", () => {
       settlementCallbacksEnabled: true,
       settlementPendingCallbacks: 2,
       settlementMisconfiguredKinds: [],
+      marketContractsEnabled: true,
+      marketContractsReady: true,
+      marketBindingsRecentCount: 1,
+      marketPendingCallbacks: 1,
+      marketMisconfiguredKinds: [],
       managedService: {
         manager: "systemd-user" as const,
         available: true,
@@ -80,6 +85,7 @@ describe("doctor report formatting", () => {
     expect(health).toContain("Bounty enabled: yes (host)");
     expect(health).toContain("Settlement enabled: yes (1 recent)");
     expect(health).toContain("Settlement callbacks: yes (2 pending)");
+    expect(health).toContain("Market bindings: yes (1 recent, 1 pending callbacks)");
     expect(health).toContain("service status report");
     expect(doctor).toContain("=== OPENFOX DOCTOR ===");
     expect(doctor).toContain("Warnings: 2");
@@ -232,6 +238,54 @@ describe("doctor report formatting", () => {
       snapshot.findings.some(
         (finding) =>
           finding.id === "settlement-callbacks-enabled" &&
+          finding.severity === "error",
+      ),
+    ).toBe(true);
+  });
+
+  it("flags market contract callbacks missing contract metadata", async () => {
+    const snapshot = await buildHealthSnapshot(
+      createTestConfig({
+        rpcUrl: "http://127.0.0.1:8545",
+        marketContracts: {
+          enabled: true,
+          retryBatchSize: 10,
+          retryAfterSeconds: 120,
+          bounty: {
+            enabled: true,
+            gas: "260000",
+            valueWei: "0",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+            payloadMode: "canonical_binding",
+            maxAttempts: 3,
+          },
+          observation: {
+            enabled: false,
+            gas: "260000",
+            valueWei: "0",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+            payloadMode: "canonical_binding",
+            maxAttempts: 3,
+          },
+          oracle: {
+            enabled: false,
+            gas: "260000",
+            valueWei: "0",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+            payloadMode: "canonical_binding",
+            maxAttempts: 3,
+          },
+        },
+      }),
+    );
+
+    expect(
+      snapshot.findings.some(
+        (finding) =>
+          finding.id === "market-contract-callbacks-enabled" &&
           finding.severity === "error",
       ),
     ).toBe(true);

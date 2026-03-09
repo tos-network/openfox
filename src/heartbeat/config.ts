@@ -65,6 +65,12 @@ const DEFAULT_HEARTBEAT_CONFIG: HeartbeatConfig = {
       task: "retry_settlement_callbacks",
       enabled: true,
     },
+    {
+      name: "retry_market_contract_callbacks",
+      schedule: "*/2 * * * *",
+      task: "retry_market_contract_callbacks",
+      enabled: true,
+    },
   ],
   defaultIntervalMs: 60_000,
   lowComputeMultiplier: 4,

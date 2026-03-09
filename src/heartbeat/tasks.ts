@@ -23,6 +23,7 @@ import { getMetrics } from "../observability/metrics.js";
 import { AlertEngine, createDefaultAlertRules } from "../observability/alerts.js";
 import { loadWalletPrivateKey } from "../identity/wallet.js";
 import { createNativeSettlementCallbackDispatcher } from "../settlement/callbacks.js";
+import { createMarketContractDispatcher } from "../market/contracts.js";
 import { metricsInsertSnapshot, metricsPruneOld } from "../state/database.js";
 import { ulid } from "ulid";
 
@@ -209,6 +210,48 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       message:
         result.failed > 0
           ? `Settlement callbacks have ${result.failed} failed item(s).`
+          : undefined,
+    };
+  },
+
+  retry_market_contract_callbacks: async (_ctx: TickContext, taskCtx: HeartbeatLegacyContext) => {
+    const marketConfig = taskCtx.config.marketContracts;
+    if (!marketConfig?.enabled || !taskCtx.config.rpcUrl) {
+      return { shouldWake: false };
+    }
+
+    const privateKey = loadWalletPrivateKey();
+    if (!privateKey) {
+      taskCtx.db.setKV(
+        "last_market_contract_retry",
+        JSON.stringify({
+          status: "skipped",
+          reason: "wallet_missing",
+          at: new Date().toISOString(),
+        }),
+      );
+      return { shouldWake: false };
+    }
+
+    const dispatcher = createMarketContractDispatcher({
+      db: taskCtx.db,
+      rpcUrl: taskCtx.config.rpcUrl,
+      privateKey,
+      config: marketConfig,
+    });
+    const result = await dispatcher.retryPending();
+    taskCtx.db.setKV(
+      "last_market_contract_retry",
+      JSON.stringify({
+        ...result,
+        at: new Date().toISOString(),
+      }),
+    );
+    return {
+      shouldWake: result.failed > 0,
+      message:
+        result.failed > 0
+          ? `Market contract callbacks have ${result.failed} failed item(s).`
           : undefined,
     };
   },

@@ -251,7 +251,7 @@ Delivered surface so far:
 
 ### Phase 3: On-Chain Task and Settlement Integration
 
-Status: in progress
+Status: completed
 
 Goal:
 
@@ -294,10 +294,17 @@ Delivered surface so far:
 - settlement visibility in `openfox status`, `openfox health`, and `openfox doctor`
 - contract callback adapters for bounty, observation, and oracle receipts
 - scheduler-driven settlement callback confirmation and retry through heartbeat
-
-Still pending in this phase:
-
-- contract-native task/query market contracts
+- canonical market binding and binding-hash helpers in `tosdk`
+- package-call encoding helpers for contract-native callback delivery
+- persisted market binding storage in OpenFox
+- contract-native market bindings for:
+  - bounty creation
+  - paid observation requests
+  - paid oracle requests
+- idempotent market binding publication per `(kind, subject_id)`
+- `openfox market list|get|callbacks`
+- market binding visibility in `openfox status`, `openfox health`, and `openfox doctor`
+- scheduler-driven market callback confirmation and retry through heartbeat
 
 ### Phase 4: Productionize the x402 Server Side
 
@@ -348,16 +355,16 @@ Suggested priority order:
 
 ### P0: Do Immediately
 
-- launch the first real paid service on top of the existing marketplace/runtime base
-- start with one narrow paid API that produces a real result
-- add payment idempotency and stronger payment-to-result binding
-- run one real paid flow end to end on testnet
+- productionize the server-side `x402` payment path
+- add duplicate payment detection and replay protection
+- add a durable payment ledger and recovery semantics after broadcast failure
+- tighten auditable payment-to-result binding across paid services
 
 ### P1: Do Next
 
-- design on-chain query/job identifiers and result callback interfaces
-- improve production payment recovery and replay handling
-- add contract-level task and oracle settlement adapters
+- run a broader multi-node testnet deployment for host/provider/gateway roles
+- extend third-party operator documentation and local templates
+- add stronger anti-abuse and reputation closure around paid and sponsored flows
 
 ### P2: Do Later
 
@@ -383,7 +390,7 @@ The more reasonable strategy for now is:
 
 There are only two next steps that matter most:
 
-1. launch the first real paid service on top of the current runtime and marketplace base
-2. make a new operator able to complete `setup -> fund -> discover provider -> pay in TOS -> receive a real service result`
+1. make the current `x402` and callback path reliable under retries, duplicate requests, and broadcast failures
+2. make a third-party operator able to complete `setup -> fund -> discover provider -> pay in TOS -> receive a real service result` without reading internal code
 
-Only after these two steps are complete should we expand into broader paid service and oracle-facing phases.
+Only after these two steps are complete should we expand into broader marketplace and ecosystem-facing phases.

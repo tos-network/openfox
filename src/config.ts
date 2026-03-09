@@ -16,6 +16,7 @@ import type {
   AgentDiscoveryConfig,
   HexAddress,
   BountyConfig,
+  MarketContractConfig,
   OpportunityScoutConfig,
   SettlementConfig,
   WalletFundingConfig,
@@ -37,6 +38,7 @@ import {
   DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
   DEFAULT_BOUNTY_CONFIG,
   DEFAULT_BOUNTY_POLICY,
+  DEFAULT_MARKET_CONTRACT_CONFIG,
   DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
   DEFAULT_SETTLEMENT_CONFIG,
   DEFAULT_WALLET_FUNDING_CONFIG,
@@ -554,6 +556,26 @@ export function loadConfig(): OpenFoxConfig | null {
     },
   };
 
+  const marketContracts: MarketContractConfig = {
+    ...DEFAULT_MARKET_CONTRACT_CONFIG,
+    ...((raw?.marketContracts as JsonRecord | undefined) ?? {}),
+    bounty: {
+      ...DEFAULT_MARKET_CONTRACT_CONFIG.bounty,
+      ...((((raw?.marketContracts as JsonRecord | undefined)?.bounty as JsonRecord | undefined) ??
+        {})),
+    },
+    observation: {
+      ...DEFAULT_MARKET_CONTRACT_CONFIG.observation,
+      ...((((raw?.marketContracts as JsonRecord | undefined)?.observation as JsonRecord | undefined) ??
+        {})),
+    },
+    oracle: {
+      ...DEFAULT_MARKET_CONTRACT_CONFIG.oracle,
+      ...((((raw?.marketContracts as JsonRecord | undefined)?.oracle as JsonRecord | undefined) ??
+        {})),
+    },
+  };
+
   const walletFunding: WalletFundingConfig = {
     ...DEFAULT_WALLET_FUNDING_CONFIG,
     ...((raw?.walletFunding as JsonRecord | undefined) ?? {}),
@@ -687,6 +709,7 @@ export function loadConfig(): OpenFoxConfig | null {
     bounty,
     opportunityScout,
     settlement,
+    marketContracts,
   } as OpenFoxConfig;
 }
 
@@ -710,6 +733,7 @@ export function saveConfig(config: OpenFoxConfig): void {
     bounty: config.bounty ?? DEFAULT_BOUNTY_CONFIG,
     opportunityScout: config.opportunityScout ?? DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
     settlement: config.settlement ?? DEFAULT_SETTLEMENT_CONFIG,
+    marketContracts: config.marketContracts ?? DEFAULT_MARKET_CONTRACT_CONFIG,
   };
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2), {
     mode: 0o600,
@@ -793,5 +817,7 @@ export function createConfig(params: {
     agentDiscovery: DEFAULT_AGENT_DISCOVERY_CONFIG,
     bounty: DEFAULT_BOUNTY_CONFIG,
     opportunityScout: DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+    settlement: DEFAULT_SETTLEMENT_CONFIG,
+    marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
   };
 }

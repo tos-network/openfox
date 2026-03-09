@@ -101,6 +101,15 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Use the OpenFox heartbeat scheduler to confirm and retry pending
     settlement callbacks so contract binding survives temporary RPC or receipt
     timing failures.
+- [x] Task 23: Add contract-native market bindings for task and query creation
+  - Status: Complete
+  - Goal: Bind bounty openings, observation jobs, and oracle requests to
+    contract-owned state at creation time, not only at final settlement time.
+- [x] Task 24: Add operator UX and heartbeat retries for market callbacks
+  - Status: Complete
+  - Goal: Make market bindings and contract callback delivery visible,
+    inspectable, and retryable through the same operator/runtime surfaces used
+    for settlement callbacks.
 
 ## Task 1 Breakdown
 
@@ -290,3 +299,26 @@ building OpenFox into a TOS-native agent platform.
 - [x] Confirm pending callbacks by polling chain receipts before resubmitting.
 - [x] Back off and cap retry attempts for failed callback sends.
 - [x] Surface pending/misconfigured callback state through `openfox doctor`.
+
+## Task 23 Breakdown
+
+- [x] Add canonical market binding and binding-hash helpers to `tosdk`.
+- [x] Add package-call payload encoding helpers to `tosdk` for contract-native
+  market callback delivery.
+- [x] Add persistent market binding storage to OpenFox.
+- [x] Publish contract-native market bindings for bounty creation.
+- [x] Publish contract-native market bindings for paid observation requests.
+- [x] Publish contract-native market bindings for paid oracle requests.
+- [x] Keep market binding publication idempotent per `(kind, subject_id)`.
+
+## Task 24 Breakdown
+
+- [x] Add persistent market callback records and operator-visible status.
+- [x] Add `openfox market list|get|callbacks`.
+- [x] Surface market binding and callback status in `openfox status`.
+- [x] Add market binding findings to `openfox doctor` and `openfox health`.
+- [x] Add a built-in heartbeat task for pending market callback retries.
+- [x] Confirm pending market callbacks by polling chain receipts before
+  resubmitting.
+- [x] Update roadmap and README so contract-native market binding is part of the
+  visible operator/runtime surface.

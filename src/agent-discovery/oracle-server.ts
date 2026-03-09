@@ -34,6 +34,8 @@ import {
 } from "./security.js";
 import type { SettlementPublisher } from "../settlement/publisher.js";
 import type { SettlementCallbackDispatcher } from "../settlement/callbacks.js";
+import type { MarketBindingPublisher } from "../market/publisher.js";
+import type { MarketContractDispatcher } from "../market/contracts.js";
 
 const logger = createLogger("agent-discovery.oracle");
 
@@ -51,6 +53,8 @@ export interface StartAgentDiscoveryOracleServerParams {
   oracleConfig: AgentDiscoveryOracleServerConfig;
   settlementPublisher?: SettlementPublisher;
   settlementCallbacks?: SettlementCallbackDispatcher;
+  marketBindingPublisher?: MarketBindingPublisher;
+  marketContracts?: MarketContractDispatcher;
 }
 
 interface StoredOracleJob {
@@ -272,6 +276,8 @@ export async function startAgentDiscoveryOracleServer(
     inference,
     settlementPublisher,
     settlementCallbacks,
+    marketBindingPublisher,
+    marketContracts,
   } = params;
   const path = oracleConfig.path.startsWith("/") ? oracleConfig.path : `/${oracleConfig.path}`;
   const healthzPath = `${path}/healthz`;
@@ -408,6 +414,33 @@ export async function startAgentDiscoveryOracleServer(
         summary: resolved.summary,
         ...(body.options?.length ? { options: body.options } : {}),
       };
+      if (marketBindingPublisher) {
+        const binding = marketBindingPublisher.publish({
+          kind: "oracle",
+          subjectId: resultId,
+          publisherAddress: address as `0x${string}`,
+          capability: body.capability,
+          requesterAddress:
+            body.requester.identity.kind === "tos"
+              ? (normalizeAddress(body.requester.identity.value) as `0x${string}`)
+              : undefined,
+          artifactUrl: response.result_url,
+          paymentTxHash: paid.txHash,
+          metadata: {
+            requester_agent_id: body.requester.agent_id,
+            query: body.query,
+            query_kind: body.query_kind,
+            reason: body.reason,
+            options_count: body.options?.length ?? 0,
+          },
+        });
+        response.binding_id = binding.bindingId;
+        response.binding_hash = binding.receiptHash;
+        if (marketContracts) {
+          const dispatch = await marketContracts.dispatch(binding);
+          response.market_callback_tx_hash = dispatch.callback?.callbackTxHash ?? undefined;
+        }
+      }
       if (settlementPublisher) {
         const settlement = await settlementPublisher.publish({
           kind: "oracle",

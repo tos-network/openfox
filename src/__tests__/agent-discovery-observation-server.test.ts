@@ -125,6 +125,66 @@ describe("agent discovery observation server", () => {
       address: config.walletAddress!,
       db: makeDb(),
       observationConfig: config.agentDiscovery!.observationServer!,
+      marketBindingPublisher: {
+        publish(input) {
+          return {
+            bindingId: `observation:${input.subjectId}`,
+            kind: "observation",
+            subjectId: input.subjectId,
+            receipt: {
+              version: 1,
+              bindingId: `observation:${input.subjectId}`,
+              kind: "observation",
+              subjectId: input.subjectId,
+              publisherAddress: config.walletAddress!,
+              capability: input.capability,
+              artifactUrl: `/jobs/${input.subjectId}`,
+              createdAt: "2026-03-09T00:00:00.000Z",
+            },
+            receiptHash:
+              "0x1212121212121212121212121212121212121212121212121212121212121212",
+            callbackTarget:
+              "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            callbackTxHash:
+              "0x3434343434343434343434343434343434343434343434343434343434343434",
+            callbackReceipt: { status: "0x1" },
+            createdAt: "2026-03-09T00:00:00.000Z",
+            updatedAt: "2026-03-09T00:00:00.000Z",
+          };
+        },
+      },
+      marketContracts: {
+        async dispatch(record) {
+          return {
+            action: "confirmed",
+            callback: {
+              callbackId: `${record.bindingId}:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`,
+              bindingId: record.bindingId,
+              kind: record.kind,
+              subjectId: record.subjectId,
+              contractAddress:
+                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              packageName: "ObservationMarket",
+              functionSignature: "bind(bytes)",
+              payloadMode: "canonical_binding",
+              payloadHex: "0x1234",
+              payloadHash:
+                "0x5656565656565656565656565656565656565656565656565656565656565656",
+              status: "confirmed",
+              attemptCount: 1,
+              maxAttempts: 3,
+              callbackTxHash:
+                "0x3434343434343434343434343434343434343434343434343434343434343434",
+              callbackReceipt: { status: "0x1" },
+              createdAt: "2026-03-09T00:00:00.000Z",
+              updatedAt: "2026-03-09T00:00:00.000Z",
+            },
+          };
+        },
+        async retryPending() {
+          return { processed: 0, confirmed: 0, pending: 0, failed: 0 };
+        },
+      },
       settlementPublisher: {
         async publish(input) {
           return {
@@ -220,6 +280,9 @@ describe("agent discovery observation server", () => {
         status: string;
         job_id: string;
         result_url: string;
+        binding_id: string;
+        binding_hash: string;
+        market_callback_tx_hash: string;
         receipt_id: string;
         receipt_hash: string;
         settlement_tx_hash: string;
@@ -227,6 +290,13 @@ describe("agent discovery observation server", () => {
       expect(firstBody.status).toBe("ok");
       expect(firstBody.job_id).toMatch(/^[0-9a-f]{64}$/);
       expect(firstBody.result_url).toBe(`/jobs/${firstBody.job_id}`);
+      expect(firstBody.binding_id).toBe(`observation:${firstBody.job_id}`);
+      expect(firstBody.binding_hash).toBe(
+        "0x1212121212121212121212121212121212121212121212121212121212121212",
+      );
+      expect(firstBody.market_callback_tx_hash).toBe(
+        "0x3434343434343434343434343434343434343434343434343434343434343434",
+      );
       expect(firstBody.receipt_id).toBe(`observation:${firstBody.job_id}`);
       expect(firstBody.receipt_hash).toBe(
         "0x2222222222222222222222222222222222222222222222222222222222222222",
