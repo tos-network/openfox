@@ -22,6 +22,14 @@ import type {
 import type { PolicyEngine } from "./policy-engine.js";
 import { sanitizeToolResult, sanitizeInput } from "./injection-defense.js";
 import { createLogger } from "../observability/logger.js";
+import { resolvePath } from "../config.js";
+import {
+  loadHeartbeatConfig,
+  removeHeartbeatConfigEntry,
+  syncHeartbeatScheduleToDb,
+  syncHeartbeatToDb,
+  upsertHeartbeatConfigEntry,
+} from "../heartbeat/config.js";
 
 const logger = createLogger("tools");
 
@@ -651,23 +659,25 @@ export function createBuiltinTools(
       execute: async (args, ctx) => {
         const action = args.action as string;
         const name = args.name as string;
+        const heartbeatConfigPath = resolvePath(ctx.config.heartbeatConfigPath);
 
         if (action === "remove") {
-          ctx.db.upsertHeartbeatEntry({
-            name,
-            schedule: "",
-            task: "",
-            enabled: false,
-          });
+          removeHeartbeatConfigEntry(name, heartbeatConfigPath);
+          const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
+          syncHeartbeatToDb(heartbeatConfig, ctx.db);
+          syncHeartbeatScheduleToDb(heartbeatConfig, ctx.db.raw);
           return `Heartbeat entry '${name}' disabled`;
         }
 
-        ctx.db.upsertHeartbeatEntry({
+        upsertHeartbeatConfigEntry({
           name,
           schedule: (args.schedule as string) || "0 * * * *",
           task: (args.task as string) || name,
           enabled: args.enabled !== false,
-        });
+        }, heartbeatConfigPath);
+        const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
+        syncHeartbeatToDb(heartbeatConfig, ctx.db);
+        syncHeartbeatScheduleToDb(heartbeatConfig, ctx.db.raw);
 
         const { ulid } = await import("ulid");
         ctx.db.insertModification({

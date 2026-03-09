@@ -1,0 +1,216 @@
+import http from "http";
+import { afterEach, describe, expect, it } from "vitest";
+import { privateKeyToAccount } from "tosdk/accounts";
+import { createTestConfig, createTestDb } from "./mocks.js";
+import {
+  buildGatewayBootnodesReport,
+  buildGatewayStatusReport,
+  buildServiceStatusReport,
+  runServiceHealthChecks,
+} from "../service/operator.js";
+import { canonicalizeGatewayBootnodeListPayload } from "../agent-gateway/bootnodes.js";
+
+const servers: http.Server[] = [];
+
+async function startServer(
+  handler: (req: http.IncomingMessage, res: http.ServerResponse) => void,
+): Promise<{ url: string }> {
+  const server = http.createServer(handler);
+  servers.push(server);
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("failed to bind test server");
+  }
+  return { url: `http://127.0.0.1:${address.port}` };
+}
+
+afterEach(async () => {
+  while (servers.length) {
+    const server = servers.pop();
+    if (!server) continue;
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+  }
+});
+
+describe("service operator", () => {
+  it("builds status reports for provider and gateway roles", async () => {
+    const db = createTestDb();
+    db.setKV(
+      "agent_gateway:last_session:agent:gateway",
+      JSON.stringify({ sessionId: "abc", publicPathToken: "def" }),
+    );
+    db.setKV(
+      "agent_gateway:server_session:gateway:agent",
+      JSON.stringify({ sessionId: "xyz", publicPathToken: "123" }),
+    );
+
+    const config = createTestConfig({
+      rpcUrl: "http://127.0.0.1:8545",
+      chainId: 1666,
+      agentDiscovery: {
+        enabled: true,
+        publishCard: true,
+        cardTtlSeconds: 3600,
+        endpoints: [],
+        capabilities: [],
+        faucetServer: {
+          enabled: true,
+          bindHost: "127.0.0.1",
+          port: 4877,
+          path: "/agent-discovery/faucet",
+          capability: "sponsor.topup.testnet",
+          payoutAmountWei: "1",
+          maxAmountWei: "1",
+          cooldownSeconds: 60,
+          requireNativeIdentity: true,
+        },
+        gatewayServer: {
+          enabled: true,
+          bindHost: "127.0.0.1",
+          port: 4880,
+          sessionPath: "/agent-gateway/session",
+          publicPathPrefix: "/a",
+          publicBaseUrl: "https://gw.example.com",
+          capability: "gateway.relay",
+          mode: "paid",
+          sessionTtlSeconds: 3600,
+          requestTimeoutMs: 5000,
+          maxRoutesPerSession: 8,
+          maxRequestBodyBytes: 131072,
+          priceModel: "x402-exact",
+          paymentDirection: "requester_pays",
+        },
+        gatewayClient: {
+          enabled: true,
+          gatewayBootnodes: [],
+          sessionTtlSeconds: 3600,
+          requestTimeoutMs: 5000,
+          maxGatewaySessions: 2,
+          routes: [],
+        },
+      },
+    });
+
+    const report = buildServiceStatusReport(config, db.raw);
+    expect(report).toContain("Roles: requester, provider, gateway");
+    expect(report).toContain("provider session cache entries: 1");
+    expect(report).toContain("server session cache entries: 1");
+
+    const gatewayReport = await buildGatewayStatusReport(config, db.raw);
+    expect(gatewayReport).toContain("Server: enabled");
+    expect(gatewayReport).toContain("Client: enabled");
+    db.close();
+  });
+
+  it("checks local service and rpc health", async () => {
+    const rpc = await startServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) {
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x682" }));
+    });
+    const faucet = await startServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true }));
+    });
+    const gateway = await startServer((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ ok: true, capability: "gateway.relay" }));
+    });
+
+    const faucetUrl = new URL(faucet.url);
+    const gatewayUrl = new URL(gateway.url);
+
+    const config = createTestConfig({
+      rpcUrl: rpc.url,
+      chainId: 1666,
+      agentDiscovery: {
+        enabled: true,
+        publishCard: true,
+        cardTtlSeconds: 3600,
+        endpoints: [],
+        capabilities: [],
+        faucetServer: {
+          enabled: true,
+          bindHost: faucetUrl.hostname,
+          port: Number(faucetUrl.port),
+          path: "",
+          capability: "sponsor.topup.testnet",
+          payoutAmountWei: "1",
+          maxAmountWei: "1",
+          cooldownSeconds: 60,
+          requireNativeIdentity: true,
+        },
+        gatewayServer: {
+          enabled: true,
+          bindHost: gatewayUrl.hostname,
+          port: Number(gatewayUrl.port),
+          sessionPath: "/agent-gateway/session",
+          publicPathPrefix: "",
+          publicBaseUrl: gateway.url,
+          capability: "gateway.relay",
+          mode: "sponsored",
+          sessionTtlSeconds: 3600,
+          requestTimeoutMs: 5000,
+          maxRoutesPerSession: 8,
+          maxRequestBodyBytes: 131072,
+        },
+      },
+    });
+
+    const report = await runServiceHealthChecks(config);
+    expect(report).toContain("OK");
+    expect(report).toContain(rpc.url);
+    expect(report).toContain(gateway.url);
+  });
+
+  it("reports signed gateway bootnode lists", async () => {
+    const account = privateKeyToAccount(
+      "0x59c6995e998f97a5a0044966f094538e4a2e0d7a5b5d5b4b8b1c1d1e1f1a1b1c",
+    );
+    const payload = {
+      version: 1,
+      networkId: 1666,
+      entries: [
+        {
+          agentId: account.address,
+          url: "wss://gw.example.com/agent-gateway/session",
+        },
+      ],
+      issuedAt: 1770000000,
+    };
+    const signature = await account.signMessage({
+      message: canonicalizeGatewayBootnodeListPayload(payload),
+    });
+    const config = createTestConfig({
+      chainId: 1666,
+      agentDiscovery: {
+        enabled: true,
+        publishCard: true,
+        cardTtlSeconds: 3600,
+        endpoints: [],
+        capabilities: [],
+        gatewayClient: {
+          enabled: true,
+          gatewayBootnodes: [],
+          gatewayBootnodeList: {
+            ...payload,
+            signer: account.address,
+            signature,
+          },
+          sessionTtlSeconds: 3600,
+          requestTimeoutMs: 5000,
+          maxGatewaySessions: 1,
+          routes: [],
+        },
+      },
+    });
+
+    const report = await buildGatewayBootnodesReport(config);
+    expect(report).toContain("Signed list: valid");
+    expect(report).toContain("wss://gw.example.com/agent-gateway/session");
+  });
+});

@@ -221,6 +221,10 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     );
   };
 
+  const deleteHeartbeatEntry = (name: string): void => {
+    db.prepare("DELETE FROM heartbeat_entries WHERE name = ?").run(name);
+  };
+
   const updateHeartbeatLastRun = (
     name: string,
     timestamp: string,
@@ -507,6 +511,7 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     getToolCallsForTurn,
     getHeartbeatEntries,
     upsertHeartbeatEntry,
+    deleteHeartbeatEntry,
     updateHeartbeatLastRun,
     insertTransaction,
     getRecentTransactions,
@@ -1267,6 +1272,15 @@ export function getHeartbeatHistory(db: DatabaseType, taskName: string, limit = 
   return rows.map(deserializeHeartbeatHistoryRow);
 }
 
+export function getRecentHeartbeatHistory(db: DatabaseType, limit = 50): HeartbeatHistoryRow[] {
+  const rows = db
+    .prepare(
+      "SELECT * FROM heartbeat_history ORDER BY started_at DESC LIMIT ?",
+    )
+    .all(limit) as any[];
+  return rows.map(deserializeHeartbeatHistoryRow);
+}
+
 // ─── Lease Management Helpers (Phase 1.1) ───────────────────────
 
 export function acquireTaskLease(db: DatabaseType, taskName: string, owner: string, ttlMs: number): boolean {
@@ -1320,6 +1334,34 @@ export function getUnconsumedWakeEvents(db: DatabaseType): WakeEventRow[] {
     "SELECT * FROM wake_events WHERE consumed_at IS NULL ORDER BY id ASC",
   ).all() as any[];
   return rows.map(deserializeWakeEventRow);
+}
+
+export function getRecentWakeEvents(db: DatabaseType, limit = 50): WakeEventRow[] {
+  const rows = db.prepare(
+    "SELECT * FROM wake_events ORDER BY id DESC LIMIT ?",
+  ).all(limit) as any[];
+  return rows.map(deserializeWakeEventRow);
+}
+
+export function setHeartbeatPaused(db: DatabaseType, paused: boolean): void {
+  if (paused) {
+    db.prepare(
+      "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES ('heartbeat.paused', '1', datetime('now'))",
+    ).run();
+    return;
+  }
+  db.prepare("DELETE FROM kv WHERE key = 'heartbeat.paused'").run();
+}
+
+export function isHeartbeatPaused(db: DatabaseType): boolean {
+  const row = db
+    .prepare("SELECT value FROM kv WHERE key = 'heartbeat.paused'")
+    .get() as { value?: string } | undefined;
+  return row?.value === "1";
+}
+
+export function deleteHeartbeatTask(db: DatabaseType, taskName: string): void {
+  db.prepare("DELETE FROM heartbeat_schedule WHERE task_name = ?").run(taskName);
 }
 
 // ─── KV Pruning Helpers (Phase 1.6) ─────────────────────────────

@@ -23,7 +23,7 @@ import type {
 } from "../types.js";
 import { BUILTIN_TASKS } from "./tasks.js";
 import { DurableScheduler } from "./scheduler.js";
-import { upsertHeartbeatSchedule } from "../state/database.js";
+import { syncHeartbeatScheduleToDb } from "./config.js";
 import type BetterSqlite3 from "better-sqlite3";
 import { createLogger } from "../observability/logger.js";
 
@@ -76,27 +76,8 @@ export function createHeartbeatDaemon(
     taskMap.set(name, fn);
   }
 
-  // Seed heartbeat_schedule from config entries if not already present
-  for (const entry of heartbeatConfig.entries) {
-    upsertHeartbeatSchedule(rawDb, {
-      taskName: entry.name,
-      cronExpression: entry.schedule,
-      intervalMs: null,
-      enabled: entry.enabled ? 1 : 0,
-      priority: 0,
-      timeoutMs: 30_000,
-      maxRetries: 1,
-      tierMinimum: "dead",
-      lastRunAt: entry.lastRun ?? null,
-      nextRunAt: entry.nextRun ?? null,
-      lastResult: null,
-      lastError: null,
-      runCount: 0,
-      failCount: 0,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-    });
-  }
+  // Keep schedule definitions in sync with heartbeat.yml while preserving runtime state.
+  syncHeartbeatScheduleToDb(heartbeatConfig, rawDb);
 
   const scheduler = new DurableScheduler(
     rawDb,

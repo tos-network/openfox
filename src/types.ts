@@ -968,6 +968,7 @@ export interface OpenFoxDatabase {
   // Heartbeat
   getHeartbeatEntries(): HeartbeatEntry[];
   upsertHeartbeatEntry(entry: HeartbeatEntry): void;
+  deleteHeartbeatEntry(name: string): void;
   updateHeartbeatLastRun(name: string, timestamp: string): void;
 
   // Transactions

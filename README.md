@@ -260,6 +260,33 @@ Provider settings live in:
 ~/.openfox/openfox.json
 ```
 
+## Operator Commands
+
+OpenFox now includes operator-facing command groups for skills, scheduling,
+service health, gateway inspection, and managed service lifecycle.
+
+```bash
+openfox skills list
+openfox heartbeat status
+openfox cron list
+openfox service status
+openfox gateway status
+```
+
+To run OpenFox as a long-lived Linux user service:
+
+```bash
+openfox service install
+openfox service restart
+openfox service status
+```
+
+To remove the managed service again:
+
+```bash
+openfox service uninstall
+```
+
 ## Agent Gateway Example
 
 The minimal gateway setup uses one public OpenFox as a gateway agent and one private OpenFox as a provider.
@@ -393,6 +420,52 @@ openfox --configure
 openfox --pick-model
 ```
 
+Heartbeat operator surface:
+
+```bash
+openfox heartbeat status
+openfox heartbeat enable
+openfox heartbeat disable
+openfox heartbeat wake --reason "manual operator wake"
+openfox heartbeat history --limit 10
+```
+
+Cron and scheduled task operator surface:
+
+```bash
+openfox cron list
+openfox cron status heartbeat_ping
+openfox cron add --task report_metrics --cron "*/5 * * * *"
+openfox cron edit report_metrics --cron "*/10 * * * *"
+openfox cron run report_metrics
+openfox cron runs report_metrics --limit 10
+openfox cron disable report_metrics
+openfox cron remove report_metrics
+```
+
+OpenFox keeps `heartbeat.yml` as the scheduling definition file and stores run
+state, wake reasons, and execution history in the local database. Operator
+commands update the config file and sync the durable scheduler state, so changes
+survive restarts.
+
+Service and gateway operator surface:
+
+```bash
+openfox service status
+openfox service check
+openfox gateway status
+openfox gateway bootnodes
+openfox gateway check
+```
+
+These commands are meant for operators, not the model. They let you inspect:
+
+- which roles the current OpenFox instance is configured to play
+- which provider routes and local service endpoints are expected
+- whether local service health endpoints and chain RPC respond
+- whether the configured gateway bootnode list is signed and valid
+- whether gateway client/server configuration is coherent before deployment
+
 ---
 
 ## What OpenFox Is Good For
@@ -437,6 +510,28 @@ packages/
 scripts/
   openfox.sh      # bootstrap helper
 ```
+
+---
+
+## Deployment Roles
+
+OpenFox now has a clean operator-facing surface for the three main deployment roles:
+
+- `requester`: discovers providers and invokes capabilities
+- `provider`: exposes local capabilities such as faucet, observation, or future bounty services
+- `gateway`: provides public relay reachability for providers behind NAT
+
+Use:
+
+```bash
+openfox service status
+```
+
+to inspect how the current config maps to these roles.
+
+For deployment examples, health checks, and troubleshooting, see:
+
+- [OpenFox Service Operator Guide](docs/OpenFox-Service-Operator-Guide.md)
 
 ---
 

@@ -17,8 +17,14 @@ import { createHeartbeatDaemon } from "./heartbeat/daemon.js";
 import {
   loadHeartbeatConfig,
   syncHeartbeatToDb,
+  syncHeartbeatScheduleToDb,
 } from "./heartbeat/config.js";
-import { consumeNextWakeEvent, insertWakeEvent } from "./state/database.js";
+import {
+  consumeNextWakeEvent,
+  getUnconsumedWakeEvents,
+  insertWakeEvent,
+  isHeartbeatPaused,
+} from "./state/database.js";
 import { runAgentLoop } from "./agent/loop.js";
 import { ModelRegistry } from "./inference/registry.js";
 import { loadSkills } from "./skills/loader.js";
@@ -55,6 +61,35 @@ import {
 } from "./skills/registry.js";
 import { randomUUID } from "crypto";
 import { keccak256, toHex } from "tosdk";
+import {
+  addCronTask,
+  buildCronListReport,
+  buildCronRunsReport,
+  buildCronTaskReport,
+  buildHeartbeatStatusReport,
+  disableHeartbeat,
+  editCronTask,
+  enableHeartbeat,
+  getBuiltinHeartbeatTasks,
+  queueManualWake,
+  removeCronTask,
+  setCronTaskEnabled,
+} from "./heartbeat/operator.js";
+import {
+  buildGatewayBootnodesReport,
+  buildGatewayStatusReport,
+  buildServiceStatusReport,
+  runServiceHealthChecks,
+} from "./service/operator.js";
+import {
+  buildManagedServiceStatusReport,
+  getManagedServiceStatus,
+  installManagedService,
+  restartManagedService,
+  startManagedService,
+  stopManagedService,
+  uninstallManagedService,
+} from "./service/daemon.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -74,6 +109,26 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "heartbeat") {
+    await handleHeartbeatCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "cron") {
+    await handleCronCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "service") {
+    await handleServiceCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "gateway") {
+    await handleGatewayCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args.includes("--help") || args.includes("-h")) {
     logger.info(`
 OpenFox v${VERSION}
@@ -87,6 +142,10 @@ Usage:
   openfox --init         Initialize wallet and config directory
   openfox --status       Show current openfox status
   openfox skills ...     Inspect and manage skills
+  openfox heartbeat ...  Inspect and control the heartbeat runtime
+  openfox cron ...       Inspect and manage scheduled heartbeat tasks
+  openfox service ...    Inspect service roles, health, and lifecycle
+  openfox gateway ...    Inspect gateway configuration and bootnodes
   openfox --version      Show version
   openfox --help         Show this help
 
@@ -295,6 +354,381 @@ function readOption(args: string[], flag: string): string | undefined {
   return args[index + 1]?.trim() || undefined;
 }
 
+function readNumberOption(args: string[], flag: string, fallback: number): number {
+  const raw = readOption(args, flag);
+  if (!raw) return fallback;
+  const value = Number.parseInt(raw, 10);
+  if (!Number.isFinite(value) || value <= 0) {
+    throw new Error(`Invalid numeric value for ${flag}: ${raw}`);
+  }
+  return value;
+}
+
+async function withHeartbeatContext<T>(
+  fn: (params: {
+    config: NonNullable<ReturnType<typeof loadConfig>>;
+    db: ReturnType<typeof createDatabase>;
+    heartbeatConfigPath: string;
+    heartbeatConfig: ReturnType<typeof loadHeartbeatConfig>;
+  }) => Promise<T> | T,
+): Promise<T> {
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+
+  const db = createDatabase(resolvePath(config.dbPath));
+  const heartbeatConfigPath = resolvePath(config.heartbeatConfigPath);
+  const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
+  syncHeartbeatToDb(heartbeatConfig, db);
+  syncHeartbeatScheduleToDb(heartbeatConfig, db.raw);
+
+  try {
+    return await fn({ config, db, heartbeatConfigPath, heartbeatConfig });
+  } finally {
+    db.close();
+  }
+}
+
+async function runHeartbeatTaskNow(
+  config: NonNullable<ReturnType<typeof loadConfig>>,
+  taskName: string,
+): Promise<void> {
+  const { account, privateKey } = await getWallet();
+  const apiKey = config.runtimeApiKey || loadApiKeyFromConfig() || "";
+  const db = createDatabase(resolvePath(config.dbPath));
+  const heartbeatConfigPath = resolvePath(config.heartbeatConfigPath);
+  const heartbeatConfig = loadHeartbeatConfig(heartbeatConfigPath);
+  syncHeartbeatToDb(heartbeatConfig, db);
+  syncHeartbeatScheduleToDb(heartbeatConfig, db.raw);
+
+  const createdAt = db.getIdentity("createdAt") || new Date().toISOString();
+  const identity: OpenFoxIdentity = {
+    name: config.name,
+    address: config.walletAddress || deriveAddressFromPrivateKey(privateKey),
+    account,
+    creatorAddress: config.creatorAddress,
+    sandboxId: config.sandboxId,
+    apiKey,
+    createdAt,
+  };
+
+  const runtime = createRuntimeClient({
+    apiUrl: config.runtimeApiUrl,
+    apiKey,
+    sandboxId: config.sandboxId,
+  });
+
+  let social: SocialClientInterface | undefined;
+  if (config.socialRelayUrl) {
+    social = createSocialClient(config.socialRelayUrl, account);
+  }
+
+  const heartbeat = createHeartbeatDaemon({
+    identity,
+    config,
+    heartbeatConfig,
+    db,
+    rawDb: db.raw,
+    runtime,
+    social,
+  });
+
+  try {
+    await heartbeat.forceRun(taskName);
+  } finally {
+    heartbeat.stop();
+    db.close();
+  }
+}
+
+async function handleHeartbeatCommand(args: string[]): Promise<void> {
+  const command = args[0] || "status";
+  if (command === "--help" || command === "-h" || command === "help") {
+    logger.info(`
+OpenFox heartbeat
+
+Usage:
+  openfox heartbeat status
+  openfox heartbeat enable
+  openfox heartbeat disable
+  openfox heartbeat wake --reason <text>
+  openfox heartbeat tasks
+  openfox heartbeat history [task] [--limit N]
+`);
+    return;
+  }
+
+  await withHeartbeatContext(async ({ db, heartbeatConfig }) => {
+    if (command === "status") {
+      logger.info(buildHeartbeatStatusReport(db.raw, heartbeatConfig));
+      return;
+    }
+
+    if (command === "enable") {
+      enableHeartbeat(db.raw);
+      logger.info("Heartbeat enabled.");
+      return;
+    }
+
+    if (command === "disable") {
+      disableHeartbeat(db.raw);
+      logger.info("Heartbeat disabled.");
+      return;
+    }
+
+    if (command === "wake") {
+      const reason = readOption(args, "--reason") || args[1] || "Manual operator wake";
+      queueManualWake(db.raw, reason);
+      logger.info(`Queued wake event: ${reason}`);
+      return;
+    }
+
+    if (command === "tasks") {
+      logger.info("=== OPENFOX HEARTBEAT TASKS ===");
+      for (const task of getBuiltinHeartbeatTasks()) {
+        logger.info(`${task.name}`);
+        logger.info(`  ${task.description}`);
+      }
+      return;
+    }
+
+    if (command === "history") {
+      const taskName = args[1]?.startsWith("--") ? undefined : args[1];
+      const limit = readNumberOption(args, "--limit", 20);
+      logger.info(buildCronRunsReport(db.raw, taskName, limit));
+      return;
+    }
+
+    throw new Error(`Unknown heartbeat command: ${command}`);
+  });
+}
+
+async function handleCronCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  if (command === "--help" || command === "-h" || command === "help") {
+    logger.info(`
+OpenFox cron
+
+Usage:
+  openfox cron list
+  openfox cron status <task>
+  openfox cron add --task <name> --cron "<expr>"
+  openfox cron edit <task> [--cron "<expr>"] [--enable|--disable]
+  openfox cron remove <task>
+  openfox cron enable <task>
+  openfox cron disable <task>
+  openfox cron runs [task] [--limit N]
+  openfox cron run <task>
+`);
+    return;
+  }
+
+  await withHeartbeatContext(async ({ config, db, heartbeatConfigPath }) => {
+    if (command === "list") {
+      logger.info(buildCronListReport(db.raw));
+      return;
+    }
+
+    if (command === "status") {
+      const taskName = args[1];
+      if (!taskName) {
+        throw new Error("Usage: openfox cron status <task>");
+      }
+      logger.info(buildCronTaskReport(db.raw, taskName));
+      return;
+    }
+
+    if (command === "add") {
+      const taskName = readOption(args, "--task");
+      const cronExpression = readOption(args, "--cron");
+      if (!taskName || !cronExpression) {
+        throw new Error("Usage: openfox cron add --task <name> --cron \"<expr>\"");
+      }
+      addCronTask({
+        heartbeatConfigPath,
+        db,
+        rawDb: db.raw,
+        taskName,
+        schedule: cronExpression,
+      });
+      logger.info(`Scheduled task added: ${taskName} (${cronExpression})`);
+      return;
+    }
+
+    if (command === "edit") {
+      const taskName = args[1];
+      if (!taskName) {
+        throw new Error("Usage: openfox cron edit <task> [--cron \"<expr>\"] [--enable|--disable]");
+      }
+      const cronExpression = readOption(args, "--cron");
+      const enabled = args.includes("--enable") ? true : args.includes("--disable") ? false : undefined;
+      editCronTask({
+        heartbeatConfigPath,
+        db,
+        rawDb: db.raw,
+        taskName,
+        schedule: cronExpression,
+        enabled,
+      });
+      logger.info(`Scheduled task updated: ${taskName}`);
+      return;
+    }
+
+    if (command === "remove") {
+      const taskName = args[1];
+      if (!taskName) {
+        throw new Error("Usage: openfox cron remove <task>");
+      }
+      removeCronTask({
+        heartbeatConfigPath,
+        db,
+        rawDb: db.raw,
+        taskName,
+      });
+      logger.info(`Scheduled task removed: ${taskName}`);
+      return;
+    }
+
+    if (command === "enable" || command === "disable") {
+      const taskName = args[1];
+      if (!taskName) {
+        throw new Error(`Usage: openfox cron ${command} <task>`);
+      }
+      setCronTaskEnabled({
+        heartbeatConfigPath,
+        db,
+        rawDb: db.raw,
+        taskName,
+        enabled: command === "enable",
+      });
+      logger.info(`Scheduled task ${command}d: ${taskName}`);
+      return;
+    }
+
+    if (command === "runs") {
+      const taskName = args[1]?.startsWith("--") ? undefined : args[1];
+      const limit = readNumberOption(args, "--limit", 20);
+      logger.info(buildCronRunsReport(db.raw, taskName, limit));
+      return;
+    }
+
+    if (command === "run") {
+      const taskName = args[1];
+      if (!taskName) {
+        throw new Error("Usage: openfox cron run <task>");
+      }
+      await runHeartbeatTaskNow(config, taskName);
+      logger.info(`Scheduled task executed: ${taskName}`);
+      return;
+    }
+
+    throw new Error(`Unknown cron command: ${command}`);
+  });
+}
+
+async function handleServiceCommand(args: string[]): Promise<void> {
+  const command = args[0] || "status";
+  if (command === "--help" || command === "-h" || command === "help") {
+    logger.info(`
+OpenFox service
+
+Usage:
+  openfox service status
+  openfox service roles
+  openfox service check
+  openfox service install [--force] [--no-start]
+  openfox service uninstall
+  openfox service start
+  openfox service stop
+  openfox service restart
+`);
+    return;
+  }
+
+  if (command === "install") {
+    const force = args.includes("--force");
+    const start = !args.includes("--no-start");
+    const plan = installManagedService({ force, start });
+    logger.info(`Installed managed service: ${plan.unitPath}`);
+    logger.info(start ? "Service enabled and started." : "Service enabled.");
+    return;
+  }
+
+  if (command === "uninstall") {
+    const plan = uninstallManagedService();
+    logger.info(`Removed managed service: ${plan.unitPath}`);
+    return;
+  }
+
+  if (command === "start") {
+    const plan = startManagedService();
+    logger.info(`Started managed service: ${plan.unitName}`);
+    return;
+  }
+
+  if (command === "stop") {
+    const plan = stopManagedService();
+    logger.info(`Stopped managed service: ${plan.unitName}`);
+    return;
+  }
+
+  if (command === "restart") {
+    const plan = restartManagedService();
+    logger.info(`Restarted managed service: ${plan.unitName}`);
+    return;
+  }
+
+  await withHeartbeatContext(async ({ config, db }) => {
+    if (command === "status" || command === "roles") {
+      logger.info(buildManagedServiceStatusReport(getManagedServiceStatus()));
+      logger.info(buildServiceStatusReport(config, db.raw));
+      return;
+    }
+
+    if (command === "check") {
+      logger.info(await runServiceHealthChecks(config));
+      return;
+    }
+
+    throw new Error(`Unknown service command: ${command}`);
+  });
+}
+
+async function handleGatewayCommand(args: string[]): Promise<void> {
+  const command = args[0] || "status";
+  if (command === "--help" || command === "-h" || command === "help") {
+    logger.info(`
+OpenFox gateway
+
+Usage:
+  openfox gateway status
+  openfox gateway bootnodes
+  openfox gateway check
+`);
+    return;
+  }
+
+  await withHeartbeatContext(async ({ config, db }) => {
+    if (command === "status") {
+      logger.info(await buildGatewayStatusReport(config, db.raw));
+      return;
+    }
+
+    if (command === "bootnodes") {
+      logger.info(await buildGatewayBootnodesReport(config));
+      return;
+    }
+
+    if (command === "check") {
+      logger.info(await runServiceHealthChecks(config));
+      return;
+    }
+
+    throw new Error(`Unknown gateway command: ${command}`);
+  });
+}
+
 // ─── Status Command ────────────────────────────────────────────
 
 async function showStatus(): Promise<void> {
@@ -311,6 +745,8 @@ async function showStatus(): Promise<void> {
   const turnCount = db.getTurnCount();
   const tools = db.getInstalledTools();
   const heartbeats = db.getHeartbeatEntries();
+  const heartbeatPaused = isHeartbeatPaused(db.raw);
+  const pendingWakes = getUnconsumedWakeEvents(db.raw);
   const skills = db.getSkills(true);
   const children = db.getChildren();
   const discovery = config.agentDiscovery;
@@ -319,11 +755,13 @@ async function showStatus(): Promise<void> {
     : discovery?.gatewayServer?.enabled
       ? discovery.gatewayServer.publicBaseUrl
       : "disabled";
+  const managedService = getManagedServiceStatus();
 
   logger.info(`
 === OPENFOX STATUS ===
 Name:       ${config.name}
 Wallet:     ${config.walletAddress}
+Service:    ${managedService.installed ? managedService.active || "installed" : "not installed"}
 Discovery:  ${discovery?.enabled ? "enabled" : "disabled"}
 Gateway:    ${gatewaySummary}
 Creator:    ${config.creatorAddress}
@@ -333,6 +771,8 @@ Turns:      ${turnCount}
 Tools:      ${tools.length} installed
 Skills:     ${skills.length} active
 Heartbeats: ${heartbeats.filter((h) => h.enabled).length} active
+Heartbeat paused: ${heartbeatPaused ? "yes" : "no"}
+Pending wakes: ${pendingWakes.length}
 Children:   ${children.filter((c) => c.status !== "dead").length} alive / ${children.length} total
 Agent ID:   ${config.agentId || "not configured"}
 Model:      ${config.inferenceModelRef || config.inferenceModel}

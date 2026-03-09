@@ -10,8 +10,16 @@ import YAML from "yaml";
 import type { HeartbeatEntry, HeartbeatConfig, OpenFoxDatabase } from "../types.js";
 import { getOpenFoxDir } from "../identity/wallet.js";
 import { createLogger } from "../observability/logger.js";
+import type BetterSqlite3 from "better-sqlite3";
+import {
+  deleteHeartbeatTask,
+  getHeartbeatSchedule,
+  getHeartbeatTask,
+  upsertHeartbeatSchedule,
+} from "../state/database.js";
 
 const logger = createLogger("heartbeat.config");
+type DatabaseType = BetterSqlite3.Database;
 
 const DEFAULT_HEARTBEAT_CONFIG: HeartbeatConfig = {
   entries: [
@@ -127,8 +135,106 @@ export function syncHeartbeatToDb(
   config: HeartbeatConfig,
   db: OpenFoxDatabase,
 ): void {
+  const expectedNames = new Set<string>();
+
   for (const entry of config.entries) {
+    expectedNames.add(entry.name);
     db.upsertHeartbeatEntry(entry);
+  }
+
+  for (const existing of db.getHeartbeatEntries()) {
+    if (!expectedNames.has(existing.name)) {
+      db.deleteHeartbeatEntry(existing.name);
+    }
+  }
+}
+
+export function upsertHeartbeatConfigEntry(
+  entry: HeartbeatEntry,
+  configPath?: string,
+): HeartbeatConfig {
+  const config = loadHeartbeatConfig(configPath);
+  const nextEntry: HeartbeatEntry = {
+    name: entry.name.trim(),
+    schedule: entry.schedule.trim(),
+    task: (entry.task || entry.name).trim(),
+    enabled: entry.enabled !== false,
+    params: entry.params,
+  };
+
+  const existingIndex = config.entries.findIndex((current) => current.name === nextEntry.name);
+  if (existingIndex >= 0) {
+    config.entries[existingIndex] = {
+      ...config.entries[existingIndex],
+      ...nextEntry,
+    };
+  } else {
+    config.entries.push(nextEntry);
+  }
+
+  saveHeartbeatConfig(config, configPath);
+  return config;
+}
+
+export function removeHeartbeatConfigEntry(
+  name: string,
+  configPath?: string,
+): HeartbeatConfig {
+  const config = loadHeartbeatConfig(configPath);
+  config.entries = config.entries.filter((entry) => entry.name !== name);
+  saveHeartbeatConfig(config, configPath);
+  return config;
+}
+
+export function setHeartbeatConfigEntryEnabled(
+  name: string,
+  enabled: boolean,
+  configPath?: string,
+): HeartbeatConfig {
+  const config = loadHeartbeatConfig(configPath);
+  config.entries = config.entries.map((entry) =>
+    entry.name === name ? { ...entry, enabled } : entry,
+  );
+  saveHeartbeatConfig(config, configPath);
+  return config;
+}
+
+export function syncHeartbeatScheduleToDb(
+  config: HeartbeatConfig,
+  db: DatabaseType,
+): void {
+  const desiredTasks = new Set<string>();
+
+  for (const entry of config.entries) {
+    const taskName = (entry.task || entry.name).trim();
+    if (!taskName) continue;
+
+    desiredTasks.add(taskName);
+    const existing = getHeartbeatTask(db, taskName);
+    upsertHeartbeatSchedule(db, {
+      taskName,
+      cronExpression: entry.schedule,
+      intervalMs: existing?.intervalMs ?? null,
+      enabled: entry.enabled ? 1 : 0,
+      priority: existing?.priority ?? 0,
+      timeoutMs: existing?.timeoutMs ?? 30_000,
+      maxRetries: existing?.maxRetries ?? 1,
+      tierMinimum: existing?.tierMinimum ?? "dead",
+      lastRunAt: existing?.lastRunAt ?? entry.lastRun ?? null,
+      nextRunAt: existing?.nextRunAt ?? entry.nextRun ?? null,
+      lastResult: existing?.lastResult ?? null,
+      lastError: existing?.lastError ?? null,
+      runCount: existing?.runCount ?? 0,
+      failCount: existing?.failCount ?? 0,
+      leaseOwner: existing?.leaseOwner ?? null,
+      leaseExpiresAt: existing?.leaseExpiresAt ?? null,
+    });
+  }
+
+  for (const existing of getHeartbeatSchedule(db)) {
+    if (!desiredTasks.has(existing.taskName)) {
+      deleteHeartbeatTask(db, existing.taskName);
+    }
   }
 }
 

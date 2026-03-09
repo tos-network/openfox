@@ -19,6 +19,7 @@ import type {
 import { buildTickContext } from "./tick-context.js";
 import {
   getHeartbeatSchedule,
+  isHeartbeatPaused,
   updateHeartbeatSchedule,
   insertHeartbeatHistory,
   acquireTaskLease,
@@ -86,6 +87,10 @@ export class DurableScheduler {
     this.tickInProgress = true;
 
     try {
+      if (isHeartbeatPaused(this.db)) {
+        return;
+      }
+
       // Clear any expired leases first
       clearExpiredLeases(this.db);
 

@@ -28,6 +28,7 @@ import {
   insertDedupKey,
   pruneExpiredDedupKeys,
   isDeduplicated,
+  setHeartbeatPaused,
 } from "../state/database.js";
 import type {
   OpenFoxDatabase,
@@ -124,6 +125,33 @@ describe("DurableScheduler", () => {
       await Promise.all([tick1, tick2]);
 
       // Only one should have executed due to tickInProgress guard
+      expect(tickCount).toBe(1);
+    });
+  });
+
+  describe("global heartbeat pause", () => {
+    it("skips due tasks while paused", async () => {
+      let tickCount = 0;
+      const task: HeartbeatTaskFn = async () => {
+        tickCount++;
+        return { shouldWake: false };
+      };
+
+      seedScheduleRow(rawDb, "paused_task");
+      setHeartbeatPaused(rawDb, true);
+
+      const scheduler = new DurableScheduler(
+        rawDb,
+        DEFAULT_HB_CONFIG,
+        new Map<string, HeartbeatTaskFn>([["paused_task", task]]),
+        createLegacyContext(db, runtime),
+      );
+
+      await scheduler.tick();
+      expect(tickCount).toBe(0);
+
+      setHeartbeatPaused(rawDb, false);
+      await scheduler.tick();
       expect(tickCount).toBe(1);
     });
   });
