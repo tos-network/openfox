@@ -120,6 +120,26 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Make server-side x402 payments inspectable, retryable, and visible
     through CLI, status, health, and doctor surfaces just like settlement and
     market callbacks.
+- [x] Task 27: Publish third-party quickstarts and runtime guides
+  - Status: Complete
+  - Goal: Let a new external builder complete the basic setup, funding,
+    runtime, and paid-service flow without reading internal source files.
+- [x] Task 28: Add bundled template catalog and export UX
+  - Status: Complete
+  - Goal: Ship reusable config and operator templates so third-party users can
+    start from working deployment shapes instead of building from scratch.
+- [x] Task 29: Add web4.ai, MCP, and API service integration examples
+  - Status: Complete
+  - Goal: Document how OpenFox plugs into adjacent agent and API ecosystems
+    without expanding the runtime into unrelated abstractions.
+- [x] Task 30: Add task sponsor and service operator example packs
+  - Status: Complete
+  - Goal: Provide concrete example stacks for sponsors, providers, gateways,
+    and local host/solver/scout deployments.
+- [x] Task 31: Publish SDK/runtime surface guidance and close Phase 5
+  - Status: Complete
+  - Goal: Clarify when builders should use `tosdk` directly versus the OpenFox
+    runtime, and close the roadmap’s ecosystem/productization phase.
 
 ## Task 1 Breakdown
 
@@ -350,3 +370,34 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add x402 payment findings to `openfox doctor` and `openfox health`.
 - [x] Update roadmap and README so server-side x402 productionization is part
   of the visible operator/runtime surface.
+
+## Task 27 Breakdown
+
+- [x] Add a third-party quickstart for `setup -> fund -> discover -> pay -> receive result`.
+- [x] Add explicit runtime/operator guides for external builders.
+- [x] Link the quickstart and guides from the main README.
+
+## Task 28 Breakdown
+
+- [x] Add bundled third-party templates under a repository-native `templates/` directory.
+- [x] Add `openfox templates list|show|export`.
+- [x] Cover local marketplace, public provider, task sponsor, and quickstart entry templates.
+
+## Task 29 Breakdown
+
+- [x] Add integration guidance for web4.ai-style agent usage.
+- [x] Add MCP integration guidance.
+- [x] Add API service integration guidance.
+
+## Task 30 Breakdown
+
+- [x] Add a local marketplace example pack.
+- [x] Add a public provider plus gateway example pack.
+- [x] Add a task sponsor example pack.
+- [x] Add operator-facing documentation that points to the right example pack for each role.
+
+## Task 31 Breakdown
+
+- [x] Add explicit SDK/runtime surface guidance that explains `tosdk` vs OpenFox.
+- [x] Update the roadmap so Phase 5 is marked complete.
+- [x] Update README so templates, quickstarts, and examples are part of the visible product surface.

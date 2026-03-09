@@ -343,7 +343,7 @@ Delivered surface:
 
 ### Phase 5: Ecosystem and SDK Productization
 
-Status: not complete
+Status: completed
 
 Goal:
 
@@ -361,21 +361,30 @@ Acceptance criteria:
 
 - a third-party developer can complete integration without needing to study internal implementation details
 
+Delivered surface:
+
+- external `tosdk` package as the native network SDK layer
+- bundled `openfox templates` catalog with exportable starter stacks
+- third-party quickstart for `setup -> fund -> discover -> pay -> receive result`
+- web4.ai, MCP, and API service integration examples
+- local marketplace, public provider, and task sponsor example packs
+- explicit SDK/runtime surface guidance for `tosdk` vs OpenFox
+
 ## 4. Near-Term Priorities
 
 Suggested priority order:
 
 ### P0: Do Immediately
 
-- extract third-party operator templates and quickstarts
-- document the full `setup -> fund -> discover -> pay -> receive result` path
 - harden multi-node production deployment guidance
+- add broader real-node integration testing for marketplace/provider flows
+- tighten anti-abuse and reputation closure around paid and sponsored flows
 
 ### P1: Do Next
 
 - run a broader multi-node testnet deployment for host/provider/gateway roles
-- extend third-party operator documentation and local templates
-- add stronger anti-abuse and reputation closure around paid and sponsored flows
+- extend operator deployment automation beyond local wrapper scripts
+- add more production-style monitoring and alerting around provider flows
 
 ### P2: Do Later
 
@@ -401,7 +410,7 @@ The more reasonable strategy for now is:
 
 There are only two next steps that matter most:
 
-1. make a third-party operator able to complete `setup -> fund -> discover provider -> pay in TOS -> receive a real service result` without reading internal code
-2. extract and document the reusable SDK/runtime surfaces so external builders can integrate independently
+1. harden real multi-node deployment and production operator workflows
+2. strengthen abuse resistance, policy closure, and reputation around paid services
 
 Only after these two steps are complete should we expand into broader marketplace and ecosystem-facing phases.

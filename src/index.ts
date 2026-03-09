@@ -108,6 +108,11 @@ import {
 import { buildModelStatusReport, buildModelStatusSnapshot } from "./models/status.js";
 import { runOnboard } from "./commands/onboard.js";
 import { runWalletCommand } from "./commands/wallet.js";
+import {
+  exportBundledTemplate,
+  listBundledTemplates,
+  readBundledTemplateReadme,
+} from "./commands/templates.js";
 import { createBountyEngine } from "./bounty/engine.js";
 import { startBountyHttpServer } from "./bounty/http.js";
 import { createNativeBountyPayoutSender } from "./bounty/payout.js";
@@ -217,6 +222,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "templates") {
+    await handleTemplatesCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "logs") {
     await handleLogsCommand(args.slice(1));
     process.exit(0);
@@ -274,6 +284,7 @@ Usage:
   openfox models ...     Inspect model/provider readiness
   openfox onboard        Run setup and optionally install the managed service
   openfox wallet ...     Inspect, fund, and bootstrap the native wallet
+  openfox templates ...  Inspect and export bundled third-party templates
   openfox logs           Show recent OpenFox service logs
   openfox bounty ...     Open, inspect, and solve task bounties
   openfox settlement ... Inspect on-chain settlement receipts and anchors
@@ -1016,6 +1027,79 @@ Usage:
         ? "OpenFox onboarding complete. Wallet funding requested."
         : "OpenFox onboarding complete.",
   );
+}
+
+async function handleTemplatesCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox templates
+
+Usage:
+  openfox templates list [--json]
+  openfox templates show <name>
+  openfox templates export <name> --output <path> [--force] [--json]
+`);
+    return;
+  }
+
+  if (command === "list") {
+    const items = listBundledTemplates();
+    if (asJson) {
+      logger.info(JSON.stringify({ items }, null, 2));
+      return;
+    }
+    if (items.length === 0) {
+      logger.info("No bundled templates found.");
+      return;
+    }
+    logger.info("=== OPENFOX TEMPLATES ===");
+    for (const item of items) {
+      logger.info(`${item.name}`);
+      if (item.description) {
+        logger.info(`  ${item.description}`);
+      }
+    }
+    return;
+  }
+
+  if (command === "show") {
+    const name = args[1];
+    if (!name) {
+      throw new Error("Usage: openfox templates show <name>");
+    }
+    logger.info(readBundledTemplateReadme(name));
+    return;
+  }
+
+  if (command === "export") {
+    const name = args[1];
+    const outputPath = readOption(args, "--output");
+    if (!name || !outputPath) {
+      throw new Error("Usage: openfox templates export <name> --output <path> [--force] [--json]");
+    }
+    const result = exportBundledTemplate({
+      name,
+      outputPath,
+      force: args.includes("--force"),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+    logger.info(
+      [
+        "Template exported.",
+        `Name: ${result.name}`,
+        `Source: ${result.sourcePath}`,
+        `Output: ${result.outputPath}`,
+      ].join("\n"),
+    );
+    return;
+  }
+
+  throw new Error(`Unknown templates command: ${command}`);
 }
 
 async function handleLogsCommand(args: string[]): Promise<void> {

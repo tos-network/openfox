@@ -168,6 +168,7 @@ OpenFox supports:
 - local file and shell operations
 - task orchestration
 - worker / child-agent paths
+- bundled third-party templates
 
 That makes it an extensible agent runtime rather than a fixed-purpose application.
 
@@ -209,6 +210,7 @@ pnpm openfox --setup
 pnpm openfox --run
 pnpm openfox onboard --install-daemon
 pnpm openfox wallet status
+pnpm openfox templates list
 pnpm openfox payments list
 pnpm openfox settlement list
 pnpm openfox market list
@@ -222,6 +224,7 @@ openfox --setup
 openfox --run
 openfox onboard --install-daemon
 openfox wallet status
+openfox templates list
 openfox payments list
 openfox settlement list
 openfox market list
@@ -254,6 +257,8 @@ Useful next steps after setup:
 
 ```bash
 openfox wallet status
+openfox templates list
+openfox templates export third-party-quickstart --output ./my-openfox
 openfox onboard --fund-local
 openfox onboard --fund-testnet
 openfox wallet bootstrap-signer --type ed25519
@@ -471,6 +476,26 @@ This matters because an earning agent cannot just think. It must also be able to
 - make payments
 - receive payments
 - connect to paid services
+
+---
+
+## Third-Party Builder Surface
+
+Start here if you want to integrate OpenFox without reading the internals:
+
+- [Third-Party Quickstart](./docs/OpenFox-Third-Party-Quickstart.md)
+- [Template Guide](./docs/OpenFox-Template-Guide.md)
+- [Integration Examples](./docs/OpenFox-Integration-Examples.md)
+- [Operator Examples](./docs/OpenFox-Operator-Examples.md)
+- [SDK and Runtime Surfaces](./docs/OpenFox-SDK-Surfaces.md)
+
+Bundled starter templates are available through:
+
+```bash
+openfox templates list
+openfox templates show local-marketplace
+openfox templates export local-marketplace --output ./examples/local-marketplace
+```
 
 ---
 
