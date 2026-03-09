@@ -85,11 +85,18 @@ Examples already built into OpenFox:
 
 - `sponsor.topup.testnet`
 - `observation.once`
+- `oracle.resolve`
 
 The built-in observation provider now exposes a stable paid service surface:
 
 - `POST /observe`
 - `GET /jobs/:id`
+
+The built-in oracle provider exposes a bounded paid service surface:
+
+- `POST /oracle/quote`
+- `POST /oracle/resolve`
+- `GET /oracle/result/:id`
 
 A provider may be:
 

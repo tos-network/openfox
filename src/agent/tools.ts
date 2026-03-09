@@ -1555,6 +1555,97 @@ Rate Limit: ${provider.matchedCapability.rate_limit || "n/a"}`,
       },
     },
     {
+      name: "request_paid_oracle_resolution",
+      description:
+        "Find an oracle.resolve provider via Agent Discovery v1, pay via x402 if required, and fetch one bounded oracle-style resolution result.",
+      category: "registry",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          query: {
+            type: "string",
+            description: "Bounded oracle query to resolve",
+          },
+          queryKind: {
+            type: "string",
+            description: "binary, enum, scalar, or text",
+          },
+          options: {
+            type: "array",
+            items: { type: "string" },
+            description: "Allowed options for enum queries",
+          },
+          context: {
+            type: "string",
+            description: "Optional supporting context for the resolver",
+          },
+          capability: {
+            type: "string",
+            description: "Capability to request (default: oracle.resolve)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the oracle request",
+          },
+        },
+        required: ["query", "queryKind"],
+      },
+      execute: async (args, ctx) => {
+        const { requestOracleResolution } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey: deriveAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const address =
+          ctx.config.walletAddress ||
+          deriveAddressFromPrivateKey(privateKey);
+
+        const result = await requestOracleResolution({
+          identity: ctx.identity,
+          config: ctx.config,
+          address,
+          query: String(args.query || ""),
+          queryKind: String(args.queryKind || "text") as
+            | "binary"
+            | "enum"
+            | "scalar"
+            | "text",
+          options: Array.isArray(args.options)
+            ? args.options.map((entry) => String(entry))
+            : undefined,
+          context:
+            typeof args.context === "string" && args.context.trim()
+              ? args.context.trim()
+              : undefined,
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "oracle.resolve",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "paid oracle resolution",
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            resolution: result.response,
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
       name: "check_reputation",
       description: "Check reputation feedback for an agent.",
       category: "registry",

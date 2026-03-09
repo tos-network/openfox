@@ -187,7 +187,7 @@ Delivered surface:
 
 ### Phase 2: Launch Real Paid Services
 
-Status: in progress
+Status: completed
 
 Goal:
 
@@ -243,6 +243,11 @@ Delivered surface so far:
 - `GET /jobs/:id` for persisted observation result lookup
 - payment-bound observation receipts with `job_id`, `result_url`, and `payment_tx_hash`
 - duplicate request replay handled idempotently without charging twice
+- a real paid oracle-style resolver built into OpenFox
+- `POST /oracle/quote` for request/pricing discovery
+- `POST /oracle/resolve` for paid bounded local-model resolution
+- `GET /oracle/result/:id` for persisted result lookup
+- payment-bound oracle receipts with `result_id`, `result_url`, and `payment_tx_hash`
 
 ### Phase 3: On-Chain Task and Settlement Integration
 

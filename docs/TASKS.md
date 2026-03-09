@@ -79,8 +79,8 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Turn the existing `observation.once` provider into a real paid
     service with stable request/result semantics, payment idempotency, and job
     retrieval instead of a one-off test payload flow.
-- [ ] Task 18: Launch the first paid oracle resolution service
-  - Status: Pending
+- [x] Task 18: Launch the first paid oracle resolution service
+  - Status: Complete
   - Goal: Add a narrow paid oracle-style service on top of the same TOS-native
     runtime base without importing a full decentralized oracle protocol.
 
@@ -233,9 +233,9 @@ building OpenFox into a TOS-native agent platform.
 
 ## Task 18 Breakdown
 
-- [ ] Add a narrow `POST /oracle/resolve` surface.
-- [ ] Add a minimal `GET /oracle/result/:id` lookup surface.
-- [ ] Reuse the existing task marketplace and local-model judging path where
-  possible.
-- [ ] Bind paid requests to stored oracle result receipts.
-- [ ] Keep the first oracle service bounded and TOS-native.
+- [x] Add a narrow `POST /oracle/resolve` surface.
+- [x] Add a minimal `POST /oracle/quote` surface.
+- [x] Add a minimal `GET /oracle/result/:id` lookup surface.
+- [x] Reuse the existing local-model judging path where possible.
+- [x] Bind paid requests to stored oracle result receipts.
+- [x] Keep the first oracle service bounded and TOS-native.

@@ -5,6 +5,7 @@ import type {
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
   AgentDiscoveryObservationServerConfig,
+  AgentDiscoveryOracleServerConfig,
   AgentDiscoveryPolicyProfiles,
   AgentDiscoverySelectionPolicy,
 } from "../types.js";
@@ -15,6 +16,7 @@ export type {
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
   AgentDiscoveryObservationServerConfig,
+  AgentDiscoveryOracleServerConfig,
   AgentDiscoveryPolicyProfiles,
   AgentDiscoverySelectionPolicy,
 };
@@ -179,6 +181,38 @@ export interface ObservationInvocationResponse {
   size_bytes: number;
 }
 
+export type OracleResolutionQueryKind = "binary" | "enum" | "scalar" | "text";
+
+export interface OracleResolutionRequest {
+  capability: string;
+  requester: {
+    agent_id: string;
+    identity: AgentDiscoveryIdentityRef;
+  };
+  request_nonce: string;
+  request_expires_at: number;
+  query: string;
+  query_kind: OracleResolutionQueryKind;
+  options?: string[];
+  context?: string;
+  reason: string;
+}
+
+export interface OracleResolutionResponse {
+  status: "ok";
+  result_id?: string;
+  result_url?: string;
+  payment_tx_hash?: string;
+  idempotent?: boolean;
+  resolved_at: number;
+  query: string;
+  query_kind: OracleResolutionQueryKind;
+  canonical_result: string;
+  confidence: number;
+  summary: string;
+  options?: string[];
+}
+
 export function capabilityFromConfig(
   capability: AgentDiscoveryCapabilityConfig,
 ): AgentDiscoveryCapability {
@@ -249,6 +283,25 @@ export function normalizeAgentDiscoveryConfig(
       });
     }
   }
+  const oracleServer = config.oracleServer;
+  if (includeHostedServerEndpoints && oracleServer?.enabled) {
+    const oracleUrl = buildOracleServerUrl(oracleServer);
+    if (!endpoints.some((entry) => entry.url === oracleUrl)) {
+      endpoints.push({
+        kind: "http",
+        url: oracleUrl,
+        role: "requester_invocation",
+      });
+    }
+    if (!capabilities.some((entry) => entry.name === oracleServer.capability)) {
+      capabilities.push({
+        name: oracleServer.capability,
+        mode: "paid",
+        price_model: "x402-exact",
+        description: "Paid oracle-style local resolution capability",
+      });
+    }
+  }
   if (!endpoints.length || !capabilities.length) {
     return null;
   }
@@ -280,6 +333,16 @@ export function buildFaucetServerUrl(
 
 export function buildObservationServerUrl(
   config: AgentDiscoveryObservationServerConfig,
+): string {
+  const host = config.bindHost.includes(":")
+    ? `[${config.bindHost}]`
+    : config.bindHost;
+  const path = config.path.startsWith("/") ? config.path : `/${config.path}`;
+  return `http://${host}:${config.port}${path}`;
+}
+
+export function buildOracleServerUrl(
+  config: AgentDiscoveryOracleServerConfig,
 ): string {
   const host = config.bindHost.includes(":")
     ? `[${config.bindHost}]`

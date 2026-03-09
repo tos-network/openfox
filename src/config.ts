@@ -30,6 +30,7 @@ import {
   DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
   DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES,
   DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
   DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
@@ -349,6 +350,11 @@ export function loadConfig(): OpenFoxConfig | null {
       ...DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
       ...(((raw?.agentDiscovery as JsonRecord | undefined)
         ?.observationServer as JsonRecord | undefined) ?? {}),
+    },
+    oracleServer: {
+      ...DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)
+        ?.oracleServer as JsonRecord | undefined) ?? {}),
     },
     gatewayServer: {
       ...DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,

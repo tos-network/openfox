@@ -140,6 +140,8 @@ It supports:
 - paid capabilities such as `observation.once`
 - a built-in paid observation service with `POST /observe`
 - persisted result lookup with `GET /jobs/:id`
+- paid capabilities such as `oracle.resolve`
+- a built-in paid oracle resolver with `POST /oracle/quote`, `POST /oracle/resolve`, and `GET /oracle/result/:id`
 - gateway-backed provider endpoints for agents behind NAT
 
 The Gateway v1 path is:

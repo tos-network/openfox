@@ -72,6 +72,7 @@ function isProviderEnabled(config: OpenFoxConfig): boolean {
   return Boolean(
     config.agentDiscovery?.faucetServer?.enabled ||
       config.agentDiscovery?.observationServer?.enabled ||
+      config.agentDiscovery?.oracleServer?.enabled ||
       (config.agentDiscovery?.gatewayClient?.enabled &&
         (config.agentDiscovery.gatewayClient.routes?.length ?? 0) > 0),
   );

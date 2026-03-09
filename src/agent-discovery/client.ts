@@ -33,6 +33,8 @@ import {
   type FaucetInvocationResponse,
   type ObservationInvocationRequest,
   type ObservationInvocationResponse,
+  type OracleResolutionRequest,
+  type OracleResolutionResponse,
   type VerifiedAgentProvider,
 } from "./types.js";
 
@@ -956,6 +958,115 @@ export async function requestObservationOnce(params: {
   }
   params.db?.setKV(
     "agent_discovery:last_observation_event",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      providerNodeId: provider.search.nodeId,
+      capability,
+      request,
+      response,
+    }),
+  );
+  recordProviderFeedback({
+    db: params.db,
+    config: params.config,
+    provider,
+    capability,
+    outcome: "success",
+    requestNonce: request.request_nonce,
+  });
+  return { provider, request, response };
+}
+
+export async function requestOracleResolution(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  address: string;
+  query: string;
+  queryKind: OracleResolutionRequest["query_kind"];
+  options?: string[];
+  context?: string;
+  capability?: string;
+  reason?: string;
+  limit?: number;
+  db?: OpenFoxDatabase;
+  selectionPolicy?: Partial<AgentDiscoverySelectionPolicy>;
+}): Promise<{
+  provider: VerifiedAgentProvider;
+  request: OracleResolutionRequest;
+  response: OracleResolutionResponse;
+}> {
+  const capability = params.capability ?? "oracle.resolve";
+  const providers = await discoverCapabilityProviders({
+    config: params.config,
+    capability,
+    limit: params.limit ?? 10,
+    selectionPolicy: params.selectionPolicy,
+    db: params.db,
+  });
+  const ranked = sortProviders(
+    providers,
+    0n,
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
+  );
+  if (!ranked.length) {
+    throw new Error(`No provider found for capability ${capability}`);
+  }
+  const provider =
+    ranked.find((entry) => entry.matchedCapability.mode === "paid") ??
+    ranked[0];
+  const request: OracleResolutionRequest = {
+    capability,
+    requester: {
+      agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+      identity: {
+        kind: "tos",
+        value: params.address.toLowerCase(),
+      },
+    },
+    request_nonce: randomBytes(16).toString("hex"),
+    request_expires_at: buildRequestExpiry(),
+    query: params.query,
+    query_kind: params.queryKind,
+    ...(params.options?.length ? { options: params.options } : {}),
+    ...(params.context ? { context: params.context } : {}),
+    reason: params.reason || "paid oracle resolution",
+  };
+
+  let response: OracleResolutionResponse;
+  try {
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as OracleResolutionResponse)
+        : (result.response as OracleResolutionResponse);
+    if (!response || response.status !== "ok") {
+      throw new Error("Provider returned an invalid oracle response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      config: params.config,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+      requestNonce: request.request_nonce,
+    });
+    throw error;
+  }
+  params.db?.setKV(
+    "agent_discovery:last_oracle_event",
     JSON.stringify({
       at: new Date().toISOString(),
       providerNodeId: provider.search.nodeId,

@@ -80,6 +80,18 @@ export interface AgentDiscoveryObservationServerConfig {
   allowPrivateTargets: boolean;
 }
 
+export interface AgentDiscoveryOracleServerConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  path: string;
+  capability: string;
+  priceWei: string;
+  maxQuestionChars: number;
+  maxContextChars: number;
+  maxOptions: number;
+}
+
 export interface AgentGatewayBootnodeConfig {
   agentId: string;
   url: string;
@@ -205,6 +217,7 @@ export interface AgentDiscoveryConfig {
   reputationUpdates?: AgentDiscoveryReputationUpdateConfig;
   faucetServer?: AgentDiscoveryFaucetServerConfig;
   observationServer?: AgentDiscoveryObservationServerConfig;
+  oracleServer?: AgentDiscoveryOracleServerConfig;
   gatewayServer?: AgentGatewayServerConfig;
   gatewayClient?: AgentGatewayClientConfig;
 }
@@ -233,6 +246,19 @@ export const DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG: AgentDiscoveryOb
     requestTimeoutMs: 10_000,
     maxResponseBytes: 131072,
     allowPrivateTargets: false,
+  };
+
+export const DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG: AgentDiscoveryOracleServerConfig =
+  {
+    enabled: false,
+    bindHost: "127.0.0.1",
+    port: 4879,
+    path: "/agent-discovery/oracle-resolve",
+    capability: "oracle.resolve",
+    priceWei: "2000000000000000",
+    maxQuestionChars: 1024,
+    maxContextChars: 8192,
+    maxOptions: 16,
   };
 
 export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {
@@ -349,6 +375,7 @@ export const DEFAULT_AGENT_DISCOVERY_CONFIG: AgentDiscoveryConfig = {
   reputationUpdates: DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
   faucetServer: DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
   observationServer: DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+  oracleServer: DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG,
   gatewayServer: DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
   gatewayClient: DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
 };

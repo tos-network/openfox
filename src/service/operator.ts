@@ -38,6 +38,12 @@ export interface ServiceStatusSnapshot {
           capability: string;
         }
       | null;
+    oracle:
+      | {
+          url: string;
+          capability: string;
+        }
+      | null;
     routes: ServiceRouteSnapshot[];
   };
   gatewayServer:
@@ -141,6 +147,7 @@ function detectServiceRoles(config: OpenFoxConfig): string[] {
   if (
     config.agentDiscovery?.faucetServer?.enabled ||
     config.agentDiscovery?.observationServer?.enabled ||
+    config.agentDiscovery?.oracleServer?.enabled ||
     (config.agentDiscovery?.gatewayClient?.enabled &&
       (config.agentDiscovery.gatewayClient.routes?.length ?? 0) > 0)
   ) {
@@ -179,6 +186,15 @@ function inferProviderRoutes(config: OpenFoxConfig): Array<{
         observation.port,
         observation.path,
       ),
+    });
+  }
+  const oracle = config.agentDiscovery?.oracleServer;
+  if (oracle?.enabled && oracle.port > 0) {
+    routes.push({
+      path: "/oracle/resolve",
+      capability: oracle.capability,
+      mode: "paid",
+      targetUrl: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
     });
   }
   return routes;
@@ -285,6 +301,11 @@ export function buildServiceStatusReport(
       `  - observation: ${snapshot.providerSurfaces.observation.url}  capability=${snapshot.providerSurfaces.observation.capability}`,
     );
   }
+  if (snapshot.providerSurfaces.oracle) {
+    lines.push(
+      `  - oracle: ${snapshot.providerSurfaces.oracle.url}  capability=${snapshot.providerSurfaces.oracle.capability}`,
+    );
+  }
   for (const route of snapshot.providerSurfaces.routes) {
     lines.push(
       `  - route: ${route.path} -> ${route.targetUrl}  capability=${route.capability}  mode=${route.mode}`,
@@ -293,6 +314,7 @@ export function buildServiceStatusReport(
   if (
     !snapshot.providerSurfaces.faucet &&
     !snapshot.providerSurfaces.observation &&
+    !snapshot.providerSurfaces.oracle &&
     snapshot.providerSurfaces.routes.length === 0
   ) {
     lines.push("  (none)");
@@ -347,6 +369,7 @@ export function buildServiceStatusSnapshot(
   const gatewayClient = config.agentDiscovery?.gatewayClient;
   const faucet = config.agentDiscovery?.faucetServer;
   const observation = config.agentDiscovery?.observationServer;
+  const oracle = config.agentDiscovery?.oracleServer;
 
   return {
     roles: detectServiceRoles(config),
@@ -370,6 +393,13 @@ export function buildServiceStatusSnapshot(
                 observation.path,
               ),
               capability: observation.capability,
+            }
+          : null,
+      oracle:
+        oracle?.enabled && oracle.port > 0
+          ? {
+              url: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
+              capability: oracle.capability,
             }
           : null,
       routes: inferProviderRoutes(config),
@@ -631,6 +661,12 @@ export async function buildServiceHealthSnapshot(
       observation.port,
       observation.path,
     );
+    checks.push(await probeHttpJson(`${base}/healthz`));
+  }
+
+  const oracle = config.agentDiscovery?.oracleServer;
+  if (oracle?.enabled && oracle.port > 0) {
+    const base = buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path);
     checks.push(await probeHttpJson(`${base}/healthz`));
   }
 

@@ -43,6 +43,7 @@ import {
 } from "./agent-discovery/client.js";
 import { startAgentDiscoveryFaucetServer } from "./agent-discovery/faucet-server.js";
 import { startAgentDiscoveryObservationServer } from "./agent-discovery/observation-server.js";
+import { startAgentDiscoveryOracleServer } from "./agent-discovery/oracle-server.js";
 import { normalizeAgentDiscoveryConfig } from "./agent-discovery/types.js";
 import { startAgentGatewayServer } from "./agent-gateway/server.js";
 import { startAgentGatewayProviderSessions } from "./agent-gateway/client.js";
@@ -1439,12 +1440,33 @@ async function run(): Promise<void> {
   });
   const skillsDir = config.skillsDir || "~/.openfox/skills";
   let skills: Skill[] = [];
+  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || config.ollamaBaseUrl;
+  const modelRegistry = new ModelRegistry(db.raw);
+  modelRegistry.initialize();
+  const inference = createInferenceClient({
+    apiUrl: config.runtimeApiUrl || "",
+    apiKey,
+    defaultModel: config.inferenceModelRef || config.inferenceModel,
+    maxTokens: config.maxTokensPerTurn,
+    lowComputeModel: config.modelStrategy?.lowComputeModel || "gpt-5-mini",
+    openaiApiKey: config.openaiApiKey,
+    anthropicApiKey: config.anthropicApiKey,
+    ollamaBaseUrl,
+    getModelProvider: (modelId) => modelRegistry.get(modelId)?.provider,
+  });
+
+  if (ollamaBaseUrl) {
+    logger.info(`[${new Date().toISOString()}] Ollama backend: ${ollamaBaseUrl}`);
+  }
 
   let faucetServer:
     | Awaited<ReturnType<typeof startAgentDiscoveryFaucetServer>>
     | undefined;
   let observationServer:
     | Awaited<ReturnType<typeof startAgentDiscoveryObservationServer>>
+    | undefined;
+  let oracleServer:
+    | Awaited<ReturnType<typeof startAgentDiscoveryOracleServer>>
     | undefined;
   let bountyServer:
     | Awaited<ReturnType<typeof startBountyHttpServer>>
@@ -1493,6 +1515,24 @@ async function run(): Promise<void> {
     } catch (error) {
       logger.warn(
         `Agent Discovery observation server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.oracleServer?.enabled) {
+    try {
+      oracleServer = await startAgentDiscoveryOracleServer({
+        identity,
+        config,
+        address,
+        db,
+        inference,
+        oracleConfig: config.agentDiscovery.oracleServer,
+      });
+      logger.info(`Agent Discovery oracle provider enabled at ${oracleServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery oracle server failed to start: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -1563,6 +1603,9 @@ async function run(): Promise<void> {
           observationServer: config.agentDiscovery.observationServer
             ? { ...config.agentDiscovery.observationServer, enabled: false }
             : undefined,
+          oracleServer: config.agentDiscovery.oracleServer
+            ? { ...config.agentDiscovery.oracleServer, enabled: false }
+            : undefined,
         }
       : null);
 
@@ -1573,6 +1616,7 @@ async function run(): Promise<void> {
         config,
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
+        oracleUrl: oracleServer?.url,
       });
       current = buildPublishedAgentDiscoveryConfig({
         baseConfig: current,
@@ -1701,6 +1745,7 @@ async function run(): Promise<void> {
         config,
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
+        oracleUrl: oracleServer?.url,
       });
       if (!routes.length) {
         logger.warn(
@@ -1785,29 +1830,6 @@ async function run(): Promise<void> {
         logger.warn(`[${new Date().toISOString()}] OpenFox identity registration failed: ${err.message}`);
       }
     }
-  }
-
-  // Resolve Ollama base URL: env var takes precedence over config
-  const ollamaBaseUrl = process.env.OLLAMA_BASE_URL || config.ollamaBaseUrl;
-
-  // Create inference client — pass a live registry lookup so model names like
-  // "gpt-oss:120b" route to Ollama based on their registered provider, not heuristics.
-  const modelRegistry = new ModelRegistry(db.raw);
-  modelRegistry.initialize();
-  const inference = createInferenceClient({
-    apiUrl: config.runtimeApiUrl || "",
-    apiKey,
-    defaultModel: config.inferenceModelRef || config.inferenceModel,
-    maxTokens: config.maxTokensPerTurn,
-    lowComputeModel: config.modelStrategy?.lowComputeModel || "gpt-5-mini",
-    openaiApiKey: config.openaiApiKey,
-    anthropicApiKey: config.anthropicApiKey,
-    ollamaBaseUrl,
-    getModelProvider: (modelId) => modelRegistry.get(modelId)?.provider,
-  });
-
-  if (ollamaBaseUrl) {
-    logger.info(`[${new Date().toISOString()}] Ollama backend: ${ollamaBaseUrl}`);
   }
 
   try {
@@ -1929,6 +1951,7 @@ async function run(): Promise<void> {
       gatewayServer?.close(),
       faucetServer?.close(),
       observationServer?.close(),
+      oracleServer?.close(),
     ]).finally(() => {
       db.close();
       process.exit(0);

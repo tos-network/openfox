@@ -30,6 +30,7 @@ export function buildGatewayProviderRoutes(params: {
   config: OpenFoxConfig;
   faucetUrl?: string;
   observationUrl?: string;
+  oracleUrl?: string;
 }): AgentGatewayProviderRoute[] {
   const routes: AgentGatewayProviderRoute[] = [
     ...(params.config.agentDiscovery?.gatewayClient?.routes ?? []),
@@ -58,6 +59,19 @@ export function buildGatewayProviderRoutes(params: {
       capability: observation.capability,
       mode: "paid",
       targetUrl: params.observationUrl,
+    });
+  }
+  const oracle = params.config.agentDiscovery?.oracleServer;
+  if (
+    oracle?.enabled &&
+    params.oracleUrl &&
+    !routes.some((entry) => entry.capability === oracle.capability)
+  ) {
+    routes.push({
+      path: "/oracle/resolve",
+      capability: oracle.capability,
+      mode: "paid",
+      targetUrl: params.oracleUrl,
     });
   }
   return uniqueByName(routes, (entry) => `${entry.path}:${entry.capability}`);
