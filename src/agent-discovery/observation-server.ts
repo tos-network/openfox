@@ -29,6 +29,7 @@ import {
   recordRequestNonce,
   validateRequestExpiry,
 } from "./security.js";
+import type { SettlementPublisher } from "../settlement/publisher.js";
 
 const logger = createLogger("agent-discovery.observation");
 
@@ -43,6 +44,7 @@ export interface StartAgentDiscoveryObservationServerParams {
   address: string;
   db: OpenFoxDatabase;
   observationConfig: AgentDiscoveryObservationServerConfig;
+  settlementPublisher?: SettlementPublisher;
 }
 
 const BODY_LIMIT_BYTES = 64 * 1024;
@@ -230,7 +232,7 @@ async function fetchObservation(
 export async function startAgentDiscoveryObservationServer(
   params: StartAgentDiscoveryObservationServerParams,
 ): Promise<AgentDiscoveryObservationServer> {
-  const { observationConfig, config, db, address } = params;
+  const { observationConfig, config, db, address, settlementPublisher } = params;
   const path = observationConfig.path.startsWith("/") ? observationConfig.path : `/${observationConfig.path}`;
   const healthzPath = `${path}/healthz`;
   const resultPathPrefix = "/jobs/";
@@ -343,6 +345,28 @@ export async function startAgentDiscoveryObservationServer(
       result.job_id = jobId;
       result.result_url = resultPath;
       result.payment_tx_hash = paid.txHash;
+      if (settlementPublisher) {
+        const settlement = await settlementPublisher.publish({
+          kind: "observation",
+          subjectId: jobId,
+          publisherAddress: address as `0x${string}`,
+          capability: body.capability,
+          payerAddress:
+            body.requester.identity.kind === "tos"
+              ? (normalizeAddress(body.requester.identity.value) as `0x${string}`)
+              : undefined,
+          artifactUrl: resultPath,
+          paymentTxHash: paid.txHash,
+          result,
+          metadata: {
+            requester_agent_id: body.requester.agent_id,
+            target_url: result.target_url,
+          },
+        });
+        result.receipt_id = settlement.receiptId;
+        result.receipt_hash = settlement.receiptHash;
+        result.settlement_tx_hash = settlement.settlementTxHash ?? undefined;
+      }
       db.setKV(
         "agent_discovery:observation:last_served",
         JSON.stringify({

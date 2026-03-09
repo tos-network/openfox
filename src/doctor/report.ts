@@ -40,6 +40,9 @@ export interface HealthSnapshot {
   bountyRole?: "host" | "solver";
   bountyAutoEnabled: boolean;
   bountyRemoteConfigured: boolean;
+  settlementEnabled: boolean;
+  settlementReady: boolean;
+  settlementRecentCount: number;
   opportunityScoutEnabled: boolean;
   managedService: ManagedServiceStatus;
   heartbeatPaused: boolean;
@@ -91,6 +94,9 @@ async function buildConfigSnapshot(
   bountyRole?: "host" | "solver";
   bountyAutoEnabled: boolean;
   bountyRemoteConfigured: boolean;
+  settlementEnabled: boolean;
+  settlementReady: boolean;
+  settlementRecentCount: number;
   opportunityScoutEnabled: boolean;
   skillCount: number;
   ineligibleEnabledSkills: string[];
@@ -124,6 +130,11 @@ async function buildConfigSnapshot(
           config.bounty.autoSolveEnabled),
     ),
     bountyRemoteConfigured: Boolean(config.bounty?.remoteBaseUrl),
+    settlementEnabled: config.settlement?.enabled === true,
+    settlementReady: Boolean(!config.settlement?.enabled || config.rpcUrl),
+    settlementRecentCount: config.settlement?.enabled
+      ? db.listSettlementReceipts(5).length
+      : 0,
     opportunityScoutEnabled: config.opportunityScout?.enabled === true,
     skillCount: enabledSkills.length,
     ineligibleEnabledSkills,
@@ -350,6 +361,19 @@ function collectFindings(
     }
   }
 
+  if (snapshot.settlementEnabled) {
+    findings.push({
+      id: "settlement-enabled",
+      severity: snapshot.settlementReady ? "ok" : "error",
+      summary: snapshot.settlementReady
+        ? `Settlement anchoring is enabled (${snapshot.settlementRecentCount} recent receipt${snapshot.settlementRecentCount === 1 ? "" : "s"}).`
+        : "Settlement anchoring is enabled but no chain RPC is configured.",
+      recommendation: snapshot.settlementReady
+        ? undefined
+        : "Set `rpcUrl` so OpenFox can publish settlement anchors on-chain.",
+    });
+  }
+
   return findings;
 }
 
@@ -376,6 +400,9 @@ export async function buildHealthSnapshot(
       bountyRole: undefined,
       bountyAutoEnabled: false,
       bountyRemoteConfigured: false,
+      settlementEnabled: false,
+      settlementReady: false,
+      settlementRecentCount: 0,
       opportunityScoutEnabled: false,
       managedService,
       heartbeatPaused: false,
@@ -429,6 +456,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Gateway enabled: ${yesNo(snapshot.gatewayEnabled)}`,
     `Bounty enabled: ${yesNo(snapshot.bountyEnabled)}${snapshot.bountyRole ? ` (${snapshot.bountyRole})` : ""}`,
     `Bounty auto mode: ${yesNo(snapshot.bountyAutoEnabled)}`,
+    `Settlement enabled: ${yesNo(snapshot.settlementEnabled)}${snapshot.settlementEnabled ? ` (${snapshot.settlementRecentCount} recent)` : ""}`,
     `Opportunity scout: ${yesNo(snapshot.opportunityScoutEnabled)}`,
     `Heartbeat paused: ${yesNo(snapshot.heartbeatPaused)}`,
     `Pending wakes: ${snapshot.pendingWakes}`,

@@ -57,6 +57,33 @@ describe("bounty http server", () => {
           return { txHash: "0xreward" };
         },
       },
+      settlementPublisher: {
+        async publish(input) {
+          const record = {
+            receiptId: `bounty:${input.subjectId}`,
+            kind: "bounty",
+            subjectId: input.subjectId,
+            receipt: {
+              version: 1,
+              receiptId: `bounty:${input.subjectId}`,
+              kind: "bounty",
+              subjectId: input.subjectId,
+              publisherAddress: HOST_ADDRESS,
+              resultHash:
+                "0x1111111111111111111111111111111111111111111111111111111111111111",
+              createdAt: "2026-03-09T00:00:00.000Z",
+            },
+            receiptHash:
+              "0x2222222222222222222222222222222222222222222222222222222222222222",
+            settlementTxHash:
+              "0x3333333333333333333333333333333333333333333333333333333333333333",
+            createdAt: "2026-03-09T00:00:00.000Z",
+            updatedAt: "2026-03-09T00:00:00.000Z",
+          };
+          db.upsertSettlementReceipt(record);
+          return record;
+        },
+      },
       now: () => new Date("2026-03-09T00:00:00.000Z"),
     });
 
@@ -102,9 +129,14 @@ describe("bounty http server", () => {
       const resultResponse = await fetch(`${server.url}/bounties/${bounty.bountyId}/result`);
       const resultPayload = (await resultResponse.json()) as {
         result: { decision: string; payoutTxHash: string | null };
+        settlement: { receiptId: string; settlementTxHash: string };
       };
       expect(resultPayload.result.decision).toBe("accepted");
       expect(resultPayload.result.payoutTxHash).toBe("0xreward");
+      expect(resultPayload.settlement.receiptId).toBe(`bounty:${bounty.bountyId}`);
+      expect(resultPayload.settlement.settlementTxHash).toBe(
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+      );
 
       const createTranslation = await fetch(`${server.url}/bounties`, {
         method: "POST",

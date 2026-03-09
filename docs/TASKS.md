@@ -83,6 +83,14 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Add a narrow paid oracle-style service on top of the same TOS-native
     runtime base without importing a full decentralized oracle protocol.
+- [x] Task 19: Add standard settlement receipts and on-chain anchors
+  - Status: Complete
+  - Goal: Publish canonical result receipts for bounty, observation, and oracle
+    flows, then anchor them on-chain through native TOS transactions.
+- [x] Task 20: Add settlement operator UX and diagnostics
+  - Status: Complete
+  - Goal: Make settlement state visible and inspectable through CLI, status,
+    doctor, and roadmap/operator docs.
 
 ## Task 1 Breakdown
 
@@ -239,3 +247,20 @@ building OpenFox into a TOS-native agent platform.
 - [x] Reuse the existing local-model judging path where possible.
 - [x] Bind paid requests to stored oracle result receipts.
 - [x] Keep the first oracle service bounded and TOS-native.
+
+## Task 19 Breakdown
+
+- [x] Add canonical settlement receipt and hashing helpers to `tosdk`.
+- [x] Add persistent settlement receipt storage to OpenFox.
+- [x] Add native settlement publication hooks for bounty results.
+- [x] Add native settlement publication hooks for paid observation jobs.
+- [x] Add native settlement publication hooks for paid oracle results.
+- [x] Keep settlement publication idempotent per `(kind, subject_id)`.
+
+## Task 20 Breakdown
+
+- [x] Add `openfox settlement list|get`.
+- [x] Surface settlement status in `openfox status`.
+- [x] Add settlement findings to `openfox doctor` and `openfox health`.
+- [x] Update roadmap and README so settlement is part of the visible operator
+  surface.

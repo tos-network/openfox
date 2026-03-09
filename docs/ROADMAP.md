@@ -251,7 +251,7 @@ Delivered surface so far:
 
 ### Phase 3: On-Chain Task and Settlement Integration
 
-Status: not complete
+Status: in progress
 
 Goal:
 
@@ -279,6 +279,24 @@ Not recommended at this stage:
 Acceptance criteria:
 
 - a query or job can complete a full lifecycle: creation, payment, execution, callback, and settlement
+
+Delivered surface so far:
+
+- canonical settlement receipt and result-hash helpers in `tosdk`
+- persisted settlement receipt storage in OpenFox
+- native on-chain settlement anchors for:
+  - bounty results
+  - paid observation jobs
+  - paid oracle results
+- idempotent settlement publication per `(kind, subject_id)`
+- `openfox settlement list|get`
+- settlement visibility in `openfox status`, `openfox health`, and `openfox doctor`
+
+Still pending in this phase:
+
+- contract-native task/query market contracts
+- callback binding between service results and contract-owned market state
+- scheduler-driven settlement hooks
 
 ### Phase 4: Productionize the x402 Server Side
 
@@ -336,9 +354,9 @@ Suggested priority order:
 
 ### P1: Do Next
 
-- design the observation job API
 - design on-chain query/job identifiers and result callback interfaces
 - improve production payment recovery and replay handling
+- add contract-level task and oracle settlement adapters
 
 ### P2: Do Later
 

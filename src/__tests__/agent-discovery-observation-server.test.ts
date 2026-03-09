@@ -125,6 +125,31 @@ describe("agent discovery observation server", () => {
       address: config.walletAddress!,
       db: makeDb(),
       observationConfig: config.agentDiscovery!.observationServer!,
+      settlementPublisher: {
+        async publish(input) {
+          return {
+            receiptId: `observation:${input.subjectId}`,
+            kind: "observation",
+            subjectId: input.subjectId,
+            receipt: {
+              version: 1,
+              receiptId: `observation:${input.subjectId}`,
+              kind: "observation",
+              subjectId: input.subjectId,
+              publisherAddress: config.walletAddress!,
+              resultHash:
+                "0x1111111111111111111111111111111111111111111111111111111111111111",
+              createdAt: "2026-03-09T00:00:00.000Z",
+            },
+            receiptHash:
+              "0x2222222222222222222222222222222222222222222222222222222222222222",
+            settlementTxHash:
+              "0x3333333333333333333333333333333333333333333333333333333333333333",
+            createdAt: "2026-03-09T00:00:00.000Z",
+            updatedAt: "2026-03-09T00:00:00.000Z",
+          };
+        },
+      },
     });
 
     const requester = makeIdentity();
@@ -191,10 +216,24 @@ describe("agent discovery observation server", () => {
         { Accept: "application/json" },
       );
       expect(first.success).toBe(true);
-      const firstBody = first.response as { status: string; job_id: string; result_url: string };
+      const firstBody = first.response as {
+        status: string;
+        job_id: string;
+        result_url: string;
+        receipt_id: string;
+        receipt_hash: string;
+        settlement_tx_hash: string;
+      };
       expect(firstBody.status).toBe("ok");
       expect(firstBody.job_id).toMatch(/^[0-9a-f]{64}$/);
       expect(firstBody.result_url).toBe(`/jobs/${firstBody.job_id}`);
+      expect(firstBody.receipt_id).toBe(`observation:${firstBody.job_id}`);
+      expect(firstBody.receipt_hash).toBe(
+        "0x2222222222222222222222222222222222222222222222222222222222222222",
+      );
+      expect(firstBody.settlement_tx_hash).toBe(
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+      );
       expect(submittedPayments).toBe(1);
 
       const stored = await fetch(`http://127.0.0.1:${new URL(server.url).port}${firstBody.result_url}`);

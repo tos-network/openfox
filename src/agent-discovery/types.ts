@@ -170,6 +170,9 @@ export interface ObservationInvocationResponse {
   job_id?: string;
   result_url?: string;
   payment_tx_hash?: string;
+  receipt_id?: string;
+  receipt_hash?: string;
+  settlement_tx_hash?: string;
   idempotent?: boolean;
   observed_at: number;
   target_url: string;
@@ -203,6 +206,9 @@ export interface OracleResolutionResponse {
   result_id?: string;
   result_url?: string;
   payment_tx_hash?: string;
+  receipt_id?: string;
+  receipt_hash?: string;
+  settlement_tx_hash?: string;
   idempotent?: boolean;
   resolved_at: number;
   query: string;

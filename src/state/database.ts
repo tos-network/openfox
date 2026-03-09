@@ -27,6 +27,8 @@ import type {
   InboxMessage,
   BountyRecord,
   BountyResultRecord,
+  SettlementKind,
+  SettlementRecord,
   BountyStatus,
   BountySubmissionRecord,
   BountySubmissionStatus,
@@ -53,6 +55,7 @@ import {
   MIGRATION_V11,
   MIGRATION_V12,
   MIGRATION_V13,
+  MIGRATION_V14,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -616,6 +619,75 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     return row ? deserializeBountyResult(row) : undefined;
   };
 
+  const upsertSettlementReceipt = (receipt: SettlementRecord): void => {
+    db.prepare(
+      `INSERT INTO settlement_receipts (
+        receipt_id, kind, subject_id, receipt_json, receipt_hash, artifact_url,
+        payment_tx_hash, payout_tx_hash, settlement_tx_hash, settlement_receipt_json,
+        created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(receipt_id) DO UPDATE SET
+        receipt_json = excluded.receipt_json,
+        receipt_hash = excluded.receipt_hash,
+        artifact_url = excluded.artifact_url,
+        payment_tx_hash = excluded.payment_tx_hash,
+        payout_tx_hash = excluded.payout_tx_hash,
+        settlement_tx_hash = excluded.settlement_tx_hash,
+        settlement_receipt_json = excluded.settlement_receipt_json,
+        updated_at = excluded.updated_at`,
+    ).run(
+      receipt.receiptId,
+      receipt.kind,
+      receipt.subjectId,
+      JSON.stringify(receipt.receipt),
+      receipt.receiptHash,
+      receipt.artifactUrl ?? null,
+      receipt.paymentTxHash ?? null,
+      receipt.payoutTxHash ?? null,
+      receipt.settlementTxHash ?? null,
+      receipt.settlementReceipt ? JSON.stringify(receipt.settlementReceipt) : null,
+      receipt.createdAt,
+      receipt.updatedAt,
+    );
+  };
+
+  const getSettlementReceipt = (
+    kind: SettlementKind,
+    subjectId: string,
+  ): SettlementRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM settlement_receipts WHERE kind = ? AND subject_id = ?")
+      .get(kind, subjectId) as any | undefined;
+    return row ? deserializeSettlementRecord(row) : undefined;
+  };
+
+  const getSettlementReceiptById = (
+    receiptId: string,
+  ): SettlementRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM settlement_receipts WHERE receipt_id = ?")
+      .get(receiptId) as any | undefined;
+    return row ? deserializeSettlementRecord(row) : undefined;
+  };
+
+  const listSettlementReceipts = (
+    limit: number,
+    kind?: SettlementKind,
+  ): SettlementRecord[] => {
+    const rows = kind
+      ? db
+          .prepare(
+            "SELECT * FROM settlement_receipts WHERE kind = ? ORDER BY created_at DESC LIMIT ?",
+          )
+          .all(kind, limit)
+      : db
+          .prepare(
+            "SELECT * FROM settlement_receipts ORDER BY created_at DESC LIMIT ?",
+          )
+          .all(limit);
+    return (rows as any[]).map(deserializeSettlementRecord);
+  };
+
   // ─── Agent State ─────────────────────────────────────────────
 
   const getAgentState = (): AgentState => {
@@ -687,6 +759,10 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     updateBountySubmissionStatus,
     upsertBountyResult,
     getBountyResult,
+    upsertSettlementReceipt,
+    getSettlementReceipt,
+    getSettlementReceiptById,
+    listSettlementReceipts,
     getAgentState,
     setAgentState,
     runTransaction,
@@ -761,6 +837,10 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 13,
       apply: () => db.exec(MIGRATION_V13),
+    },
+    {
+      version: 14,
+      apply: () => db.exec(MIGRATION_V14),
     },
   ];
 
@@ -1860,6 +1940,33 @@ function deserializeBountyResult(row: any): BountyResultRecord {
     confidence: row.confidence,
     judgeReason: row.judge_reason,
     payoutTxHash: row.payout_tx_hash ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeSettlementRecord(row: any): SettlementRecord {
+  return {
+    receiptId: row.receipt_id,
+    kind: row.kind as SettlementKind,
+    subjectId: row.subject_id,
+    receipt: safeJsonParse(
+      row.receipt_json ?? "{}",
+      {} as SettlementRecord["receipt"],
+      "deserializeSettlementRecord.receipt_json",
+    ),
+    receiptHash: row.receipt_hash,
+    artifactUrl: row.artifact_url ?? null,
+    paymentTxHash: row.payment_tx_hash ?? null,
+    payoutTxHash: row.payout_tx_hash ?? null,
+    settlementTxHash: row.settlement_tx_hash ?? null,
+    settlementReceipt: row.settlement_receipt_json
+      ? safeJsonParse(
+          row.settlement_receipt_json,
+          null as SettlementRecord["settlementReceipt"],
+          "deserializeSettlementRecord.settlement_receipt_json",
+        )
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

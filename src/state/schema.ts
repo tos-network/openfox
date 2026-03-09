@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 13;
+export const SCHEMA_VERSION = 14;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -211,6 +211,24 @@ export const CREATE_TABLES = `
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS settlement_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
+    subject_id TEXT NOT NULL,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    artifact_url TEXT,
+    payment_tx_hash TEXT,
+    payout_tx_hash TEXT,
+    settlement_tx_hash TEXT,
+    settlement_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_settlement_subject
+    ON settlement_receipts(kind, subject_id);
 `;
 
 export const MIGRATION_V3 = `
@@ -879,4 +897,24 @@ export const MIGRATION_V13 = `
   DROP TABLE bounty_results_old;
   DROP TABLE bounty_submissions_old;
   DROP TABLE bounties_old;
+`;
+
+export const MIGRATION_V14 = `
+  CREATE TABLE IF NOT EXISTS settlement_receipts (
+    receipt_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
+    subject_id TEXT NOT NULL,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    artifact_url TEXT,
+    payment_tx_hash TEXT,
+    payout_tx_hash TEXT,
+    settlement_tx_hash TEXT,
+    settlement_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_settlement_subject
+    ON settlement_receipts(kind, subject_id);
 `;

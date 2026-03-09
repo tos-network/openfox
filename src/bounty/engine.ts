@@ -10,10 +10,12 @@ import type {
   InferenceClient,
   OpenFoxDatabase,
   OpenFoxIdentity,
+  SettlementRecord,
 } from "../types.js";
 import { DEFAULT_BOUNTY_POLICY } from "../types.js";
 import { evaluateBountySubmission } from "./evaluate.js";
 import type { BountyPayoutSender } from "./payout.js";
+import type { SettlementPublisher } from "../settlement/publisher.js";
 
 export interface BountyEngine {
   openBounty(input: BountyCreateInput): BountyRecord;
@@ -29,6 +31,7 @@ export interface BountyEngine {
     bounty: BountyRecord;
     submissions: BountySubmissionRecord[];
     result?: BountyResultRecord;
+    settlement?: SettlementRecord;
   } | null;
   submitSubmission(
     input: BountySubmissionInput,
@@ -36,6 +39,7 @@ export interface BountyEngine {
     bounty: BountyRecord;
     submission: BountySubmissionRecord;
     result: BountyResultRecord;
+    settlement?: SettlementRecord | null;
   }>;
   submitAnswer(
     input: {
@@ -50,6 +54,7 @@ export interface BountyEngine {
     bounty: BountyRecord;
     submission: BountySubmissionRecord;
     result: BountyResultRecord;
+    settlement?: SettlementRecord | null;
   }>;
 }
 
@@ -111,6 +116,7 @@ export function createBountyEngine(params: {
   bountyConfig: BountyConfig;
   skillInstructions?: string;
   payoutSender?: BountyPayoutSender;
+  settlementPublisher?: SettlementPublisher;
   now?: () => Date;
 }): BountyEngine {
   const now = params.now ?? (() => new Date());
@@ -184,6 +190,7 @@ export function createBountyEngine(params: {
       bounty,
       submissions: params.db.listBountySubmissions(bountyId),
       result: params.db.getBountyResult(bountyId),
+      settlement: params.db.getSettlementReceipt("bounty", bountyId),
     };
   }
 
@@ -292,6 +299,32 @@ export function createBountyEngine(params: {
     };
     params.db.upsertBountyResult(result);
 
+    let settlement: SettlementRecord | null = null;
+    if (params.settlementPublisher) {
+      settlement = await params.settlementPublisher.publish({
+        kind: "bounty",
+        subjectId: bounty.bountyId,
+        publisherAddress: params.identity.address,
+        capability: "task.result",
+        solverAddress: submission.solverAddress,
+        artifactUrl: `${params.bountyConfig.pathPrefix.replace(/\/+$/, "")}/bounties/${bounty.bountyId}/result`,
+        payoutTxHash: (payoutTxHash as `0x${string}` | null) ?? undefined,
+        result: {
+          bounty_id: bounty.bountyId,
+          decision: result.decision,
+          confidence: result.confidence,
+          judge_reason: result.judgeReason,
+          winning_submission_id: result.winningSubmissionId,
+          payout_tx_hash: result.payoutTxHash,
+        },
+        metadata: {
+          bounty_kind: bounty.kind,
+          host_agent_id: bounty.hostAgentId,
+          solver_agent_id: submission.solverAgentId,
+        },
+      });
+    }
+
     const updatedBounty = params.db.getBountyById(bounty.bountyId)!;
     const updatedSubmission = params.db.getBountySubmission(submission.submissionId)!;
     const updatedResult = params.db.getBountyResult(bounty.bountyId)!;
@@ -299,6 +332,7 @@ export function createBountyEngine(params: {
       bounty: updatedBounty,
       submission: updatedSubmission,
       result: updatedResult,
+      settlement,
     };
   }
 

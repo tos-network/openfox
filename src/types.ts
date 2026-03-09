@@ -4,7 +4,13 @@
  * All shared interfaces for the sovereign AI agent runtime.
  */
 
-import type { PrivateKeyAccount, Address } from "tosdk";
+import type {
+  Address,
+  Hex,
+  PrivateKeyAccount,
+  SettlementKind as NativeSettlementKind,
+  SettlementReceipt,
+} from "tosdk";
 
 export type HexAddress = `0x${string}`;
 
@@ -420,6 +426,7 @@ export interface OpenFoxConfig {
   agentDiscovery?: AgentDiscoveryConfig;
   bounty?: BountyConfig;
   opportunityScout?: OpportunityScoutConfig;
+  settlement?: SettlementConfig;
 }
 
 export interface WalletFundingConfig {
@@ -558,6 +565,34 @@ export interface OpportunityScoutConfig {
   minRewardWei: string;
 }
 
+export type SettlementKind = NativeSettlementKind;
+
+export interface SettlementConfig {
+  enabled: boolean;
+  sinkAddress?: Address;
+  gas: string;
+  waitForReceipt: boolean;
+  receiptTimeoutMs: number;
+  publishBounties: boolean;
+  publishObservations: boolean;
+  publishOracleResults: boolean;
+}
+
+export interface SettlementRecord {
+  receiptId: string;
+  kind: SettlementKind;
+  subjectId: string;
+  receipt: SettlementReceipt;
+  receiptHash: Hex;
+  artifactUrl?: string | null;
+  paymentTxHash?: Hex | null;
+  payoutTxHash?: Hex | null;
+  settlementTxHash?: Hex | null;
+  settlementReceipt?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export const DEFAULT_BOUNTY_POLICY: BountyPolicy = {
   maxSubmissionsPerSolver: 1,
   solverCooldownSeconds: 3600,
@@ -606,6 +641,17 @@ export const DEFAULT_OPPORTUNITY_SCOUT_CONFIG: OpportunityScoutConfig = {
   minRewardWei: "0",
 };
 
+export const DEFAULT_SETTLEMENT_CONFIG: SettlementConfig = {
+  enabled: false,
+  sinkAddress: undefined,
+  gas: "160000",
+  waitForReceipt: true,
+  receiptTimeoutMs: 60000,
+  publishBounties: true,
+  publishObservations: true,
+  publishOracleResults: true,
+};
+
 export const DEFAULT_WALLET_FUNDING_CONFIG: WalletFundingConfig = {
   localDefaultAmountWei: "5000000000000000000",
   localFunderAddress: undefined,
@@ -631,6 +677,7 @@ export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   agentDiscovery: DEFAULT_AGENT_DISCOVERY_CONFIG,
   bounty: DEFAULT_BOUNTY_CONFIG,
   opportunityScout: DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+  settlement: DEFAULT_SETTLEMENT_CONFIG,
 };
 
 // ─── Agent State ─────────────────────────────────────────────────
@@ -1251,6 +1298,18 @@ export interface OpenFoxDatabase {
   ): void;
   upsertBountyResult(result: BountyResultRecord): void;
   getBountyResult(bountyId: string): BountyResultRecord | undefined;
+
+  // Settlement receipts
+  upsertSettlementReceipt(receipt: SettlementRecord): void;
+  getSettlementReceipt(
+    kind: SettlementKind,
+    subjectId: string,
+  ): SettlementRecord | undefined;
+  getSettlementReceiptById(receiptId: string): SettlementRecord | undefined;
+  listSettlementReceipts(
+    limit: number,
+    kind?: SettlementKind,
+  ): SettlementRecord[];
 
   // Key-value atomic delete
   deleteKVReturning(key: string): string | undefined;

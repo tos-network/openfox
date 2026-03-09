@@ -32,6 +32,7 @@ import {
   recordRequestNonce,
   validateRequestExpiry,
 } from "./security.js";
+import type { SettlementPublisher } from "../settlement/publisher.js";
 
 const logger = createLogger("agent-discovery.oracle");
 
@@ -47,6 +48,7 @@ export interface StartAgentDiscoveryOracleServerParams {
   db: OpenFoxDatabase;
   inference: InferenceClient;
   oracleConfig: AgentDiscoveryOracleServerConfig;
+  settlementPublisher?: SettlementPublisher;
 }
 
 interface StoredOracleJob {
@@ -260,7 +262,7 @@ async function resolveOracleRequest(params: {
 export async function startAgentDiscoveryOracleServer(
   params: StartAgentDiscoveryOracleServerParams,
 ): Promise<AgentDiscoveryOracleServer> {
-  const { oracleConfig, config, db, address, inference } = params;
+  const { oracleConfig, config, db, address, inference, settlementPublisher } = params;
   const path = oracleConfig.path.startsWith("/") ? oracleConfig.path : `/${oracleConfig.path}`;
   const healthzPath = `${path}/healthz`;
   const resultPathPrefix = "/oracle/result/";
@@ -396,6 +398,35 @@ export async function startAgentDiscoveryOracleServer(
         summary: resolved.summary,
         ...(body.options?.length ? { options: body.options } : {}),
       };
+      if (settlementPublisher) {
+        const settlement = await settlementPublisher.publish({
+          kind: "oracle",
+          subjectId: resultId,
+          publisherAddress: address as `0x${string}`,
+          capability: body.capability,
+          payerAddress:
+            body.requester.identity.kind === "tos"
+              ? (normalizeAddress(body.requester.identity.value) as `0x${string}`)
+              : undefined,
+          artifactUrl: response.result_url,
+          paymentTxHash: paid.txHash,
+          result: {
+            query: body.query,
+            query_kind: body.query_kind,
+            canonical_result: resolved.canonicalResult,
+            confidence: resolved.confidence,
+            summary: resolved.summary,
+            options: body.options,
+          },
+          metadata: {
+            requester_agent_id: body.requester.agent_id,
+            reason: body.reason,
+          },
+        });
+        response.receipt_id = settlement.receiptId;
+        response.receipt_hash = settlement.receiptHash;
+        response.settlement_tx_hash = settlement.settlementTxHash ?? undefined;
+      }
 
       db.setKV(
         "agent_discovery:oracle:last_served",

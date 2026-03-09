@@ -119,6 +119,7 @@ import {
   submitRemoteBountySubmission,
 } from "./bounty/client.js";
 import { buildOpportunityReport, collectOpportunityItems } from "./opportunity/scout.js";
+import { createNativeSettlementPublisher } from "./settlement/publisher.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -222,6 +223,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "settlement") {
+    await handleSettlementCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "scout") {
     await handleScoutCommand(args.slice(1));
     process.exit(0);
@@ -256,6 +262,7 @@ Usage:
   openfox wallet ...     Inspect, fund, and bootstrap the native wallet
   openfox logs           Show recent OpenFox service logs
   openfox bounty ...     Open, inspect, and solve task bounties
+  openfox settlement ... Inspect on-chain settlement receipts and anchors
   openfox scout ...      Discover earning opportunities and task surfaces
   openfox status         Show the current runtime status
   openfox --version      Show version
@@ -1219,6 +1226,95 @@ Usage:
   }
 }
 
+async function handleSettlementCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox settlement
+
+Usage:
+  openfox settlement list [--kind <bounty|observation|oracle>] [--limit N] [--json]
+  openfox settlement get --receipt-id <id> [--json]
+  openfox settlement get --kind <bounty|observation|oracle> --subject-id <id> [--json]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    if (command === "list") {
+      const kind = readOption(args, "--kind") as "bounty" | "observation" | "oracle" | undefined;
+      const limit = readNumberOption(args, "--limit", 20);
+      const items = db.listSettlementReceipts(limit, kind);
+      if (asJson) {
+        logger.info(JSON.stringify({ items }, null, 2));
+        return;
+      }
+      if (items.length === 0) {
+        logger.info("No settlement receipts found.");
+        return;
+      }
+      logger.info("=== OPENFOX SETTLEMENT RECEIPTS ===");
+      for (const item of items) {
+        logger.info(
+          `${item.receiptId}  [${item.kind}]  subject=${item.subjectId}  tx=${item.settlementTxHash || "(pending)"}`,
+        );
+        if (item.artifactUrl) {
+          logger.info(`  artifact: ${item.artifactUrl}`);
+        }
+      }
+      return;
+    }
+
+    if (command === "get") {
+      const receiptId = readOption(args, "--receipt-id");
+      const kind = readOption(args, "--kind") as "bounty" | "observation" | "oracle" | undefined;
+      const subjectId = readOption(args, "--subject-id");
+      const record = receiptId
+        ? db.getSettlementReceiptById(receiptId)
+        : kind && subjectId
+          ? db.getSettlementReceipt(kind, subjectId)
+          : undefined;
+      if (!record) {
+        throw new Error(
+          receiptId
+            ? `Settlement receipt not found: ${receiptId}`
+            : "Usage: openfox settlement get --receipt-id <id> | --kind <kind> --subject-id <id>",
+        );
+      }
+      if (asJson) {
+        logger.info(JSON.stringify(record, null, 2));
+        return;
+      }
+      logger.info(`
+=== OPENFOX SETTLEMENT RECEIPT ===
+Receipt:     ${record.receiptId}
+Kind:        ${record.kind}
+Subject:     ${record.subjectId}
+Receipt hash:${record.receiptHash}
+Artifact:    ${record.artifactUrl || "(none)"}
+Payment tx:  ${record.paymentTxHash || "(none)"}
+Payout tx:   ${record.payoutTxHash || "(none)"}
+Anchor tx:   ${record.settlementTxHash || "(pending)"}
+Created:     ${record.createdAt}
+Updated:     ${record.updatedAt}
+=================================
+`);
+      return;
+    }
+
+    throw new Error(`Unknown settlement command: ${command}`);
+  } finally {
+    db.close();
+  }
+}
+
 async function handleScoutCommand(args: string[]): Promise<void> {
   const command = args[0] || "list";
   const asJson = args.includes("--json");
@@ -1279,6 +1375,7 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
   const pendingWakes = getUnconsumedWakeEvents(db.raw);
   const skills = db.getSkills(true);
   const children = db.getChildren();
+  const settlements = db.listSettlementReceipts(5);
   const discovery = config.agentDiscovery;
   const gatewaySummary = discovery?.gatewayClient?.enabled
     ? discovery.gatewayClient.gatewayUrl || "discovery/bootnodes"
@@ -1315,6 +1412,25 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
           autoSolveOnStartup: config.bounty.autoSolveOnStartup,
           autoSolveEnabled: config.bounty.autoSolveEnabled,
           policy: config.bounty.policy,
+        }
+      : null,
+    settlement: config.settlement
+      ? {
+          enabled: config.settlement.enabled,
+          sinkAddress: config.settlement.sinkAddress || null,
+          waitForReceipt: config.settlement.waitForReceipt,
+          gas: config.settlement.gas,
+          publishBounties: config.settlement.publishBounties,
+          publishObservations: config.settlement.publishObservations,
+          publishOracleResults: config.settlement.publishOracleResults,
+          receiptCount: settlements.length,
+          recentReceipts: settlements.map((item) => ({
+            receiptId: item.receiptId,
+            kind: item.kind,
+            subjectId: item.subjectId,
+            receiptHash: item.receiptHash,
+            settlementTxHash: item.settlementTxHash,
+          })),
         }
       : null,
     opportunityScout: config.opportunityScout
@@ -1355,6 +1471,7 @@ Discovery:  ${discovery?.enabled ? "enabled" : "disabled"}
 Gateway:    ${gatewaySummary}
 Bounty:     ${config.bounty?.enabled ? `${config.bounty.role}/${config.bounty.defaultKind} @ ${config.bounty.bindHost}:${config.bounty.port}${config.bounty.pathPrefix}` : "disabled"}
 Bounty auto: ${config.bounty?.enabled ? `open=${config.bounty.autoOpenOnStartup || config.bounty.autoOpenWhenIdle ? "on" : "off"} solve=${config.bounty.autoSolveOnStartup || config.bounty.autoSolveEnabled ? "on" : "off"}` : "disabled"}
+Settlement: ${config.settlement?.enabled ? `enabled (${settlements.length} recent receipt${settlements.length === 1 ? "" : "s"})` : "disabled"}
 Scout:      ${config.opportunityScout?.enabled ? "enabled" : "disabled"}
 Creator:    ${config.creatorAddress}
 Sandbox:    ${config.sandboxId}
@@ -1483,6 +1600,16 @@ async function run(): Promise<void> {
   let liveGatewayProviderSessions: NonNullable<
     Awaited<ReturnType<typeof startAgentGatewayProviderSessions>>
   >["sessions"] = [];
+  const settlementPublisher =
+    config.settlement?.enabled && config.rpcUrl
+      ? createNativeSettlementPublisher({
+          db,
+          rpcUrl: config.rpcUrl,
+          privateKey,
+          config: config.settlement,
+          publisherAddress: address,
+        })
+      : undefined;
 
   if (config.agentDiscovery?.faucetServer?.enabled) {
     try {
@@ -1510,6 +1637,9 @@ async function run(): Promise<void> {
         address,
         db,
         observationConfig: config.agentDiscovery.observationServer,
+        settlementPublisher: config.settlement?.publishObservations
+          ? settlementPublisher
+          : undefined,
       });
       logger.info(`Agent Discovery observation provider enabled at ${observationServer.url}`);
     } catch (error) {
@@ -1528,6 +1658,9 @@ async function run(): Promise<void> {
         db,
         inference,
         oracleConfig: config.agentDiscovery.oracleServer,
+        settlementPublisher: config.settlement?.publishOracleResults
+          ? settlementPublisher
+          : undefined,
       });
       logger.info(`Agent Discovery oracle provider enabled at ${oracleServer.url}`);
     } catch (error) {
@@ -1854,6 +1987,9 @@ async function run(): Promise<void> {
               rpcUrl: config.rpcUrl,
               privateKey,
             })
+          : undefined,
+        settlementPublisher: config.settlement?.publishBounties
+          ? settlementPublisher
           : undefined,
       });
       bountyServer = await startBountyHttpServer({

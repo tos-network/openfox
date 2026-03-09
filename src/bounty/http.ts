@@ -165,6 +165,7 @@ export async function startBountyHttpServer(params: {
         json(res, 200, {
           bounty: details.bounty,
           result: details.result ?? null,
+          settlement: details.settlement ?? null,
         });
         return;
       }

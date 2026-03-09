@@ -154,6 +154,31 @@ describe("agent discovery oracle server", () => {
       db: makeDb(),
       inference: makeInference(),
       oracleConfig: config.agentDiscovery!.oracleServer!,
+      settlementPublisher: {
+        async publish(input) {
+          return {
+            receiptId: `oracle:${input.subjectId}`,
+            kind: "oracle",
+            subjectId: input.subjectId,
+            receipt: {
+              version: 1,
+              receiptId: `oracle:${input.subjectId}`,
+              kind: "oracle",
+              subjectId: input.subjectId,
+              publisherAddress: config.walletAddress!,
+              resultHash:
+                "0x1111111111111111111111111111111111111111111111111111111111111111",
+              createdAt: "2026-03-09T00:00:00.000Z",
+            },
+            receiptHash:
+              "0x2222222222222222222222222222222222222222222222222222222222222222",
+            settlementTxHash:
+              "0x3333333333333333333333333333333333333333333333333333333333333333",
+            createdAt: "2026-03-09T00:00:00.000Z",
+            updatedAt: "2026-03-09T00:00:00.000Z",
+          };
+        },
+      },
     });
 
     const requester = makeIdentity();
@@ -225,11 +250,26 @@ describe("agent discovery oracle server", () => {
         { Accept: "application/json" },
       );
       expect(first.success).toBe(true);
-      const firstBody = first.response as { status: string; result_id: string; result_url: string; canonical_result: string };
+      const firstBody = first.response as {
+        status: string;
+        result_id: string;
+        result_url: string;
+        canonical_result: string;
+        receipt_id: string;
+        receipt_hash: string;
+        settlement_tx_hash: string;
+      };
       expect(firstBody.status).toBe("ok");
       expect(firstBody.result_id).toMatch(/^[0-9a-f]{64}$/);
       expect(firstBody.result_url).toBe(`/oracle/result/${firstBody.result_id}`);
       expect(firstBody.canonical_result).toBe("yes");
+      expect(firstBody.receipt_id).toBe(`oracle:${firstBody.result_id}`);
+      expect(firstBody.receipt_hash).toBe(
+        "0x2222222222222222222222222222222222222222222222222222222222222222",
+      );
+      expect(firstBody.settlement_tx_hash).toBe(
+        "0x3333333333333333333333333333333333333333333333333333333333333333",
+      );
       expect(submittedPayments).toBe(1);
 
       const stored = await fetch(`http://127.0.0.1:${canonical.port}${firstBody.result_url}`);

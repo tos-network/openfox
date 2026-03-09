@@ -17,6 +17,7 @@ import type {
   HexAddress,
   BountyConfig,
   OpportunityScoutConfig,
+  SettlementConfig,
   WalletFundingConfig,
 } from "./types.js";
 import {
@@ -37,6 +38,7 @@ import {
   DEFAULT_BOUNTY_CONFIG,
   DEFAULT_BOUNTY_POLICY,
   DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+  DEFAULT_SETTLEMENT_CONFIG,
   DEFAULT_WALLET_FUNDING_CONFIG,
 } from "./types.js";
 import { getOpenFoxDir } from "./identity/wallet.js";
@@ -517,6 +519,18 @@ export function loadConfig(): OpenFoxConfig | null {
     ...((raw?.opportunityScout as JsonRecord | undefined) ?? {}),
   };
 
+  const settlement: SettlementConfig = {
+    ...DEFAULT_SETTLEMENT_CONFIG,
+    ...((raw?.settlement as JsonRecord | undefined) ?? {}),
+    sinkAddress:
+      typeof raw?.settlement === "object" &&
+      raw.settlement !== null &&
+      typeof (raw.settlement as JsonRecord).sinkAddress === "string" &&
+      ((raw.settlement as JsonRecord).sinkAddress as string).trim()
+        ? (((raw.settlement as JsonRecord).sinkAddress as string).trim() as HexAddress)
+        : DEFAULT_SETTLEMENT_CONFIG.sinkAddress,
+  };
+
   const walletFunding: WalletFundingConfig = {
     ...DEFAULT_WALLET_FUNDING_CONFIG,
     ...((raw?.walletFunding as JsonRecord | undefined) ?? {}),
@@ -649,6 +663,7 @@ export function loadConfig(): OpenFoxConfig | null {
     agentDiscovery,
     bounty,
     opportunityScout,
+    settlement,
   } as OpenFoxConfig;
 }
 
@@ -671,6 +686,7 @@ export function saveConfig(config: OpenFoxConfig): void {
     agentDiscovery: config.agentDiscovery ?? DEFAULT_AGENT_DISCOVERY_CONFIG,
     bounty: config.bounty ?? DEFAULT_BOUNTY_CONFIG,
     opportunityScout: config.opportunityScout ?? DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+    settlement: config.settlement ?? DEFAULT_SETTLEMENT_CONFIG,
   };
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2), {
     mode: 0o600,

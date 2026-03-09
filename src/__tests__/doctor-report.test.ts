@@ -28,6 +28,9 @@ describe("doctor report formatting", () => {
       bountyRole: "host" as const,
       bountyAutoEnabled: true,
       bountyRemoteConfigured: false,
+      settlementEnabled: true,
+      settlementReady: true,
+      settlementRecentCount: 1,
       managedService: {
         manager: "systemd-user" as const,
         available: true,
@@ -72,6 +75,7 @@ describe("doctor report formatting", () => {
 
     expect(health).toContain("=== OPENFOX HEALTH ===");
     expect(health).toContain("Bounty enabled: yes (host)");
+    expect(health).toContain("Settlement enabled: yes (1 recent)");
     expect(health).toContain("service status report");
     expect(doctor).toContain("=== OPENFOX DOCTOR ===");
     expect(doctor).toContain("Warnings: 2");
@@ -116,6 +120,27 @@ describe("doctor report formatting", () => {
 
     expect(
       snapshot.findings.some((finding) => finding.id === "bounty-solver-no-source"),
+    ).toBe(true);
+  });
+
+  it("flags settlement mode without an RPC URL", async () => {
+    const snapshot = await buildHealthSnapshot(
+      createTestConfig({
+        rpcUrl: undefined,
+        settlement: {
+          enabled: true,
+          gas: "160000",
+          waitForReceipt: true,
+          receiptTimeoutMs: 60000,
+          publishBounties: true,
+          publishObservations: true,
+          publishOracleResults: true,
+        },
+      }),
+    );
+
+    expect(
+      snapshot.findings.some((finding) => finding.id === "settlement-enabled" && finding.severity === "error"),
     ).toBe(true);
   });
 });
