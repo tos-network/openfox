@@ -4,6 +4,7 @@ import { getConfigPath, loadConfig, resolvePath } from "../config.js";
 import { buildSkillStatusReport } from "../skills/loader.js";
 import type { OpenFoxConfig, OpenFoxDatabase } from "../types.js";
 import { getWalletPath, walletExists } from "../identity/wallet.js";
+import { buildWalletStatusSnapshot } from "../wallet/operator.js";
 import {
   buildGatewayStatusReport,
   buildServiceStatusReport,
@@ -45,6 +46,8 @@ export interface HealthSnapshot {
   pendingWakes: number;
   skillCount: number;
   ineligibleEnabledSkills: string[];
+  walletSignerType?: string;
+  walletSignerDefaulted?: boolean;
   serviceStatusReport?: string;
   gatewayStatusReport?: string;
   serviceHealthReport?: string;
@@ -186,6 +189,20 @@ function collectFindings(
       id: "rpc-configured",
       severity: "ok",
       summary: "Chain RPC URL is configured.",
+    });
+  }
+
+  if (
+    snapshot.walletSignerType &&
+    snapshot.walletSignerType !== "address" &&
+    snapshot.walletSignerType !== "secp256k1"
+  ) {
+    findings.push({
+      id: "non-secp-signer-active",
+      severity: "warn",
+      summary: `Active signer metadata is ${snapshot.walletSignerType}.`,
+      recommendation:
+        "OpenFox native transaction sending still assumes secp256k1. Use non-secp signer mode only if you intentionally switched the account and understand the signer bootstrap boundary.",
     });
   }
 
@@ -371,12 +388,26 @@ export async function buildHealthSnapshot(
   const db = createDatabase(resolvePath(config.dbPath));
   try {
     const details = await buildConfigSnapshot(config, db);
+    let walletSignerType: string | undefined;
+    let walletSignerDefaulted: boolean | undefined;
+    if (config.rpcUrl && walletExists()) {
+      try {
+        const walletStatus = await buildWalletStatusSnapshot(config);
+        walletSignerType = walletStatus.signer?.type;
+        walletSignerDefaulted = walletStatus.signer?.defaulted;
+      } catch {
+        walletSignerType = undefined;
+        walletSignerDefaulted = undefined;
+      }
+    }
     const partial: Omit<HealthSnapshot, "findings"> = {
       configPath,
       walletPath,
       configPresent: true,
       walletPresent: walletExists(),
       managedService,
+      walletSignerType,
+      walletSignerDefaulted,
       ...details,
     };
     return { ...partial, findings: collectFindings(partial) };

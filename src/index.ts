@@ -106,6 +106,7 @@ import {
 } from "./doctor/report.js";
 import { buildModelStatusReport, buildModelStatusSnapshot } from "./models/status.js";
 import { runOnboard } from "./commands/onboard.js";
+import { runWalletCommand } from "./commands/wallet.js";
 import { createBountyEngine } from "./bounty/engine.js";
 import { startBountyHttpServer } from "./bounty/http.js";
 import { createNativeBountyPayoutSender } from "./bounty/payout.js";
@@ -205,6 +206,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "wallet") {
+    await runWalletCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "logs") {
     await handleLogsCommand(args.slice(1));
     process.exit(0);
@@ -246,6 +252,7 @@ Usage:
   openfox doctor         Diagnose runtime/operator issues and next steps
   openfox models ...     Inspect model/provider readiness
   openfox onboard        Run setup and optionally install the managed service
+  openfox wallet ...     Inspect, fund, and bootstrap the native wallet
   openfox logs           Show recent OpenFox service logs
   openfox bounty ...     Open, inspect, and solve task bounties
   openfox scout ...      Discover earning opportunities and task surfaces
@@ -944,6 +951,11 @@ Usage:
   logger.info(buildModelStatusReport(snapshot));
 }
 
+function readFlag(args: string[], name: string): string | undefined {
+  const index = args.indexOf(name);
+  return index >= 0 ? args[index + 1] : undefined;
+}
+
 async function handleOnboardCommand(args: string[]): Promise<void> {
   if (args.includes("--help") || args.includes("-h") || args.includes("help")) {
     logger.info(`
@@ -953,6 +965,10 @@ Usage:
   openfox onboard
   openfox onboard --install-daemon
   openfox onboard --force-setup
+  openfox onboard --fund-local
+  openfox onboard --fund-testnet
+  openfox onboard --fund-testnet --faucet-url https://...
+  openfox onboard --fund-local --wait
 `);
     return;
   }
@@ -960,12 +976,21 @@ Usage:
   const result = await runOnboard({
     installDaemon: args.includes("--install-daemon"),
     forceSetup: args.includes("--force-setup"),
+    fundLocal: args.includes("--fund-local"),
+    fundTestnet: args.includes("--fund-testnet"),
+    waitForFundingReceipt: args.includes("--wait"),
+    faucetUrl: readFlag(args, "--faucet-url"),
+    fundingReason: readFlag(args, "--reason"),
   });
 
   logger.info(
     result.daemonInstalled
-      ? "OpenFox onboarding complete. Managed service installed."
-      : "OpenFox onboarding complete.",
+      ? result.fundingPerformed
+        ? "OpenFox onboarding complete. Wallet funded and managed service installed."
+        : "OpenFox onboarding complete. Managed service installed."
+      : result.fundingPerformed
+        ? "OpenFox onboarding complete. Wallet funding requested."
+        : "OpenFox onboarding complete.",
   );
 }
 

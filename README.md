@@ -198,6 +198,8 @@ pnpm install
 pnpm openfox --setup
 pnpm openfox --run
 pnpm openfox onboard --install-daemon
+pnpm openfox wallet status
+pnpm openfox onboard --fund-local
 ```
 
 The preferred command surface is:
@@ -206,6 +208,7 @@ The preferred command surface is:
 openfox --setup
 openfox --run
 openfox onboard --install-daemon
+openfox wallet status
 ```
 
 If you are running directly from the source checkout and have not installed the binary globally yet, use:
@@ -223,11 +226,21 @@ On first setup, OpenFox launches an interactive wizard that:
 - asks for the genesis prompt
 - asks for the creator address
 - configures the inference provider
+- prepares the native wallet path for `TOS` funding and transaction flows
 
 The local state directory is:
 
 ```bash
 ~/.openfox/
+```
+
+Useful next steps after setup:
+
+```bash
+openfox wallet status
+openfox onboard --fund-local
+openfox onboard --fund-testnet
+openfox wallet bootstrap-signer --type ed25519
 ```
 
 ---
@@ -261,6 +274,36 @@ Provider settings live in:
 ```bash
 ~/.openfox/openfox.json
 ```
+
+---
+
+## Native Wallet Onboarding
+
+OpenFox now exposes a productized native wallet surface:
+
+```bash
+openfox wallet status
+openfox wallet fund local
+openfox wallet fund testnet
+openfox wallet bootstrap-signer --type ed25519
+```
+
+What each command is for:
+
+- `openfox wallet status`
+  - show native address, RPC, balance, nonce, and active signer metadata
+- `openfox wallet fund local`
+  - request one-click funding from a local devnet node-managed account
+- `openfox wallet fund testnet`
+  - request one-click funding from a configured faucet URL or a discovered `sponsor.topup.testnet` provider
+- `openfox wallet bootstrap-signer --type ed25519`
+  - generate an ed25519 signer, save the key material locally, and submit signer metadata bootstrap on-chain
+
+Important boundary:
+
+- `secp256k1` is the default and fully supported native transaction path in OpenFox today
+- non-`secp256k1` signer bootstrap is an advanced/operator path
+- if you switch an account to a non-`secp256k1` signer, you should do so intentionally and understand that OpenFox runtime transaction sending is still optimized for the default signer path
 
 ## Operator Commands
 

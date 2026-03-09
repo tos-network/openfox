@@ -203,6 +203,9 @@ function showFundingPanel(walletAddress: string): void {
   console.log(chalk.cyan(`  │${pad("     - OLLAMA_BASE_URL", w)}│`));
   console.log(chalk.cyan(`  │${" ".repeat(w)}│`));
   console.log(chalk.cyan(`  │${pad("  2. Optional: fund the wallet for native payment flows", w)}│`));
+  console.log(chalk.cyan(`  │${pad("     - openfox onboard --fund-local", w)}│`));
+  console.log(chalk.cyan(`  │${pad("     - openfox onboard --fund-testnet", w)}│`));
+  console.log(chalk.cyan(`  │${pad("     - openfox wallet status", w)}│`));
   console.log(chalk.cyan(`  │${pad("  3. Local-first mode means no hosted control-plane account is needed", w)}│`));
   console.log(chalk.cyan(`  │${pad("  4. Restart after changing provider configuration", w)}│`));
   console.log(chalk.cyan(`  ${"╰" + "─".repeat(w) + "╯"}`));

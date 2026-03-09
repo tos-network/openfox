@@ -376,6 +376,7 @@ export interface OpenFoxConfig {
   walletAddress: HexAddress;
   rpcUrl?: string;
   chainId?: number;
+  walletFunding?: WalletFundingConfig;
   version: string;
   skillsDir: string;
   agentId?: string;
@@ -392,6 +393,15 @@ export interface OpenFoxConfig {
   agentDiscovery?: AgentDiscoveryConfig;
   bounty?: BountyConfig;
   opportunityScout?: OpportunityScoutConfig;
+}
+
+export interface WalletFundingConfig {
+  localDefaultAmountWei: string;
+  localFunderAddress?: HexAddress;
+  localFunderPassword?: string;
+  testnetDefaultAmountWei: string;
+  testnetFaucetUrl?: string;
+  testnetReason: string;
 }
 
 export type BountyRole = "host" | "solver";
@@ -569,6 +579,15 @@ export const DEFAULT_OPPORTUNITY_SCOUT_CONFIG: OpportunityScoutConfig = {
   minRewardWei: "0",
 };
 
+export const DEFAULT_WALLET_FUNDING_CONFIG: WalletFundingConfig = {
+  localDefaultAmountWei: "5000000000000000000",
+  localFunderAddress: undefined,
+  localFunderPassword: undefined,
+  testnetDefaultAmountWei: "10000000000000000",
+  testnetFaucetUrl: undefined,
+  testnetReason: "bootstrap openfox wallet",
+};
+
 export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   inferenceModel: "gpt-5.2",
   maxTokensPerTurn: 4096,
@@ -581,6 +600,7 @@ export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   maxTurnsPerCycle: 25,
   childSandboxMemoryMb: 1024,
   rpcUrl: process.env.TOS_RPC_URL,
+  walletFunding: DEFAULT_WALLET_FUNDING_CONFIG,
   agentDiscovery: DEFAULT_AGENT_DISCOVERY_CONFIG,
   bounty: DEFAULT_BOUNTY_CONFIG,
   opportunityScout: DEFAULT_OPPORTUNITY_SCOUT_CONFIG,

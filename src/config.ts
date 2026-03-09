@@ -17,6 +17,7 @@ import type {
   HexAddress,
   BountyConfig,
   OpportunityScoutConfig,
+  WalletFundingConfig,
 } from "./types.js";
 import {
   DEFAULT_CONFIG,
@@ -35,6 +36,7 @@ import {
   DEFAULT_BOUNTY_CONFIG,
   DEFAULT_BOUNTY_POLICY,
   DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+  DEFAULT_WALLET_FUNDING_CONFIG,
 } from "./types.js";
 import { getOpenFoxDir } from "./identity/wallet.js";
 import { loadApiKeyFromConfig } from "./identity/provision.js";
@@ -509,6 +511,54 @@ export function loadConfig(): OpenFoxConfig | null {
     ...((raw?.opportunityScout as JsonRecord | undefined) ?? {}),
   };
 
+  const walletFunding: WalletFundingConfig = {
+    ...DEFAULT_WALLET_FUNDING_CONFIG,
+    ...((raw?.walletFunding as JsonRecord | undefined) ?? {}),
+    localDefaultAmountWei:
+      typeof raw?.walletFunding === "object" &&
+      raw.walletFunding !== null &&
+      typeof (raw.walletFunding as JsonRecord).localDefaultAmountWei === "string" &&
+      ((raw.walletFunding as JsonRecord).localDefaultAmountWei as string).trim()
+        ? ((raw.walletFunding as JsonRecord).localDefaultAmountWei as string).trim()
+        : DEFAULT_WALLET_FUNDING_CONFIG.localDefaultAmountWei,
+    localFunderAddress:
+      typeof raw?.walletFunding === "object" &&
+      raw.walletFunding !== null &&
+      typeof (raw.walletFunding as JsonRecord).localFunderAddress === "string" &&
+      ((raw.walletFunding as JsonRecord).localFunderAddress as string).trim()
+        ? (((raw.walletFunding as JsonRecord).localFunderAddress as string).trim() as HexAddress)
+        : undefined,
+    localFunderPassword:
+      typeof raw?.walletFunding === "object" &&
+      raw.walletFunding !== null &&
+      typeof (raw.walletFunding as JsonRecord).localFunderPassword === "string"
+        ? ((raw.walletFunding as JsonRecord).localFunderPassword as string)
+        : undefined,
+    testnetDefaultAmountWei:
+      typeof raw?.walletFunding === "object" &&
+      raw.walletFunding !== null &&
+      typeof (raw.walletFunding as JsonRecord).testnetDefaultAmountWei === "string" &&
+      ((raw.walletFunding as JsonRecord).testnetDefaultAmountWei as string).trim()
+        ? ((raw.walletFunding as JsonRecord).testnetDefaultAmountWei as string).trim()
+        : DEFAULT_WALLET_FUNDING_CONFIG.testnetDefaultAmountWei,
+    testnetFaucetUrl:
+      (typeof process.env.OPENFOX_TESTNET_FAUCET_URL === "string" &&
+        process.env.OPENFOX_TESTNET_FAUCET_URL.trim()) ||
+      (typeof raw?.walletFunding === "object" &&
+      raw.walletFunding !== null &&
+      typeof (raw.walletFunding as JsonRecord).testnetFaucetUrl === "string" &&
+      ((raw.walletFunding as JsonRecord).testnetFaucetUrl as string).trim()
+        ? ((raw.walletFunding as JsonRecord).testnetFaucetUrl as string).trim()
+        : undefined),
+    testnetReason:
+      typeof raw?.walletFunding === "object" &&
+      raw.walletFunding !== null &&
+      typeof (raw.walletFunding as JsonRecord).testnetReason === "string" &&
+      ((raw.walletFunding as JsonRecord).testnetReason as string).trim()
+        ? ((raw.walletFunding as JsonRecord).testnetReason as string).trim()
+        : DEFAULT_WALLET_FUNDING_CONFIG.testnetReason,
+  };
+
   const modelRef =
     (typeof raw?.inferenceModelRef === "string" &&
       raw.inferenceModelRef.trim()) ||
@@ -589,6 +639,7 @@ export function loadConfig(): OpenFoxConfig | null {
     treasuryPolicy,
     modelStrategy,
     soulConfig,
+    walletFunding,
     agentDiscovery,
     bounty,
     opportunityScout,
@@ -610,6 +661,7 @@ export function saveConfig(config: OpenFoxConfig): void {
     treasuryPolicy: config.treasuryPolicy ?? DEFAULT_TREASURY_POLICY,
     modelStrategy: config.modelStrategy ?? DEFAULT_MODEL_STRATEGY_CONFIG,
     soulConfig: config.soulConfig ?? DEFAULT_SOUL_CONFIG,
+    walletFunding: config.walletFunding ?? DEFAULT_WALLET_FUNDING_CONFIG,
     agentDiscovery: config.agentDiscovery ?? DEFAULT_AGENT_DISCOVERY_CONFIG,
     bounty: config.bounty ?? DEFAULT_BOUNTY_CONFIG,
     opportunityScout: config.opportunityScout ?? DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
@@ -650,6 +702,7 @@ export function createConfig(params: {
   inferenceModelRef?: string;
   parentAddress?: HexAddress;
   treasuryPolicy?: TreasuryPolicy;
+  walletFunding?: WalletFundingConfig;
 }): OpenFoxConfig {
   const normalizedSandboxId = (params.sandboxId || "").trim();
   const inferredModelRef = params.inferenceModelRef?.trim();
@@ -682,6 +735,7 @@ export function createConfig(params: {
     walletAddress: params.walletAddress,
     rpcUrl: params.rpcUrl,
     chainId: params.chainId,
+    walletFunding: params.walletFunding ?? DEFAULT_WALLET_FUNDING_CONFIG,
     version: DEFAULT_CONFIG.version || "0.2.1",
     skillsDir: DEFAULT_CONFIG.skillsDir || "~/.openfox/skills",
     maxChildren: DEFAULT_CONFIG.maxChildren || 3,

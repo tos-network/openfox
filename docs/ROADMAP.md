@@ -70,7 +70,7 @@ Deliverables:
 
 ### Phase 0.5: Testnet Agent-to-Agent Bounty MVP
 
-Status: not complete
+Status: completed
 
 Goal:
 
@@ -145,9 +145,18 @@ Why this phase matters:
 - it proves that useful work can end in a `TOS` reward
 - it gives us a credible "agent-to-agent economy" prototype without needing a full oracle design
 
+Delivered surface:
+
+- generic task marketplace engine in `openfox`
+- automated host / solver flows
+- local model judging
+- native `TOS` payout hooks
+- local multi-role operator wrappers and guides
+- discovery-aware host/solver/scout paths
+
 ### Phase 1: Wallet and Onboarding Productization
 
-Status: not complete
+Status: completed
 
 Goal:
 
@@ -165,6 +174,16 @@ Acceptance criteria:
 
 - a fresh machine can complete `install -> create wallet -> check balance -> receive funds -> send transaction`
 - no manual source reading or handcrafted RPC requests are required
+
+Delivered surface:
+
+- `openfox onboard --fund-local`
+- `openfox onboard --fund-testnet`
+- `openfox wallet status`
+- `openfox wallet fund local`
+- `openfox wallet fund testnet`
+- `openfox wallet bootstrap-signer --type ed25519`
+- improved native wallet error guidance for RPC, balance, nonce, and signer metadata issues
 
 ### Phase 2: Launch Real Paid Services
 
@@ -297,16 +316,16 @@ Suggested priority order:
 
 ### P0: Do Immediately
 
-- build the `Phase 0.5` prediction bounty MVP inside `openfox`
-- define the bounty, submission, and result schemas
-- run one real testnet bounty end to end
-- stabilize local end-to-end integration scripts
+- launch the first real paid service on top of the existing marketplace/runtime base
+- start with one narrow paid API that produces a real result
+- add payment idempotency and stronger payment-to-result binding
+- run one real paid flow end to end on testnet
 
 ### P1: Do Next
 
-- complete wallet initialization and funding guidance in `openfox`
 - design the observation job API
 - design on-chain query/job identifiers and result callback interfaces
+- improve production payment recovery and replay handling
 
 ### P2: Do Later
 
@@ -332,7 +351,7 @@ The more reasonable strategy for now is:
 
 There are only two next steps that matter most:
 
-1. build the `Phase 0.5` prediction bounty MVP in `openfox`
-2. make a new user able to complete `setup -> fund -> discover host agent -> submit answer -> receive TOS reward`
+1. launch the first real paid service on top of the current runtime and marketplace base
+2. make a new operator able to complete `setup -> fund -> discover provider -> pay in TOS -> receive a real service result`
 
 Only after these two steps are complete should we expand into broader paid service and oracle-facing phases.

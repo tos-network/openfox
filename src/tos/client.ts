@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import { etc, sign as signSecp256k1 } from "@noble/secp256k1";
 import type { PrivateKeyAccount } from "tosdk";
 import { keccak256, parseUnits, toHex } from "tosdk";
+import { TOSRpcError } from "./errors.js";
 import {
   deriveTOSAddressFromPrivateKey,
   normalizeTOSAddress,
@@ -32,6 +33,26 @@ if (!etc.hmacSha256Sync) {
 
 export interface TOSRpcClientOptions {
   rpcUrl: string;
+}
+
+export interface TOSSignerDescriptor {
+  type: string;
+  value: string;
+  defaulted: boolean;
+}
+
+export interface TOSAccountProfile {
+  address: TOSAddress;
+  nonce: bigint;
+  balance: bigint;
+  signer: TOSSignerDescriptor;
+  blockNumber: bigint;
+}
+
+export interface TOSSignerProfile {
+  address: TOSAddress;
+  signer: TOSSignerDescriptor;
+  blockNumber: bigint;
 }
 
 export interface TOSUnsignedTransaction {
@@ -174,7 +195,7 @@ export class TOSRpcClient {
     this.rpcUrl = options.rpcUrl;
   }
 
-  private async request<T>(method: string, params: unknown[]): Promise<T> {
+  async call<T>(method: string, params: unknown[] = []): Promise<T> {
     const id = this.nextId++;
     const response = await fetch(this.rpcUrl, {
       method: "POST",
@@ -193,15 +214,16 @@ export class TOSRpcClient {
     }
     const body = (await response.json()) as JsonRpcSuccess<T> | JsonRpcFailure;
     if ("error" in body) {
-      throw new Error(
+      throw new TOSRpcError(
         `TOS RPC ${method} error ${body.error.code}: ${body.error.message}`,
+        body.error.code,
       );
     }
     return body.result;
   }
 
   async getChainId(): Promise<bigint> {
-    return parseHexQuantity(await this.request<string>("tos_chainId", []));
+    return parseHexQuantity(await this.call<string>("tos_chainId", []));
   }
 
   async getBalance(
@@ -209,7 +231,7 @@ export class TOSRpcClient {
     blockTag: string = "latest",
   ): Promise<bigint> {
     return parseHexQuantity(
-      await this.request<string>("tos_getBalance", [
+      await this.call<string>("tos_getBalance", [
         normalizeTOSAddress(address),
         blockTag,
       ]),
@@ -221,7 +243,7 @@ export class TOSRpcClient {
     blockTag: string = "pending",
   ): Promise<bigint> {
     return parseHexQuantity(
-      await this.request<string>("tos_getTransactionCount", [
+      await this.call<string>("tos_getTransactionCount", [
         normalizeTOSAddress(address),
         blockTag,
       ]),
@@ -229,7 +251,7 @@ export class TOSRpcClient {
   }
 
   async sendRawTransaction(rawTransaction: HexString): Promise<HexString> {
-    return await this.request<HexString>("tos_sendRawTransaction", [
+    return await this.call<HexString>("tos_sendRawTransaction", [
       rawTransaction,
     ]);
   }
@@ -237,10 +259,98 @@ export class TOSRpcClient {
   async getTransactionReceipt(
     txHash: HexString,
   ): Promise<Record<string, unknown> | null> {
-    return await this.request<Record<string, unknown> | null>(
+    return await this.call<Record<string, unknown> | null>(
       "tos_getTransactionReceipt",
       [txHash],
     );
+  }
+
+  async getAccount(
+    address: TOSAddress,
+    blockTag: string = "latest",
+  ): Promise<TOSAccountProfile> {
+    const raw = await this.call<{
+      address: TOSAddress;
+      nonce: string;
+      balance: string;
+      signer: TOSSignerDescriptor;
+      blockNumber: string;
+    }>("tos_getAccount", [normalizeTOSAddress(address), blockTag]);
+    return {
+      address: normalizeTOSAddress(raw.address),
+      nonce: parseHexQuantity(raw.nonce),
+      balance: parseHexQuantity(raw.balance),
+      signer: raw.signer,
+      blockNumber: parseHexQuantity(raw.blockNumber),
+    };
+  }
+
+  async getSigner(
+    address: TOSAddress,
+    blockTag: string = "latest",
+  ): Promise<TOSSignerProfile> {
+    const raw = await this.call<{
+      address: TOSAddress;
+      signer: TOSSignerDescriptor;
+      blockNumber: string;
+    }>("tos_getSigner", [normalizeTOSAddress(address), blockTag]);
+    return {
+      address: normalizeTOSAddress(raw.address),
+      signer: raw.signer,
+      blockNumber: parseHexQuantity(raw.blockNumber),
+    };
+  }
+
+  async listPersonalAccounts(): Promise<TOSAddress[]> {
+    const accounts = await this.call<string[]>("personal_listAccounts", []);
+    return accounts.map((entry) => normalizeTOSAddress(entry));
+  }
+
+  async listAccounts(): Promise<TOSAddress[]> {
+    const accounts = await this.call<string[]>("tos_accounts", []);
+    return accounts.map((entry) => normalizeTOSAddress(entry));
+  }
+
+  async sendManagedTransaction(params: {
+    from: TOSAddress;
+    to: TOSAddress;
+    value: bigint;
+    gas?: bigint;
+    data?: HexString;
+    signerType?: string;
+  }): Promise<HexString> {
+    return this.call<HexString>("tos_sendTransaction", [
+      {
+        from: normalizeTOSAddress(params.from),
+        to: normalizeTOSAddress(params.to),
+        value: `0x${params.value.toString(16)}`,
+        gas: `0x${(params.gas ?? 21_000n).toString(16)}`,
+        ...(params.data ? { data: params.data } : {}),
+        ...(params.signerType ? { signerType: params.signerType } : {}),
+      },
+    ]);
+  }
+
+  async sendPersonalTransaction(params: {
+    from: TOSAddress;
+    to: TOSAddress;
+    value: bigint;
+    gas?: bigint;
+    data?: HexString;
+    password?: string;
+    signerType?: string;
+  }): Promise<HexString> {
+    return this.call<HexString>("personal_sendTransaction", [
+      {
+        from: normalizeTOSAddress(params.from),
+        to: normalizeTOSAddress(params.to),
+        value: `0x${params.value.toString(16)}`,
+        gas: `0x${(params.gas ?? 21_000n).toString(16)}`,
+        ...(params.data ? { data: params.data } : {}),
+        ...(params.signerType ? { signerType: params.signerType } : {}),
+      },
+      params.password ?? "",
+    ]);
   }
 }
 
@@ -399,6 +509,35 @@ export async function recordTOSReputationScore(params: {
       delta: params.delta,
       reason: params.reason,
       ref_id: params.refId,
+    },
+    gas: params.gas,
+    waitForReceipt: params.waitForReceipt,
+    receiptTimeoutMs: params.receiptTimeoutMs,
+    pollIntervalMs: params.pollIntervalMs,
+  });
+}
+
+export async function setTOSSignerMetadata(params: {
+  rpcUrl: string;
+  privateKey: HexString;
+  signerType: string;
+  signerValue: string;
+  gas?: bigint;
+  waitForReceipt?: boolean;
+  receiptTimeoutMs?: number;
+  pollIntervalMs?: number;
+}): Promise<{
+  signed: TOSSignedTransaction;
+  txHash: HexString;
+  receipt?: Record<string, unknown> | null;
+}> {
+  return sendTOSSystemAction({
+    rpcUrl: params.rpcUrl,
+    privateKey: params.privateKey,
+    action: "ACCOUNT_SET_SIGNER",
+    payload: {
+      signerType: params.signerType,
+      signerValue: params.signerValue,
     },
     gas: params.gas,
     waitForReceipt: params.waitForReceipt,
