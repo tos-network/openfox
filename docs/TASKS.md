@@ -140,6 +140,16 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Clarify when builders should use `tosdk` directly versus the OpenFox
     runtime, and close the roadmap’s ecosystem/productization phase.
+- [x] Task 32: Implement OpenFox IPFS Market v0
+  - Status: Complete
+  - Goal: Add an agent-native, paid, immutable, TTL-based storage market for
+    bundles and artifacts, with lightweight TOS anchors instead of large
+    on-chain blobs.
+- [x] Task 33: Implement verifiable public news and oracle bundles
+  - Status: Complete
+  - Goal: Build the first storage-backed artifact pipeline for public news
+    capture, oracle evidence, committee votes, aggregate oracle reports, local
+    verification, and lightweight native anchors.
 
 ## Task 1 Breakdown
 
@@ -401,3 +411,29 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add explicit SDK/runtime surface guidance that explains `tosdk` vs OpenFox.
 - [x] Update the roadmap so Phase 5 is marked complete.
 - [x] Update README so templates, quickstarts, and examples are part of the visible product surface.
+
+## Task 32 Breakdown
+
+- [x] Add canonical storage receipt and storage anchor hashing helpers to `tosdk`.
+- [x] Add storage bundle canonicalization and deterministic `CID` generation.
+- [x] Add persistent storage quote, lease, audit, and anchor tables to OpenFox.
+- [x] Add a paid storage provider service with `quote`, `put`, `head`, `get`, and `audit` flows.
+- [x] Add a storage client surface and `openfox storage ...` CLI.
+- [x] Bind storage payments to issued lease receipts.
+- [x] Add lightweight native storage anchors and persistent anchor records.
+- [x] Publish storage capabilities through Agent Discovery and optional gateway routes.
+- [x] Surface storage lease health through `status`, `service`, `health`, and `doctor`.
+- [x] Add bundle/provider diagnostics and tests for the first storage-market slice.
+
+## Task 33 Breakdown
+
+- [x] Add canonical artifact receipt and anchor hashing helpers to `tosdk`.
+- [x] Add artifact records, verification records, and anchor records to OpenFox.
+- [x] Add `openfox artifacts list|get|capture-news|oracle-evidence|oracle-aggregate|committee-vote|verify|anchor`.
+- [x] Add storage-backed public news capture flow with immutable bundle packaging.
+- [x] Add storage-backed oracle evidence and aggregate packaging flows.
+- [x] Add storage-backed committee vote packaging flow.
+- [x] Add local verification receipts and persistent verification records.
+- [x] Add lightweight native artifact anchors and persistent anchor records.
+- [x] Surface artifact pipeline health through `status`, `health`, and `doctor`.
+- [x] Add targeted tests for artifact hashing and artifact manager flows.

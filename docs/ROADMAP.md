@@ -370,34 +370,148 @@ Delivered surface:
 - local marketplace, public provider, and task sponsor example packs
 - explicit SDK/runtime surface guidance for `tosdk` vs OpenFox
 
+### Phase 6: OpenFox IPFS Market v0
+
+Status: completed
+
+Goal:
+
+- add an agent-native storage market for artifacts, proofs, and result bundles without pushing large objects directly onto `TOS`
+
+This phase introduces a new storage layer for OpenFox:
+
+- providers offer paid, TTL-based storage
+- clients store immutable bundles by `CID`
+- retrieval happens by `CID`
+- `TOS` stores only lightweight anchors and lease summaries
+
+This is not a general-purpose storage chain.
+It is a practical storage market for OpenFox artifacts.
+
+Design constraints:
+
+- content-addressed bundles
+- immutable content
+- storage leases with explicit `TTL`
+- signed storage receipts
+- optional audits during the lease window
+- lightweight `TOS` anchors instead of full on-chain blobs
+
+Suggested capability surface:
+
+- `storage.quote`
+- `storage.put`
+- `storage.get`
+- `storage.head`
+- `storage.audit`
+- `storage.renew`
+
+Required work:
+
+- define the canonical bundle manifest format
+- add an OpenFox storage client for `CID`-addressed bundles
+- add a storage-provider service mode with paid quote/put/get flows
+- add lease, receipt, and audit record storage in the OpenFox database
+- bind storage payments to issued storage receipts
+- define lightweight `TOS` storage anchors for `cid`, `bundle_hash`, `lease_root`, and expiry summaries
+- publish storage providers through Agent Discovery and optional Agent Gateway
+- add operator-facing status, health, and doctor visibility for stored artifacts and lease health
+
+Acceptance criteria:
+
+- one OpenFox agent can store a bundle with one or more storage-provider agents
+- the provider returns a signed receipt for the active lease
+- the same `CID` can be retrieved before expiry
+- the provider cannot modify content in place under the same `CID`
+- a lightweight summary of the storage result can be anchored to `TOS`
+
+Delivered surface target:
+
+- `OpenFox-IPFS-Market-v0.md`
+- paid storage provider mode inside OpenFox
+- canonical bundle manifest and `CID` handling
+- persisted lease and receipt tracking
+- retrieval and audit endpoints
+- lightweight `TOS` anchor support for stored bundles
+- `openfox storage list|quote|put|head|get|audit`
+- storage lease, audit, and anchor visibility in `status`, `health`, and `doctor`
+
+### Phase 7: Verifiable Public News and Oracle Bundles
+
+Status: completed
+
+Goal:
+
+- build a verifiable public-artifact pipeline on top of the storage market, starting with public news capture and oracle evidence
+
+This phase should use the storage market as the artifact layer for:
+
+- public news capture bundles
+- `zk-TLS` evidence bundles
+- verifier receipts
+- committee vote bundles
+- aggregate oracle reports
+
+The intended workflow is:
+
+`public bounty -> capture evidence -> verify evidence -> committee resolution -> store immutable bundle -> anchor lightweight summary to TOS`
+
+Required work:
+
+- define canonical bundle kinds for news evidence and oracle aggregation
+- add sponsor and bounty flows for public evidence capture
+- add verifier flows for evidence checking
+- add committee-result packaging for `M-of-N` agent voting
+- bind final result summaries to `TOS` anchors while storing full artifacts in the IPFS market
+
+Acceptance criteria:
+
+- a public news or oracle artifact can be captured, bundled, stored, and later retrieved by `CID`
+- the final result summary is anchored on `TOS`
+- the chain remains lightweight while the full evidence stays available through the storage market
+
+Delivered surface:
+
+- canonical artifact verification and anchor hashing helpers in `tosdk`
+- persisted artifact, verification, and anchor records in OpenFox
+- `openfox artifacts list|get|capture-news|oracle-evidence|oracle-aggregate|committee-vote|verify|anchor`
+- storage-backed public news capture bundles
+- storage-backed oracle evidence, committee vote, and aggregate bundles
+- local verification receipts with persistent verification records
+- lightweight native artifact anchors with persistent anchor records
+- artifact visibility in `openfox status`, `openfox health`, and `openfox doctor`
+
 ## 4. Near-Term Priorities
 
 Suggested priority order:
 
 ### P0: Do Immediately
 
-- harden multi-node production deployment guidance
-- add broader real-node integration testing for marketplace/provider flows
-- tighten anti-abuse and reputation closure around paid and sponsored flows
+- harden multi-node deployment guidance for client/provider/gateway/storage-provider roles
+- broaden artifact verification and indexing around anchored public bundles
+- add sponsor and bounty flows for public evidence capture
 
 ### P1: Do Next
 
-- run a broader multi-node testnet deployment for host/provider/gateway roles
-- extend operator deployment automation beyond local wrapper scripts
-- add more production-style monitoring and alerting around provider flows
+- run a broader multi-node testnet deployment for client/provider/gateway/storage-provider roles
+- add audit, renewal, and replication policy for stored bundles
+- extend operator deployment automation and monitoring around long-lived storage leases
+- add sponsor and bounty flows for public evidence capture
+- add stronger public indexing and search over anchored bundle summaries
 
 ### P2: Do Later
 
-- extract `tos-agent-kit`
-- write developer documentation for testnet usage
-- build operator onboarding materials
+- add stronger provider reputation and lease-health reporting
+- extract more reusable SDK surfaces for third-party storage and artifact clients
 
 ## 5. What Not to Do Yet
 
 - do not start with a general agent execution marketplace
 - do not start with a complex oracle dispute system
 - do not start with a full `zkTLS + SNARK` proof pipeline
+- do not push large artifacts and proof bundles directly onto `TOS`
 - do not push all application logic into native chain modules
+- do not try to build a Filecoin-scale storage economy in v0
 
 The more reasonable strategy for now is:
 
@@ -405,12 +519,14 @@ The more reasonable strategy for now is:
 - `openfox` provides agent runtime integration
 - the first product loop begins with `testnet bounty + agent discovery + manual judging`
 - paid services later expand into `oracle + observation`
+- the current mainline now includes `agent-native paid storage + immutable artifact bundles + lightweight TOS anchors`
+- the next mainline broadens public artifact capture, indexing, and multi-node deployment on top of that storage layer
 
 ## 6. Recommended Next Step
 
 There are only two next steps that matter most:
 
-1. harden real multi-node deployment and production operator workflows
-2. strengthen abuse resistance, policy closure, and reputation around paid services
+1. run a broader multi-node deployment for client/provider/gateway/storage-provider roles around the completed artifact pipeline
+2. add stronger public indexing, sponsor flows, and verification coverage for anchored artifact bundles
 
-Only after these two steps are complete should we expand into broader marketplace and ecosystem-facing phases.
+Only after these two steps are complete should we expand into broader marketplace, reputation, and ecosystem-facing phases.

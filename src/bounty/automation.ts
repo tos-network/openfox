@@ -43,6 +43,10 @@ function resolveBountySkillName(config: BountyConfig): string {
         ? "social-bounty-host"
         : config.defaultKind === "problem_solving"
           ? "problem-bounty-host"
+          : config.defaultKind === "public_news_capture"
+            ? "public-news-capture-host"
+            : config.defaultKind === "oracle_evidence_capture"
+              ? "oracle-evidence-capture-host"
           : "question-bounty-host";
   const defaultSolverSkill =
     config.defaultKind === "translation"
@@ -51,6 +55,10 @@ function resolveBountySkillName(config: BountyConfig): string {
         ? "social-bounty-solver"
         : config.defaultKind === "problem_solving"
           ? "problem-bounty-solver"
+          : config.defaultKind === "public_news_capture"
+            ? "public-news-capture-solver"
+            : config.defaultKind === "oracle_evidence_capture"
+              ? "oracle-evidence-capture-solver"
           : "question-bounty-solver";
   if (config.role === "solver") {
     return config.skill === "question-bounty-host"

@@ -53,6 +53,13 @@ export interface ServiceStatusSnapshot {
           capability: string;
         }
       | null;
+    storage:
+      | {
+          url: string;
+          capabilityPrefix: string;
+          allowAnonymousGet: boolean;
+        }
+      | null;
     routes: ServiceRouteSnapshot[];
   };
   gatewayServer:
@@ -157,6 +164,7 @@ function detectServiceRoles(config: OpenFoxConfig): string[] {
     config.agentDiscovery?.faucetServer?.enabled ||
     config.agentDiscovery?.observationServer?.enabled ||
     config.agentDiscovery?.oracleServer?.enabled ||
+    config.storage?.enabled ||
     (config.agentDiscovery?.gatewayClient?.enabled &&
       (config.agentDiscovery.gatewayClient.routes?.length ?? 0) > 0)
   ) {
@@ -204,6 +212,15 @@ function inferProviderRoutes(config: OpenFoxConfig): Array<{
       capability: oracle.capability,
       mode: "paid",
       targetUrl: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
+    });
+  }
+  const storage = config.storage;
+  if (storage?.enabled && storage.port > 0) {
+    routes.push({
+      path: `${storage.pathPrefix.replace(/\/$/, "")}/put`,
+      capability: `${storage.capabilityPrefix}.put`,
+      mode: "paid",
+      targetUrl: buildLocalHttpUrl(storage.bindHost, storage.port, `${storage.pathPrefix}/put`),
     });
   }
   return routes;
@@ -325,6 +342,11 @@ export function buildServiceStatusReport(
       `  - oracle: ${snapshot.providerSurfaces.oracle.url}  capability=${snapshot.providerSurfaces.oracle.capability}`,
     );
   }
+  if (snapshot.providerSurfaces.storage) {
+    lines.push(
+      `  - storage: ${snapshot.providerSurfaces.storage.url}  capability_prefix=${snapshot.providerSurfaces.storage.capabilityPrefix}  anonymous_get=${yesNo(snapshot.providerSurfaces.storage.allowAnonymousGet)}`,
+    );
+  }
   for (const route of snapshot.providerSurfaces.routes) {
     lines.push(
       `  - route: ${route.path} -> ${route.targetUrl}  capability=${route.capability}  mode=${route.mode}`,
@@ -334,6 +356,7 @@ export function buildServiceStatusReport(
     !snapshot.providerSurfaces.faucet &&
     !snapshot.providerSurfaces.observation &&
     !snapshot.providerSurfaces.oracle &&
+    !snapshot.providerSurfaces.storage &&
     snapshot.providerSurfaces.routes.length === 0
   ) {
     lines.push("  (none)");
@@ -389,6 +412,7 @@ export function buildServiceStatusSnapshot(
   const faucet = config.agentDiscovery?.faucetServer;
   const observation = config.agentDiscovery?.observationServer;
   const oracle = config.agentDiscovery?.oracleServer;
+  const storage = config.storage;
 
   return {
     roles: detectServiceRoles(config),
@@ -428,6 +452,14 @@ export function buildServiceStatusSnapshot(
           ? {
               url: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
               capability: oracle.capability,
+            }
+          : null,
+      storage:
+        storage?.enabled && storage.port > 0
+          ? {
+              url: buildLocalHttpUrl(storage.bindHost, storage.port, storage.pathPrefix),
+              capabilityPrefix: storage.capabilityPrefix,
+              allowAnonymousGet: storage.allowAnonymousGet,
             }
           : null,
       routes: inferProviderRoutes(config),
@@ -695,6 +727,12 @@ export async function buildServiceHealthSnapshot(
   const oracle = config.agentDiscovery?.oracleServer;
   if (oracle?.enabled && oracle.port > 0) {
     const base = buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path);
+    checks.push(await probeHttpJson(`${base}/healthz`));
+  }
+
+  const storage = config.storage;
+  if (storage?.enabled && storage.port > 0) {
+    const base = buildLocalHttpUrl(storage.bindHost, storage.port, storage.pathPrefix);
     checks.push(await probeHttpJson(`${base}/healthz`));
   }
 

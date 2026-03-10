@@ -46,7 +46,18 @@ function getTargetConfig(
   config: SettlementCallbackConfig,
   kind: SettlementKind,
 ): SettlementCallbackTargetConfig {
-  return config[kind];
+  switch (kind) {
+    case "bounty":
+      return config.bounty;
+    case "observation":
+      return config.observation;
+    case "oracle":
+      return config.oracle;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unsupported settlement kind: ${exhaustive}`);
+    }
+  }
 }
 
 function buildCallbackId(receiptId: string, contractAddress: Address): string {

@@ -129,13 +129,30 @@ import { createNativeSettlementCallbackDispatcher } from "./settlement/callbacks
 import { createMarketBindingPublisher } from "./market/publisher.js";
 import { createMarketContractDispatcher } from "./market/contracts.js";
 import { createX402PaymentManager } from "./tos/x402-server.js";
+import { startStorageProviderServer } from "./storage/http.js";
+import {
+  auditStoredBundle,
+  getStorageHead,
+  getStoredBundle,
+  requestStorageQuote,
+  storeBundleWithProvider,
+} from "./storage/client.js";
+import { createArtifactManager } from "./artifacts/manager.js";
+import { createNativeArtifactAnchorPublisher } from "./artifacts/publisher.js";
+import fs from "fs/promises";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
 
 function resolveBountySkillName(config: {
   role: "host" | "solver";
-  defaultKind: "question" | "translation" | "social_proof" | "problem_solving";
+  defaultKind:
+    | "question"
+    | "translation"
+    | "social_proof"
+    | "problem_solving"
+    | "public_news_capture"
+    | "oracle_evidence_capture";
   skill: string;
 }): string {
   const defaultHostSkill =
@@ -145,6 +162,10 @@ function resolveBountySkillName(config: {
         ? "social-bounty-host"
         : config.defaultKind === "problem_solving"
           ? "problem-bounty-host"
+          : config.defaultKind === "public_news_capture"
+            ? "public-news-capture-host"
+            : config.defaultKind === "oracle_evidence_capture"
+              ? "oracle-evidence-capture-host"
           : "question-bounty-host";
   const defaultSolverSkill =
     config.defaultKind === "translation"
@@ -153,6 +174,10 @@ function resolveBountySkillName(config: {
         ? "social-bounty-solver"
         : config.defaultKind === "problem_solving"
           ? "problem-bounty-solver"
+          : config.defaultKind === "public_news_capture"
+            ? "public-news-capture-solver"
+            : config.defaultKind === "oracle_evidence_capture"
+              ? "oracle-evidence-capture-solver"
           : "question-bounty-solver";
   if (config.role === "solver") {
     return config.skill === "question-bounty-host"
@@ -257,6 +282,16 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "storage") {
+    await handleStorageCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "artifacts") {
+    await handleArtifactCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "status") {
     await showStatus({ asJson: args.includes("--json") });
     process.exit(0);
@@ -291,6 +326,8 @@ Usage:
   openfox market ...     Inspect contract-native market bindings and callbacks
   openfox payments ...   Inspect and recover server-side x402 payments
   openfox scout ...      Discover earning opportunities and task surfaces
+  openfox storage ...    Use the OpenFox storage market
+  openfox artifacts ...  Build and verify public news and oracle bundles
   openfox status         Show the current runtime status
   openfox --version      Show version
   openfox --help         Show this help
@@ -508,6 +545,17 @@ function readNumberOption(args: string[], flag: string, fallback: number): numbe
     throw new Error(`Invalid numeric value for ${flag}: ${raw}`);
   }
   return value;
+}
+
+function collectRepeatedOption(args: string[], flag: string): string[] {
+  const values: string[] = [];
+  for (let index = 0; index < args.length; index += 1) {
+    if (args[index] === flag) {
+      const value = args[index + 1]?.trim();
+      if (value) values.push(value);
+    }
+  }
+  return values;
 }
 
 async function withHeartbeatContext<T>(
@@ -1127,7 +1175,7 @@ OpenFox bounty
 Usage:
   openfox bounty list [--url <base-url>]
   openfox bounty status <bounty-id> [--url <base-url>]
-  openfox bounty open --kind <question|translation|social_proof|problem_solving> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--skill <name>]
+  openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--skill <name>]
   openfox bounty open --question "<text>" --answer "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>]
   openfox bounty submit <bounty-id> --submission "<text>" [--proof-url <url>] [--url <base-url>]
   openfox bounty submit <bounty-id> --answer "<text>" [--url <base-url>]
@@ -1232,7 +1280,7 @@ Usage:
         readOption(args, "--reference") || readOption(args, "--answer");
       if (!taskPrompt || !referenceOutput) {
         throw new Error(
-          'Usage: openfox bounty open --kind <question|translation|social_proof|problem_solving> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>]',
+          'Usage: openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>]',
         );
       }
       const ttlSeconds = readNumberOption(
@@ -1764,6 +1812,394 @@ Usage:
   }
 }
 
+async function handleStorageCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox storage
+
+Usage:
+  openfox storage list [--status <quoted|active|expired|released>] [--json]
+  openfox storage quote --provider <base-url> --input <path> [--kind <kind>] [--ttl-seconds N] [--json]
+  openfox storage put --provider <base-url> --input <path> [--kind <kind>] [--ttl-seconds N] [--quote-id <id>] [--json]
+  openfox storage head --provider <base-url> --cid <cid> [--json]
+  openfox storage get --provider <base-url> --cid <cid> [--output <path>] [--json]
+  openfox storage audit --provider <base-url> --lease <lease-id> [--json]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    if (command === "list") {
+      const status = readOption(args, "--status") as
+        | "quoted"
+        | "active"
+        | "expired"
+        | "released"
+        | undefined;
+      const leases = db.listStorageLeases(50, { status });
+      const audits = db.listStorageAudits(20);
+      const anchors = db.listStorageAnchors(20);
+      if (asJson) {
+        logger.info(JSON.stringify({ leases, audits, anchors }, null, 2));
+        return;
+      }
+      logger.info(`
+=== OPENFOX STORAGE LEASES ===
+Leases: ${leases.length}
+Audits: ${audits.length}
+Anchors: ${anchors.length}
+${leases
+  .map(
+    (item) =>
+      `${item.leaseId}  status=${item.status}  cid=${item.cid}  kind=${item.bundleKind}  expires=${item.receipt.expiresAt}`,
+  )
+  .join("\n")}
+==============================
+`);
+      return;
+    }
+
+    const providerBaseUrl = readOption(args, "--provider");
+    if (!providerBaseUrl) {
+      throw new Error("Missing --provider <base-url>.");
+    }
+
+    if (command === "quote") {
+      const inputPath = readOption(args, "--input");
+      if (!inputPath) throw new Error("Missing --input <path>.");
+      const ttlSeconds = readNumberOption(
+        args,
+        "--ttl-seconds",
+        config.storage?.defaultTtlSeconds ?? 86400,
+      );
+      const result = await requestStorageQuote({
+        providerBaseUrl,
+        inputPath: resolvePath(inputPath),
+        bundleKind: readOption(args, "--kind") || "artifact.bundle",
+        requesterAddress: config.walletAddress,
+        ttlSeconds,
+      });
+      logger.info(asJson ? JSON.stringify(result, null, 2) : JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "put") {
+      const inputPath = readOption(args, "--input");
+      if (!inputPath) throw new Error("Missing --input <path>.");
+      const ttlSeconds = readNumberOption(
+        args,
+        "--ttl-seconds",
+        config.storage?.defaultTtlSeconds ?? 86400,
+      );
+      const { account } = await getWallet();
+      const result = await storeBundleWithProvider({
+        providerBaseUrl,
+        inputPath: resolvePath(inputPath),
+        bundleKind: readOption(args, "--kind") || "artifact.bundle",
+        requesterAccount: account,
+        requesterAddress: config.walletAddress,
+        ttlSeconds,
+        quoteId: readOption(args, "--quote-id"),
+      });
+      logger.info(asJson ? JSON.stringify(result, null, 2) : JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "head") {
+      const cid = readOption(args, "--cid");
+      if (!cid) throw new Error("Missing --cid <cid>.");
+      const result = await getStorageHead({ providerBaseUrl, cid });
+      logger.info(asJson ? JSON.stringify(result, null, 2) : JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "get") {
+      const cid = readOption(args, "--cid");
+      if (!cid) throw new Error("Missing --cid <cid>.");
+      const result = await getStoredBundle({
+        providerBaseUrl,
+        cid,
+        outputPath: readOption(args, "--output")
+          ? resolvePath(readOption(args, "--output")!)
+          : undefined,
+      });
+      logger.info(asJson ? JSON.stringify(result, null, 2) : JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "audit") {
+      const leaseId = readOption(args, "--lease");
+      if (!leaseId) throw new Error("Missing --lease <lease-id>.");
+      const result = await auditStoredBundle({ providerBaseUrl, leaseId });
+      logger.info(asJson ? JSON.stringify(result, null, 2) : JSON.stringify(result, null, 2));
+      return;
+    }
+
+    throw new Error(`Unknown storage command: ${command}`);
+  } finally {
+    db.close();
+  }
+}
+
+async function handleArtifactCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox artifacts
+
+Usage:
+  openfox artifacts list [--kind <public_news.capture|oracle.evidence|oracle.aggregate|committee.vote>] [--status <stored|verified|anchored|failed>] [--json]
+  openfox artifacts get --artifact-id <id> [--json]
+  openfox artifacts capture-news --title "<text>" --source-url <url> [--headline "<text>"] [--body-file <path> | --body-text <text>] [--provider <base-url>] [--ttl-seconds N] [--anchor] [--json]
+  openfox artifacts oracle-evidence --title "<text>" --question "<text>" [--evidence-file <path> | --evidence-text <text>] [--source-url <url>] [--provider <base-url>] [--ttl-seconds N] [--anchor] [--json]
+  openfox artifacts oracle-aggregate --title "<text>" --question "<text>" --result "<text>" [--votes-file <path>] [--evidence-artifact <id>]... [--provider <base-url>] [--ttl-seconds N] [--anchor] [--json]
+  openfox artifacts committee-vote --title "<text>" --question "<text>" --voter-id "<id>" --vote "<text>" [--evidence-artifact <id>]... [--provider <base-url>] [--ttl-seconds N] [--anchor] [--json]
+  openfox artifacts verify --artifact-id <id> [--json]
+  openfox artifacts anchor --artifact-id <id> [--json]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    const { account, privateKey } = await getWallet();
+    const anchorPublisher =
+      config.artifacts?.anchor.enabled && config.rpcUrl
+        ? createNativeArtifactAnchorPublisher({
+            db,
+            rpcUrl: config.rpcUrl,
+            privateKey,
+            config: config.artifacts.anchor,
+            publisherAddress: config.walletAddress,
+          })
+        : undefined;
+    const manager = createArtifactManager({
+      identity: {
+        name: config.name,
+        address: config.walletAddress,
+        account,
+        creatorAddress: config.creatorAddress,
+        sandboxId: config.sandboxId,
+        apiKey: config.runtimeApiKey || loadApiKeyFromConfig() || "",
+        createdAt: db.getIdentity("createdAt") || new Date().toISOString(),
+      },
+      requesterAccount: account,
+      db,
+      config: config.artifacts ?? {
+        enabled: false,
+        defaultProviderBaseUrl: undefined,
+        defaultTtlSeconds: 604800,
+        autoAnchorOnStore: false,
+        captureCapability: "public_news.capture",
+        evidenceCapability: "oracle.evidence",
+        aggregateCapability: "oracle.aggregate",
+        verificationCapability: "artifact.verify",
+        anchor: {
+          enabled: false,
+          gas: "180000",
+          waitForReceipt: true,
+          receiptTimeoutMs: 60000,
+        },
+      },
+      anchorPublisher,
+    });
+
+    if (command === "list") {
+      const kind = readOption(args, "--kind") as
+        | "public_news.capture"
+        | "oracle.evidence"
+        | "oracle.aggregate"
+        | "committee.vote"
+        | undefined;
+      const status = readOption(args, "--status") as
+        | "stored"
+        | "verified"
+        | "anchored"
+        | "failed"
+        | undefined;
+      const items = manager.listArtifacts(50, { kind, status });
+      if (asJson) {
+        logger.info(JSON.stringify({ items }, null, 2));
+        return;
+      }
+      logger.info(
+        [
+          "=== OPENFOX ARTIFACTS ===",
+          `Artifacts: ${items.length}`,
+          ...items.map(
+            (item) =>
+              `${item.artifactId}  [${item.kind}]  status=${item.status}  cid=${item.cid}  title=${item.title}`,
+          ),
+          "=========================",
+        ].join("\n"),
+      );
+      return;
+    }
+
+    if (command === "get") {
+      const artifactId = readOption(args, "--artifact-id");
+      if (!artifactId) throw new Error("Missing --artifact-id <id>.");
+      const artifact = manager.getArtifact(artifactId);
+      if (!artifact) throw new Error(`Artifact not found: ${artifactId}`);
+      const verification = db.getArtifactVerificationByArtifactId(artifactId) ?? null;
+      const anchor = db.getArtifactAnchorByArtifactId(artifactId) ?? null;
+      logger.info(JSON.stringify({ artifact, verification, anchor }, null, 2));
+      return;
+    }
+
+    if (command === "capture-news") {
+      const title = readOption(args, "--title");
+      const sourceUrl = readOption(args, "--source-url");
+      const headline = readOption(args, "--headline") || title;
+      const bodyFile = readOption(args, "--body-file");
+      const bodyTextOption = readOption(args, "--body-text");
+      if (!title || !sourceUrl || !headline || (!bodyFile && !bodyTextOption)) {
+        throw new Error(
+          "Usage: openfox artifacts capture-news --title <text> --source-url <url> [--headline <text>] [--body-file <path> | --body-text <text>] [--provider <base-url>] [--ttl-seconds N] [--anchor]",
+        );
+      }
+      const bodyText = bodyTextOption ?? (await fs.readFile(resolvePath(bodyFile!), "utf8"));
+      const result = await manager.capturePublicNews({
+        providerBaseUrl: readOption(args, "--provider") || undefined,
+        title,
+        sourceUrl,
+        headline,
+        bodyText,
+        ttlSeconds: readNumberOption(
+          args,
+          "--ttl-seconds",
+          config.artifacts?.defaultTtlSeconds ?? 604800,
+        ),
+        autoAnchor: args.includes("--anchor"),
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "oracle-evidence") {
+      const title = readOption(args, "--title");
+      const question = readOption(args, "--question");
+      const evidenceFile = readOption(args, "--evidence-file");
+      const evidenceTextOption = readOption(args, "--evidence-text");
+      if (!title || !question || (!evidenceFile && !evidenceTextOption)) {
+        throw new Error(
+          "Usage: openfox artifacts oracle-evidence --title <text> --question <text> [--evidence-file <path> | --evidence-text <text>] [--source-url <url>] [--provider <base-url>] [--ttl-seconds N] [--anchor]",
+        );
+      }
+      const evidenceText =
+        evidenceTextOption ?? (await fs.readFile(resolvePath(evidenceFile!), "utf8"));
+      const result = await manager.createOracleEvidence({
+        providerBaseUrl: readOption(args, "--provider") || undefined,
+        title,
+        question,
+        evidenceText,
+        sourceUrl: readOption(args, "--source-url") || undefined,
+        ttlSeconds: readNumberOption(
+          args,
+          "--ttl-seconds",
+          config.artifacts?.defaultTtlSeconds ?? 604800,
+        ),
+        autoAnchor: args.includes("--anchor"),
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "oracle-aggregate") {
+      const title = readOption(args, "--title");
+      const question = readOption(args, "--question");
+      const resultText = readOption(args, "--result");
+      if (!title || !question || !resultText) {
+        throw new Error(
+          "Usage: openfox artifacts oracle-aggregate --title <text> --question <text> --result <text> [--votes-file <path>] [--evidence-artifact <id>]... [--provider <base-url>] [--ttl-seconds N] [--anchor]",
+        );
+      }
+      const evidenceArtifactIds = collectRepeatedOption(args, "--evidence-artifact");
+      const votesFile = readOption(args, "--votes-file");
+      const committeeVotes = votesFile
+        ? (JSON.parse(await fs.readFile(resolvePath(votesFile), "utf8")) as Array<Record<string, unknown>>)
+        : [];
+      const result = await manager.createOracleAggregate({
+        providerBaseUrl: readOption(args, "--provider") || undefined,
+        title,
+        question,
+        resultText,
+        committeeVotes,
+        evidenceArtifactIds,
+        ttlSeconds: readNumberOption(
+          args,
+          "--ttl-seconds",
+          config.artifacts?.defaultTtlSeconds ?? 604800,
+        ),
+        autoAnchor: args.includes("--anchor"),
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "committee-vote") {
+      const title = readOption(args, "--title");
+      const question = readOption(args, "--question");
+      const voterId = readOption(args, "--voter-id");
+      const voteText = readOption(args, "--vote");
+      if (!title || !question || !voterId || !voteText) {
+        throw new Error(
+          "Usage: openfox artifacts committee-vote --title <text> --question <text> --voter-id <id> --vote <text> [--evidence-artifact <id>]... [--provider <base-url>] [--ttl-seconds N] [--anchor]",
+        );
+      }
+      const evidenceArtifactIds = collectRepeatedOption(args, "--evidence-artifact");
+      const result = await manager.createCommitteeVote({
+        providerBaseUrl: readOption(args, "--provider") || undefined,
+        title,
+        question,
+        voterId,
+        voteText,
+        evidenceArtifactIds,
+        ttlSeconds: readNumberOption(
+          args,
+          "--ttl-seconds",
+          config.artifacts?.defaultTtlSeconds ?? 604800,
+        ),
+        autoAnchor: args.includes("--anchor"),
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "verify") {
+      const artifactId = readOption(args, "--artifact-id");
+      if (!artifactId) throw new Error("Missing --artifact-id <id>.");
+      const result = await manager.verifyArtifact({ artifactId });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "anchor") {
+      const artifactId = readOption(args, "--artifact-id");
+      if (!artifactId) throw new Error("Missing --artifact-id <id>.");
+      const result = await manager.anchorArtifact({ artifactId });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    throw new Error(`Unknown artifacts command: ${command}`);
+  } finally {
+    db.close();
+  }
+}
+
 // ─── Status Command ────────────────────────────────────────────
 
 async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
@@ -1807,6 +2243,14 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
   const failedX402Payments = db.listX402Payments(100, {
     status: "failed",
   }).length;
+  const storageLeases = db.listStorageLeases(5);
+  const activeStorageLeaseCount = db.listStorageLeases(100, { status: "active" }).length;
+  const storageAudits = db.listStorageAudits(5);
+  const storageAnchors = db.listStorageAnchors(5);
+  const artifacts = db.listArtifacts(5);
+  const verifiedArtifactCount = db.listArtifacts(100, { status: "verified" }).length;
+  const anchoredArtifactCount = db.listArtifacts(100, { status: "anchored" }).length;
+  const artifactAnchors = db.listArtifactAnchors(5);
   const discovery = config.agentDiscovery;
   const gatewaySummary = discovery?.gatewayClient?.enabled
     ? discovery.gatewayClient.gatewayUrl || "discovery/bootnodes"
@@ -1862,6 +2306,74 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
             txHash: item.txHash,
             boundKind: item.boundKind,
             boundSubjectId: item.boundSubjectId,
+          })),
+        }
+      : null,
+    storage: config.storage
+      ? {
+          enabled: config.storage.enabled,
+          bind: `${config.storage.bindHost}:${config.storage.port}`,
+          pathPrefix: config.storage.pathPrefix,
+          capabilityPrefix: config.storage.capabilityPrefix,
+          storageDir: config.storage.storageDir,
+          publishToDiscovery: config.storage.publishToDiscovery,
+          allowAnonymousGet: config.storage.allowAnonymousGet,
+          anchor: {
+            enabled: config.storage.anchor.enabled,
+            sinkAddress: config.storage.anchor.sinkAddress || null,
+          },
+          activeLeaseCount: activeStorageLeaseCount,
+          recentLeases: storageLeases.map((item) => ({
+            leaseId: item.leaseId,
+            cid: item.cid,
+            bundleKind: item.bundleKind,
+            status: item.status,
+            expiresAt: item.receipt.expiresAt,
+            anchorTxHash: item.anchorTxHash,
+          })),
+          recentAudits: storageAudits.map((item) => ({
+            auditId: item.auditId,
+            leaseId: item.leaseId,
+            status: item.status,
+            checkedAt: item.checkedAt,
+          })),
+          recentAnchors: storageAnchors.map((item) => ({
+            anchorId: item.anchorId,
+            leaseId: item.leaseId,
+            summaryHash: item.summaryHash,
+            anchorTxHash: item.anchorTxHash,
+          })),
+        }
+      : null,
+    artifacts: config.artifacts
+      ? {
+          enabled: config.artifacts.enabled,
+          defaultProviderBaseUrl: config.artifacts.defaultProviderBaseUrl || null,
+          defaultTtlSeconds: config.artifacts.defaultTtlSeconds,
+          autoAnchorOnStore: config.artifacts.autoAnchorOnStore,
+          captureCapability: config.artifacts.captureCapability,
+          evidenceCapability: config.artifacts.evidenceCapability,
+          aggregateCapability: config.artifacts.aggregateCapability,
+          verificationCapability: config.artifacts.verificationCapability,
+          anchor: {
+            enabled: config.artifacts.anchor.enabled,
+            sinkAddress: config.artifacts.anchor.sinkAddress || null,
+          },
+          verifiedCount: verifiedArtifactCount,
+          anchoredCount: anchoredArtifactCount,
+          recentArtifacts: artifacts.map((item) => ({
+            artifactId: item.artifactId,
+            kind: item.kind,
+            status: item.status,
+            cid: item.cid,
+            title: item.title,
+            anchorId: item.anchorId,
+          })),
+          recentAnchors: artifactAnchors.map((item) => ({
+            anchorId: item.anchorId,
+            artifactId: item.artifactId,
+            summaryHash: item.summaryHash,
+            anchorTxHash: item.anchorTxHash,
           })),
         }
       : null,
@@ -1959,6 +2471,8 @@ Discovery:  ${discovery?.enabled ? "enabled" : "disabled"}
 Gateway:    ${gatewaySummary}
 Bounty:     ${config.bounty?.enabled ? `${config.bounty.role}/${config.bounty.defaultKind} @ ${config.bounty.bindHost}:${config.bounty.port}${config.bounty.pathPrefix}` : "disabled"}
 Bounty auto: ${config.bounty?.enabled ? `open=${config.bounty.autoOpenOnStartup || config.bounty.autoOpenWhenIdle ? "on" : "off"} solve=${config.bounty.autoSolveOnStartup || config.bounty.autoSolveEnabled ? "on" : "off"}` : "disabled"}
+Storage:    ${config.storage?.enabled ? `enabled (${activeStorageLeaseCount} active lease${activeStorageLeaseCount === 1 ? "" : "s"}, ${storageAnchors.length} recent anchor${storageAnchors.length === 1 ? "" : "s"})` : "disabled"}
+Artifacts:  ${config.artifacts?.enabled ? `enabled (${artifacts.length} recent, ${anchoredArtifactCount} anchored)` : "disabled"}
 x402:       ${config.x402Server?.enabled ? `enabled (${x402Payments.length} recent payment${x402Payments.length === 1 ? "" : "s"}, ${pendingX402Payments} pending, ${failedX402Payments} failed)` : "disabled"}
 Settlement: ${config.settlement?.enabled ? `enabled (${settlements.length} recent receipt${settlements.length === 1 ? "" : "s"}, ${pendingSettlementCallbacks} pending callback${pendingSettlementCallbacks === 1 ? "" : "s"})` : "disabled"}
 Market:     ${config.marketContracts?.enabled ? `enabled (${marketBindings.length} recent binding${marketBindings.length === 1 ? "" : "s"}, ${pendingMarketCallbacks} pending callback${pendingMarketCallbacks === 1 ? "" : "s"})` : "disabled"}
@@ -2075,6 +2589,9 @@ async function run(): Promise<void> {
   let oracleServer:
     | Awaited<ReturnType<typeof startAgentDiscoveryOracleServer>>
     | undefined;
+  let storageServer:
+    | Awaited<ReturnType<typeof startStorageProviderServer>>
+    | undefined;
   let bountyServer:
     | Awaited<ReturnType<typeof startBountyHttpServer>>
     | undefined;
@@ -2189,6 +2706,24 @@ async function run(): Promise<void> {
     }
   }
 
+  if (config.storage?.enabled) {
+    try {
+      storageServer = await startStorageProviderServer({
+        identity,
+        config,
+        address,
+        privateKey,
+        db,
+        storageConfig: config.storage,
+      });
+      logger.info(`Storage provider enabled at ${storageServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Storage provider failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   if (config.agentDiscovery?.gatewayServer?.enabled) {
     try {
       if (
@@ -2269,6 +2804,7 @@ async function run(): Promise<void> {
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
         oracleUrl: oracleServer?.url,
+        storageUrl: storageServer?.url,
       });
       current = buildPublishedAgentDiscoveryConfig({
         baseConfig: current,
@@ -2356,6 +2892,49 @@ async function run(): Promise<void> {
         ],
       };
     }
+    if (current && storageServer && config.storage?.enabled && config.storage.publishToDiscovery) {
+      current = {
+        ...current,
+        endpoints: [
+          ...current.endpoints,
+          {
+            kind: "http",
+            url: storageServer.url,
+            role: "requester_invocation",
+          },
+        ],
+        capabilities: [
+          ...current.capabilities,
+          {
+            name: `${config.storage.capabilityPrefix}.quote`,
+            mode: "sponsored",
+            description: "Quote immutable bundle storage leases",
+          },
+          {
+            name: `${config.storage.capabilityPrefix}.put`,
+            mode: "paid",
+            priceModel: "x402-exact",
+            description: "Store an immutable bundle by CID and receive a signed lease receipt",
+          },
+          {
+            name: `${config.storage.capabilityPrefix}.head`,
+            mode: "sponsored",
+            description: "Read metadata for a stored bundle lease",
+          },
+          {
+            name: `${config.storage.capabilityPrefix}.get`,
+            mode: config.storage.allowAnonymousGet ? "sponsored" : "paid",
+            priceModel: config.storage.allowAnonymousGet ? undefined : "x402-exact",
+            description: "Retrieve a stored bundle by CID",
+          },
+          {
+            name: `${config.storage.capabilityPrefix}.audit`,
+            mode: "sponsored",
+            description: "Audit whether a provider still holds a leased bundle",
+          },
+        ],
+      };
+    }
     return current;
   };
 
@@ -2398,6 +2977,7 @@ async function run(): Promise<void> {
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
         oracleUrl: oracleServer?.url,
+        storageUrl: storageServer?.url,
       });
       if (!routes.length) {
         logger.warn(
@@ -2605,6 +3185,7 @@ async function run(): Promise<void> {
     Promise.allSettled([
       bountyServer?.close(),
       bountyAutomation?.close(),
+      storageServer?.close(),
       gatewayProviderSessions?.close(),
       gatewayServer?.close(),
       faucetServer?.close(),

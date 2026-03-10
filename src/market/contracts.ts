@@ -39,7 +39,18 @@ function getTargetConfig(
   config: MarketContractConfig,
   kind: MarketBindingKind,
 ): MarketContractTargetConfig {
-  return config[kind];
+  switch (kind) {
+    case "bounty":
+      return config.bounty;
+    case "observation":
+      return config.observation;
+    case "oracle":
+      return config.oracle;
+    default: {
+      const exhaustive: never = kind;
+      throw new Error(`Unsupported market binding kind: ${exhaustive}`);
+    }
+  }
 }
 
 function buildCallbackId(bindingId: string, contractAddress: Address): string {

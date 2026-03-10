@@ -103,10 +103,33 @@ describe("service operator", () => {
           routes: [],
         },
       },
+      storage: {
+        enabled: true,
+        bindHost: "127.0.0.1",
+        port: 4895,
+        pathPrefix: "/storage",
+        capabilityPrefix: "storage.ipfs",
+        storageDir: "/tmp/openfox-storage",
+        quoteValiditySeconds: 300,
+        defaultTtlSeconds: 86400,
+        maxTtlSeconds: 2592000,
+        maxBundleBytes: 8 * 1024 * 1024,
+        minimumPriceWei: "1000",
+        pricePerMiBWei: "1000",
+        publishToDiscovery: true,
+        allowAnonymousGet: true,
+        anchor: {
+          enabled: false,
+          gas: "180000",
+          waitForReceipt: true,
+          receiptTimeoutMs: 60000,
+        },
+      },
     });
 
     const snapshot = buildServiceStatusSnapshot(config, db.raw);
     expect(snapshot.roles).toEqual(["requester", "provider", "gateway"]);
+    expect(snapshot.providerSurfaces.storage?.capabilityPrefix).toBe("storage.ipfs");
     expect(snapshot.gatewayCache?.providerSessionCacheEntries).toBe(1);
     expect(snapshot.gatewayCache?.serverSessionCacheEntries).toBe(1);
     expect(snapshot.x402Server.enabled).toBe(true);
@@ -114,6 +137,7 @@ describe("service operator", () => {
     const report = buildServiceStatusReport(config, db.raw);
     expect(report).toContain("Roles: requester, provider, gateway");
     expect(report).toContain("x402 server:");
+    expect(report).toContain("capability_prefix=storage.ipfs");
     expect(report).toContain("provider session cache entries: 1");
     expect(report).toContain("server session cache entries: 1");
 
@@ -181,6 +205,28 @@ describe("service operator", () => {
           requestTimeoutMs: 5000,
           maxRoutesPerSession: 8,
           maxRequestBodyBytes: 131072,
+        },
+      },
+      storage: {
+        enabled: true,
+        bindHost: faucetUrl.hostname,
+        port: Number(faucetUrl.port),
+        pathPrefix: "",
+        capabilityPrefix: "storage.ipfs",
+        storageDir: "/tmp/openfox-storage",
+        quoteValiditySeconds: 300,
+        defaultTtlSeconds: 86400,
+        maxTtlSeconds: 2592000,
+        maxBundleBytes: 8 * 1024 * 1024,
+        minimumPriceWei: "1000",
+        pricePerMiBWei: "1000",
+        publishToDiscovery: true,
+        allowAnonymousGet: true,
+        anchor: {
+          enabled: false,
+          gas: "180000",
+          waitForReceipt: true,
+          receiptTimeoutMs: 60000,
         },
       },
     });

@@ -27,6 +27,11 @@ import type {
   InboxMessage,
   BountyRecord,
   BountyResultRecord,
+  ArtifactAnchorRecord,
+  ArtifactRecord,
+  ArtifactRecordStatus,
+  ArtifactVerificationRecord,
+  ArtifactBundleKind,
   MarketBindingKind,
   MarketBindingRecord,
   MarketContractCallbackRecord,
@@ -41,6 +46,12 @@ import type {
   X402PaymentRecord,
   X402PaymentServiceKind,
   X402PaymentStatus,
+  StorageAnchorRecord,
+  StorageAuditRecord,
+  StorageAuditStatus,
+  StorageLeaseRecord,
+  StorageLeaseStatus,
+  StorageQuoteRecord,
 } from "../types.js";
 import { DEFAULT_BOUNTY_POLICY } from "../types.js";
 import {
@@ -68,6 +79,8 @@ import {
   MIGRATION_V15,
   MIGRATION_V16,
   MIGRATION_V17,
+  MIGRATION_V18,
+  MIGRATION_V19,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -1108,6 +1121,451 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     return rows.map(deserializeX402PaymentRecord);
   };
 
+  const upsertStorageQuote = (record: StorageQuoteRecord): void => {
+    db.prepare(
+      `INSERT INTO storage_quotes (
+        quote_id, requester_address, provider_address, cid, bundle_kind, size_bytes,
+        ttl_seconds, amount_wei, status, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(quote_id) DO UPDATE SET
+        requester_address = excluded.requester_address,
+        provider_address = excluded.provider_address,
+        cid = excluded.cid,
+        bundle_kind = excluded.bundle_kind,
+        size_bytes = excluded.size_bytes,
+        ttl_seconds = excluded.ttl_seconds,
+        amount_wei = excluded.amount_wei,
+        status = excluded.status,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.quoteId,
+      record.requesterAddress,
+      record.providerAddress,
+      record.cid,
+      record.bundleKind,
+      record.sizeBytes,
+      record.ttlSeconds,
+      record.amountWei,
+      record.status,
+      record.expiresAt,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getStorageQuote = (quoteId: string): StorageQuoteRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM storage_quotes WHERE quote_id = ?")
+      .get(quoteId) as any | undefined;
+    return row ? deserializeStorageQuoteRecord(row) : undefined;
+  };
+
+  const listStorageQuotes = (
+    limit: number,
+    filters?: { status?: StorageQuoteRecord["status"] },
+  ): StorageQuoteRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(`SELECT * FROM storage_quotes ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit) as any[];
+    return rows.map(deserializeStorageQuoteRecord);
+  };
+
+  const upsertStorageLease = (record: StorageLeaseRecord): void => {
+    db.prepare(
+      `INSERT INTO storage_leases (
+        lease_id, quote_id, cid, bundle_hash, bundle_kind, requester_address,
+        provider_address, size_bytes, ttl_seconds, amount_wei, status, storage_path,
+        request_key, payment_id, receipt_json, receipt_hash, anchor_tx_hash,
+        anchor_receipt_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(lease_id) DO UPDATE SET
+        quote_id = excluded.quote_id,
+        cid = excluded.cid,
+        bundle_hash = excluded.bundle_hash,
+        bundle_kind = excluded.bundle_kind,
+        requester_address = excluded.requester_address,
+        provider_address = excluded.provider_address,
+        size_bytes = excluded.size_bytes,
+        ttl_seconds = excluded.ttl_seconds,
+        amount_wei = excluded.amount_wei,
+        status = excluded.status,
+        storage_path = excluded.storage_path,
+        request_key = excluded.request_key,
+        payment_id = excluded.payment_id,
+        receipt_json = excluded.receipt_json,
+        receipt_hash = excluded.receipt_hash,
+        anchor_tx_hash = excluded.anchor_tx_hash,
+        anchor_receipt_json = excluded.anchor_receipt_json,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.leaseId,
+      record.quoteId ?? null,
+      record.cid,
+      record.bundleHash,
+      record.bundleKind,
+      record.requesterAddress,
+      record.providerAddress,
+      record.sizeBytes,
+      record.ttlSeconds,
+      record.amountWei,
+      record.status,
+      record.storagePath,
+      record.requestKey,
+      record.paymentId ?? null,
+      JSON.stringify(record.receipt),
+      record.receiptHash,
+      record.anchorTxHash ?? null,
+      record.anchorReceipt ? JSON.stringify(record.anchorReceipt) : null,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getStorageLease = (leaseId: string): StorageLeaseRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM storage_leases WHERE lease_id = ?")
+      .get(leaseId) as any | undefined;
+    return row ? deserializeStorageLeaseRecord(row) : undefined;
+  };
+
+  const getStorageLeaseByCid = (cid: string): StorageLeaseRecord | undefined => {
+    const row = db
+      .prepare(
+        `SELECT * FROM storage_leases
+         WHERE cid = ?
+         ORDER BY CASE status
+           WHEN 'active' THEN 0
+           WHEN 'quoted' THEN 1
+           WHEN 'expired' THEN 2
+           ELSE 3
+         END, created_at DESC
+         LIMIT 1`,
+      )
+      .get(cid) as any | undefined;
+    return row ? deserializeStorageLeaseRecord(row) : undefined;
+  };
+
+  const listStorageLeases = (
+    limit: number,
+    filters?: {
+      status?: StorageLeaseStatus;
+      providerAddress?: string;
+      requesterAddress?: string;
+    },
+  ): StorageLeaseRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.providerAddress) {
+      clauses.push("provider_address = ?");
+      params.push(filters.providerAddress);
+    }
+    if (filters?.requesterAddress) {
+      clauses.push("requester_address = ?");
+      params.push(filters.requesterAddress);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(`SELECT * FROM storage_leases ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit) as any[];
+    return rows.map(deserializeStorageLeaseRecord);
+  };
+
+  const upsertStorageAudit = (record: StorageAuditRecord): void => {
+    db.prepare(
+      `INSERT INTO storage_audits (
+        audit_id, lease_id, cid, status, challenge_nonce, response_hash, details_json,
+        checked_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(audit_id) DO UPDATE SET
+        lease_id = excluded.lease_id,
+        cid = excluded.cid,
+        status = excluded.status,
+        challenge_nonce = excluded.challenge_nonce,
+        response_hash = excluded.response_hash,
+        details_json = excluded.details_json,
+        checked_at = excluded.checked_at,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.auditId,
+      record.leaseId,
+      record.cid,
+      record.status,
+      record.challengeNonce,
+      record.responseHash,
+      record.details ? JSON.stringify(record.details) : null,
+      record.checkedAt,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getStorageAudit = (auditId: string): StorageAuditRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM storage_audits WHERE audit_id = ?")
+      .get(auditId) as any | undefined;
+    return row ? deserializeStorageAuditRecord(row) : undefined;
+  };
+
+  const listStorageAudits = (
+    limit: number,
+    filters?: { leaseId?: string; status?: StorageAuditStatus },
+  ): StorageAuditRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.leaseId) {
+      clauses.push("lease_id = ?");
+      params.push(filters.leaseId);
+    }
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(`SELECT * FROM storage_audits ${where} ORDER BY checked_at DESC LIMIT ?`)
+      .all(...params, limit) as any[];
+    return rows.map(deserializeStorageAuditRecord);
+  };
+
+  const upsertStorageAnchor = (record: StorageAnchorRecord): void => {
+    db.prepare(
+      `INSERT INTO storage_anchors (
+        anchor_id, lease_id, summary_json, summary_hash, anchor_tx_hash,
+        anchor_receipt_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(anchor_id) DO UPDATE SET
+        lease_id = excluded.lease_id,
+        summary_json = excluded.summary_json,
+        summary_hash = excluded.summary_hash,
+        anchor_tx_hash = excluded.anchor_tx_hash,
+        anchor_receipt_json = excluded.anchor_receipt_json,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.anchorId,
+      record.leaseId,
+      JSON.stringify(record.summary),
+      record.summaryHash,
+      record.anchorTxHash ?? null,
+      record.anchorReceipt ? JSON.stringify(record.anchorReceipt) : null,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getStorageAnchor = (anchorId: string): StorageAnchorRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM storage_anchors WHERE anchor_id = ?")
+      .get(anchorId) as any | undefined;
+    return row ? deserializeStorageAnchorRecord(row) : undefined;
+  };
+
+  const getStorageAnchorByLeaseId = (
+    leaseId: string,
+  ): StorageAnchorRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM storage_anchors WHERE lease_id = ?")
+      .get(leaseId) as any | undefined;
+    return row ? deserializeStorageAnchorRecord(row) : undefined;
+  };
+
+  const listStorageAnchors = (limit: number): StorageAnchorRecord[] => {
+    const rows = db
+      .prepare("SELECT * FROM storage_anchors ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as any[];
+    return rows.map(deserializeStorageAnchorRecord);
+  };
+
+  const upsertArtifact = (record: ArtifactRecord): void => {
+    db.prepare(
+      `INSERT INTO artifacts (
+        artifact_id, kind, title, lease_id, quote_id, cid, bundle_hash,
+        provider_base_url, provider_address, requester_address, source_url,
+        subject_id, summary_text, result_digest, metadata_json, status,
+        verification_id, anchor_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(artifact_id) DO UPDATE SET
+        kind = excluded.kind,
+        title = excluded.title,
+        lease_id = excluded.lease_id,
+        quote_id = excluded.quote_id,
+        cid = excluded.cid,
+        bundle_hash = excluded.bundle_hash,
+        provider_base_url = excluded.provider_base_url,
+        provider_address = excluded.provider_address,
+        requester_address = excluded.requester_address,
+        source_url = excluded.source_url,
+        subject_id = excluded.subject_id,
+        summary_text = excluded.summary_text,
+        result_digest = excluded.result_digest,
+        metadata_json = excluded.metadata_json,
+        status = excluded.status,
+        verification_id = excluded.verification_id,
+        anchor_id = excluded.anchor_id,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.artifactId,
+      record.kind,
+      record.title,
+      record.leaseId,
+      record.quoteId ?? null,
+      record.cid,
+      record.bundleHash,
+      record.providerBaseUrl,
+      record.providerAddress,
+      record.requesterAddress,
+      record.sourceUrl ?? null,
+      record.subjectId ?? null,
+      record.summaryText ?? null,
+      record.resultDigest ?? null,
+      record.metadata ? JSON.stringify(record.metadata) : null,
+      record.status,
+      record.verificationId ?? null,
+      record.anchorId ?? null,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getArtifact = (artifactId: string): ArtifactRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM artifacts WHERE artifact_id = ?")
+      .get(artifactId) as any | undefined;
+    return row ? deserializeArtifactRecord(row) : undefined;
+  };
+
+  const getArtifactByLeaseId = (leaseId: string): ArtifactRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM artifacts WHERE lease_id = ?")
+      .get(leaseId) as any | undefined;
+    return row ? deserializeArtifactRecord(row) : undefined;
+  };
+
+  const listArtifacts = (
+    limit: number,
+    filters?: { kind?: ArtifactBundleKind; status?: ArtifactRecordStatus },
+  ): ArtifactRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.kind) {
+      clauses.push("kind = ?");
+      params.push(filters.kind);
+    }
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(`SELECT * FROM artifacts ${where} ORDER BY created_at DESC LIMIT ?`)
+      .all(...params, limit) as any[];
+    return rows.map(deserializeArtifactRecord);
+  };
+
+  const upsertArtifactVerification = (record: ArtifactVerificationRecord): void => {
+    db.prepare(
+      `INSERT INTO artifact_verifications (
+        verification_id, artifact_id, receipt_json, receipt_hash, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?)
+      ON CONFLICT(verification_id) DO UPDATE SET
+        artifact_id = excluded.artifact_id,
+        receipt_json = excluded.receipt_json,
+        receipt_hash = excluded.receipt_hash,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.verificationId,
+      record.artifactId,
+      JSON.stringify(record.receipt),
+      record.receiptHash,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getArtifactVerification = (
+    verificationId: string,
+  ): ArtifactVerificationRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM artifact_verifications WHERE verification_id = ?")
+      .get(verificationId) as any | undefined;
+    return row ? deserializeArtifactVerificationRecord(row) : undefined;
+  };
+
+  const getArtifactVerificationByArtifactId = (
+    artifactId: string,
+  ): ArtifactVerificationRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM artifact_verifications WHERE artifact_id = ?")
+      .get(artifactId) as any | undefined;
+    return row ? deserializeArtifactVerificationRecord(row) : undefined;
+  };
+
+  const listArtifactVerifications = (limit: number): ArtifactVerificationRecord[] => {
+    const rows = db
+      .prepare("SELECT * FROM artifact_verifications ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as any[];
+    return rows.map(deserializeArtifactVerificationRecord);
+  };
+
+  const upsertArtifactAnchor = (record: ArtifactAnchorRecord): void => {
+    db.prepare(
+      `INSERT INTO artifact_anchors (
+        anchor_id, artifact_id, summary_json, summary_hash, anchor_tx_hash,
+        anchor_receipt_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(anchor_id) DO UPDATE SET
+        artifact_id = excluded.artifact_id,
+        summary_json = excluded.summary_json,
+        summary_hash = excluded.summary_hash,
+        anchor_tx_hash = excluded.anchor_tx_hash,
+        anchor_receipt_json = excluded.anchor_receipt_json,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.anchorId,
+      record.artifactId,
+      JSON.stringify(record.summary),
+      record.summaryHash,
+      record.anchorTxHash ?? null,
+      record.anchorReceipt ? JSON.stringify(record.anchorReceipt) : null,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getArtifactAnchor = (anchorId: string): ArtifactAnchorRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM artifact_anchors WHERE anchor_id = ?")
+      .get(anchorId) as any | undefined;
+    return row ? deserializeArtifactAnchorRecord(row) : undefined;
+  };
+
+  const getArtifactAnchorByArtifactId = (
+    artifactId: string,
+  ): ArtifactAnchorRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM artifact_anchors WHERE artifact_id = ?")
+      .get(artifactId) as any | undefined;
+    return row ? deserializeArtifactAnchorRecord(row) : undefined;
+  };
+
+  const listArtifactAnchors = (limit: number): ArtifactAnchorRecord[] => {
+    const rows = db
+      .prepare("SELECT * FROM artifact_anchors ORDER BY created_at DESC LIMIT ?")
+      .all(limit) as any[];
+    return rows.map(deserializeArtifactAnchorRecord);
+  };
+
   // ─── Agent State ─────────────────────────────────────────────
 
   const getAgentState = (): AgentState => {
@@ -1202,6 +1660,32 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     getLatestX402PaymentByRequestKey,
     listX402Payments,
     listPendingX402Payments,
+    upsertStorageQuote,
+    getStorageQuote,
+    listStorageQuotes,
+    upsertStorageLease,
+    getStorageLease,
+    getStorageLeaseByCid,
+    listStorageLeases,
+    upsertStorageAudit,
+    getStorageAudit,
+    listStorageAudits,
+    upsertStorageAnchor,
+    getStorageAnchor,
+    getStorageAnchorByLeaseId,
+    listStorageAnchors,
+    upsertArtifact,
+    getArtifact,
+    getArtifactByLeaseId,
+    listArtifacts,
+    upsertArtifactVerification,
+    getArtifactVerification,
+    getArtifactVerificationByArtifactId,
+    listArtifactVerifications,
+    upsertArtifactAnchor,
+    getArtifactAnchor,
+    getArtifactAnchorByArtifactId,
+    listArtifactAnchors,
     getAgentState,
     setAgentState,
     runTransaction,
@@ -1292,6 +1776,14 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 17,
       apply: () => db.exec(MIGRATION_V17),
+    },
+    {
+      version: 18,
+      apply: () => db.exec(MIGRATION_V18),
+    },
+    {
+      version: 19,
+      apply: () => db.exec(MIGRATION_V19),
     },
   ];
 
@@ -2545,6 +3037,171 @@ function deserializeX402PaymentRecord(row: any): X402PaymentRecord {
     boundKind: row.bound_kind ?? null,
     boundSubjectId: row.bound_subject_id ?? null,
     artifactUrl: row.artifact_url ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeStorageQuoteRecord(row: any): StorageQuoteRecord {
+  return {
+    quoteId: row.quote_id,
+    requesterAddress: row.requester_address,
+    providerAddress: row.provider_address,
+    cid: row.cid,
+    bundleKind: row.bundle_kind,
+    sizeBytes: Number(row.size_bytes || 0),
+    ttlSeconds: Number(row.ttl_seconds || 0),
+    amountWei: row.amount_wei,
+    status: row.status,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeStorageLeaseRecord(row: any): StorageLeaseRecord {
+  return {
+    leaseId: row.lease_id,
+    quoteId: row.quote_id ?? null,
+    cid: row.cid,
+    bundleHash: row.bundle_hash,
+    bundleKind: row.bundle_kind,
+    requesterAddress: row.requester_address,
+    providerAddress: row.provider_address,
+    sizeBytes: Number(row.size_bytes || 0),
+    ttlSeconds: Number(row.ttl_seconds || 0),
+    amountWei: row.amount_wei,
+    status: row.status,
+    storagePath: row.storage_path,
+    requestKey: row.request_key,
+    paymentId: row.payment_id ?? null,
+    receipt: parseJsonSafe(
+      row.receipt_json ?? "{}",
+      {} as StorageLeaseRecord["receipt"],
+      "deserializeStorageLeaseRecord.receipt_json",
+    ),
+    receiptHash: row.receipt_hash,
+    anchorTxHash: row.anchor_tx_hash ?? null,
+    anchorReceipt: row.anchor_receipt_json
+      ? parseJsonSafe(
+          row.anchor_receipt_json,
+          null as StorageLeaseRecord["anchorReceipt"],
+          "deserializeStorageLeaseRecord.anchor_receipt_json",
+        )
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeStorageAuditRecord(row: any): StorageAuditRecord {
+  return {
+    auditId: row.audit_id,
+    leaseId: row.lease_id,
+    cid: row.cid,
+    status: row.status,
+    challengeNonce: row.challenge_nonce,
+    responseHash: row.response_hash,
+    details: row.details_json
+      ? parseJsonSafe(
+          row.details_json,
+          null as StorageAuditRecord["details"],
+          "deserializeStorageAuditRecord.details_json",
+        )
+      : null,
+    checkedAt: row.checked_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeStorageAnchorRecord(row: any): StorageAnchorRecord {
+  return {
+    anchorId: row.anchor_id,
+    leaseId: row.lease_id,
+    summary: parseJsonSafe(
+      row.summary_json ?? "{}",
+      {} as StorageAnchorRecord["summary"],
+      "deserializeStorageAnchorRecord.summary_json",
+    ),
+    summaryHash: row.summary_hash,
+    anchorTxHash: row.anchor_tx_hash ?? null,
+    anchorReceipt: row.anchor_receipt_json
+      ? parseJsonSafe(
+          row.anchor_receipt_json,
+          null as StorageAnchorRecord["anchorReceipt"],
+          "deserializeStorageAnchorRecord.anchor_receipt_json",
+        )
+      : null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeArtifactRecord(row: any): ArtifactRecord {
+  return {
+    artifactId: row.artifact_id,
+    kind: row.kind,
+    title: row.title,
+    leaseId: row.lease_id,
+    quoteId: row.quote_id ?? null,
+    cid: row.cid,
+    bundleHash: row.bundle_hash,
+    providerBaseUrl: row.provider_base_url,
+    providerAddress: row.provider_address,
+    requesterAddress: row.requester_address,
+    sourceUrl: row.source_url ?? null,
+    subjectId: row.subject_id ?? null,
+    summaryText: row.summary_text ?? null,
+    resultDigest: row.result_digest ?? null,
+    metadata: row.metadata_json
+      ? parseJsonSafe(
+          row.metadata_json,
+          null as ArtifactRecord["metadata"],
+          "deserializeArtifactRecord.metadata_json",
+        )
+      : null,
+    status: row.status,
+    verificationId: row.verification_id ?? null,
+    anchorId: row.anchor_id ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeArtifactVerificationRecord(row: any): ArtifactVerificationRecord {
+  return {
+    verificationId: row.verification_id,
+    artifactId: row.artifact_id,
+    receipt: parseJsonSafe(
+      row.receipt_json ?? "{}",
+      {} as ArtifactVerificationRecord["receipt"],
+      "deserializeArtifactVerificationRecord.receipt_json",
+    ),
+    receiptHash: row.receipt_hash,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeArtifactAnchorRecord(row: any): ArtifactAnchorRecord {
+  return {
+    anchorId: row.anchor_id,
+    artifactId: row.artifact_id,
+    summary: parseJsonSafe(
+      row.summary_json ?? "{}",
+      {} as ArtifactAnchorRecord["summary"],
+      "deserializeArtifactAnchorRecord.summary_json",
+    ),
+    summaryHash: row.summary_hash,
+    anchorTxHash: row.anchor_tx_hash ?? null,
+    anchorReceipt: row.anchor_receipt_json
+      ? parseJsonSafe(
+          row.anchor_receipt_json,
+          null as ArtifactAnchorRecord["anchorReceipt"],
+          "deserializeArtifactAnchorRecord.anchor_receipt_json",
+        )
+      : null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

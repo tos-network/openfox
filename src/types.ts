@@ -6,15 +6,21 @@
 
 import type {
   Address,
+  ArtifactAnchorSummary,
+  ArtifactBundleKind as NativeArtifactBundleKind,
+  ArtifactVerificationReceipt,
   Hex,
   MarketBindingKind as NativeMarketBindingKind,
   MarketBindingReceipt,
   PrivateKeyAccount,
   SettlementKind as NativeSettlementKind,
   SettlementReceipt,
+  StorageAnchorSummary,
+  StorageReceipt,
 } from "tosdk";
 
 export type HexAddress = `0x${string}`;
+export type ArtifactBundleKind = NativeArtifactBundleKind;
 
 // ─── Identity ────────────────────────────────────────────────────
 
@@ -431,6 +437,8 @@ export interface OpenFoxConfig {
   settlement?: SettlementConfig;
   marketContracts?: MarketContractConfig;
   x402Server?: X402ServerConfig;
+  storage?: StorageMarketConfig;
+  artifacts?: ArtifactPipelineConfig;
 }
 
 export interface WalletFundingConfig {
@@ -447,7 +455,9 @@ export type BountyKind =
   | "question"
   | "translation"
   | "social_proof"
-  | "problem_solving";
+  | "problem_solving"
+  | "public_news_capture"
+  | "oracle_evidence_capture";
 export type BountyStatus =
   | "open"
   | "submitted"
@@ -567,6 +577,161 @@ export interface OpportunityScoutConfig {
   remoteBaseUrls: string[];
   maxItems: number;
   minRewardWei: string;
+}
+
+export type StorageLeaseStatus = "quoted" | "active" | "expired" | "released";
+export type StorageAuditStatus = "verified" | "failed";
+export type ArtifactRecordStatus = "stored" | "verified" | "anchored" | "failed";
+
+export interface StorageAnchorConfig {
+  enabled: boolean;
+  sinkAddress?: Address;
+  gas: string;
+  waitForReceipt: boolean;
+  receiptTimeoutMs: number;
+}
+
+export interface StorageMarketConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  pathPrefix: string;
+  capabilityPrefix: string;
+  storageDir: string;
+  quoteValiditySeconds: number;
+  defaultTtlSeconds: number;
+  maxTtlSeconds: number;
+  maxBundleBytes: number;
+  minimumPriceWei: string;
+  pricePerMiBWei: string;
+  publishToDiscovery: boolean;
+  allowAnonymousGet: boolean;
+  anchor: StorageAnchorConfig;
+}
+
+export interface StorageQuoteRecord {
+  quoteId: string;
+  requesterAddress: Address;
+  providerAddress: Address;
+  cid: string;
+  bundleKind: string;
+  sizeBytes: number;
+  ttlSeconds: number;
+  amountWei: string;
+  status: "quoted" | "used" | "expired";
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StorageLeaseRecord {
+  leaseId: string;
+  quoteId?: string | null;
+  cid: string;
+  bundleHash: Hex;
+  bundleKind: string;
+  requesterAddress: Address;
+  providerAddress: Address;
+  sizeBytes: number;
+  ttlSeconds: number;
+  amountWei: string;
+  status: StorageLeaseStatus;
+  storagePath: string;
+  requestKey: string;
+  paymentId?: Hex | null;
+  receipt: StorageReceipt;
+  receiptHash: Hex;
+  anchorTxHash?: Hex | null;
+  anchorReceipt?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StorageAuditRecord {
+  auditId: string;
+  leaseId: string;
+  cid: string;
+  status: StorageAuditStatus;
+  challengeNonce: string;
+  responseHash: Hex;
+  details?: Record<string, unknown> | null;
+  checkedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StorageAnchorRecord {
+  anchorId: string;
+  leaseId: string;
+  summary: StorageAnchorSummary;
+  summaryHash: Hex;
+  anchorTxHash?: Hex | null;
+  anchorReceipt?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArtifactAnchorConfig {
+  enabled: boolean;
+  sinkAddress?: Address;
+  gas: string;
+  waitForReceipt: boolean;
+  receiptTimeoutMs: number;
+}
+
+export interface ArtifactPipelineConfig {
+  enabled: boolean;
+  defaultProviderBaseUrl?: string;
+  defaultTtlSeconds: number;
+  autoAnchorOnStore: boolean;
+  captureCapability: string;
+  evidenceCapability: string;
+  aggregateCapability: string;
+  verificationCapability: string;
+  anchor: ArtifactAnchorConfig;
+}
+
+export interface ArtifactRecord {
+  artifactId: string;
+  kind: ArtifactBundleKind;
+  title: string;
+  leaseId: string;
+  quoteId?: string | null;
+  cid: string;
+  bundleHash: Hex;
+  providerBaseUrl: string;
+  providerAddress: Address;
+  requesterAddress: Address;
+  sourceUrl?: string | null;
+  subjectId?: string | null;
+  summaryText?: string | null;
+  resultDigest?: Hex | null;
+  metadata?: Record<string, unknown> | null;
+  status: ArtifactRecordStatus;
+  verificationId?: string | null;
+  anchorId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArtifactVerificationRecord {
+  verificationId: string;
+  artifactId: string;
+  receipt: ArtifactVerificationReceipt;
+  receiptHash: Hex;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ArtifactAnchorRecord {
+  anchorId: string;
+  artifactId: string;
+  summary: ArtifactAnchorSummary;
+  summaryHash: Hex;
+  anchorTxHash?: Hex | null;
+  anchorReceipt?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type SettlementKind = NativeSettlementKind;
@@ -710,6 +875,7 @@ export interface MarketContractCallbackRecord {
 export type X402PaymentServiceKind =
   | "observation"
   | "oracle"
+  | "storage"
   | "gateway_request"
   | "gateway_session";
 export type X402ConfirmationPolicy = "broadcast" | "receipt";
@@ -755,6 +921,48 @@ export interface X402PaymentRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export const DEFAULT_STORAGE_MARKET_CONFIG: StorageMarketConfig = {
+  enabled: false,
+  bindHost: "127.0.0.1",
+  port: 4895,
+  pathPrefix: "/storage",
+  capabilityPrefix: "storage.ipfs",
+  storageDir: "~/.openfox/storage",
+  quoteValiditySeconds: 300,
+  defaultTtlSeconds: 86400,
+  maxTtlSeconds: 2592000,
+  maxBundleBytes: 8 * 1024 * 1024,
+  minimumPriceWei: "1000000000000000",
+  pricePerMiBWei: "1000000000000000",
+  publishToDiscovery: true,
+  allowAnonymousGet: true,
+  anchor: {
+    enabled: false,
+    sinkAddress: undefined,
+    gas: "180000",
+    waitForReceipt: true,
+    receiptTimeoutMs: 60000,
+  },
+};
+
+export const DEFAULT_ARTIFACT_PIPELINE_CONFIG: ArtifactPipelineConfig = {
+  enabled: false,
+  defaultProviderBaseUrl: undefined,
+  defaultTtlSeconds: 7 * 24 * 60 * 60,
+  autoAnchorOnStore: false,
+  captureCapability: "public_news.capture",
+  evidenceCapability: "oracle.evidence",
+  aggregateCapability: "oracle.aggregate",
+  verificationCapability: "artifact.verify",
+  anchor: {
+    enabled: false,
+    sinkAddress: undefined,
+    gas: "180000",
+    waitForReceipt: true,
+    receiptTimeoutMs: 60000,
+  },
+};
 
 export const DEFAULT_BOUNTY_POLICY: BountyPolicy = {
   maxSubmissionsPerSolver: 1,
@@ -933,6 +1141,8 @@ export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   settlement: DEFAULT_SETTLEMENT_CONFIG,
   marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
   x402Server: DEFAULT_X402_SERVER_CONFIG,
+  storage: DEFAULT_STORAGE_MARKET_CONFIG,
+  artifacts: DEFAULT_ARTIFACT_PIPELINE_CONFIG,
 };
 
 // ─── Agent State ─────────────────────────────────────────────────
@@ -1626,6 +1836,47 @@ export interface OpenFoxDatabase {
     },
   ): X402PaymentRecord[];
   listPendingX402Payments(limit: number, nowIso?: string): X402PaymentRecord[];
+
+  // Storage market
+  upsertStorageQuote(record: StorageQuoteRecord): void;
+  getStorageQuote(quoteId: string): StorageQuoteRecord | undefined;
+  listStorageQuotes(limit: number, filters?: { status?: StorageQuoteRecord["status"] }): StorageQuoteRecord[];
+  upsertStorageLease(record: StorageLeaseRecord): void;
+  getStorageLease(leaseId: string): StorageLeaseRecord | undefined;
+  getStorageLeaseByCid(cid: string): StorageLeaseRecord | undefined;
+  listStorageLeases(
+    limit: number,
+    filters?: {
+      status?: StorageLeaseStatus;
+      providerAddress?: Address;
+      requesterAddress?: Address;
+    },
+  ): StorageLeaseRecord[];
+  upsertStorageAudit(record: StorageAuditRecord): void;
+  getStorageAudit(auditId: string): StorageAuditRecord | undefined;
+  listStorageAudits(limit: number, filters?: { leaseId?: string; status?: StorageAuditStatus }): StorageAuditRecord[];
+  upsertStorageAnchor(record: StorageAnchorRecord): void;
+  getStorageAnchor(anchorId: string): StorageAnchorRecord | undefined;
+  getStorageAnchorByLeaseId(leaseId: string): StorageAnchorRecord | undefined;
+  listStorageAnchors(limit: number): StorageAnchorRecord[];
+  upsertArtifact(record: ArtifactRecord): void;
+  getArtifact(artifactId: string): ArtifactRecord | undefined;
+  getArtifactByLeaseId(leaseId: string): ArtifactRecord | undefined;
+  listArtifacts(
+    limit: number,
+    filters?: {
+      kind?: ArtifactBundleKind;
+      status?: ArtifactRecordStatus;
+    },
+  ): ArtifactRecord[];
+  upsertArtifactVerification(record: ArtifactVerificationRecord): void;
+  getArtifactVerification(verificationId: string): ArtifactVerificationRecord | undefined;
+  getArtifactVerificationByArtifactId(artifactId: string): ArtifactVerificationRecord | undefined;
+  listArtifactVerifications(limit: number): ArtifactVerificationRecord[];
+  upsertArtifactAnchor(record: ArtifactAnchorRecord): void;
+  getArtifactAnchor(anchorId: string): ArtifactAnchorRecord | undefined;
+  getArtifactAnchorByArtifactId(artifactId: string): ArtifactAnchorRecord | undefined;
+  listArtifactAnchors(limit: number): ArtifactAnchorRecord[];
 
   // Key-value atomic delete
   deleteKVReturning(key: string): string | undefined;

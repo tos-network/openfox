@@ -16,9 +16,11 @@ import type {
   AgentDiscoveryConfig,
   HexAddress,
   BountyConfig,
+  ArtifactPipelineConfig,
   MarketContractConfig,
   OpportunityScoutConfig,
   SettlementConfig,
+  StorageMarketConfig,
   WalletFundingConfig,
   X402ServerConfig,
 } from "./types.js";
@@ -38,10 +40,12 @@ import {
   DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
   DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
   DEFAULT_BOUNTY_CONFIG,
+  DEFAULT_ARTIFACT_PIPELINE_CONFIG,
   DEFAULT_BOUNTY_POLICY,
   DEFAULT_MARKET_CONTRACT_CONFIG,
   DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
   DEFAULT_SETTLEMENT_CONFIG,
+  DEFAULT_STORAGE_MARKET_CONFIG,
   DEFAULT_WALLET_FUNDING_CONFIG,
   DEFAULT_X402_SERVER_CONFIG,
 } from "./types.js";
@@ -583,6 +587,25 @@ export function loadConfig(): OpenFoxConfig | null {
     ...((raw?.x402Server as JsonRecord | undefined) ?? {}),
   };
 
+  const storage: StorageMarketConfig = {
+    ...DEFAULT_STORAGE_MARKET_CONFIG,
+    ...((raw?.storage as JsonRecord | undefined) ?? {}),
+    anchor: {
+      ...DEFAULT_STORAGE_MARKET_CONFIG.anchor,
+      ...((((raw?.storage as JsonRecord | undefined)?.anchor as JsonRecord | undefined) ?? {})),
+    },
+  };
+
+  const artifacts: ArtifactPipelineConfig = {
+    ...DEFAULT_ARTIFACT_PIPELINE_CONFIG,
+    ...((raw?.artifacts as JsonRecord | undefined) ?? {}),
+    anchor: {
+      ...DEFAULT_ARTIFACT_PIPELINE_CONFIG.anchor,
+      ...((((raw?.artifacts as JsonRecord | undefined)?.anchor as JsonRecord | undefined) ??
+        {})),
+    },
+  };
+
   const walletFunding: WalletFundingConfig = {
     ...DEFAULT_WALLET_FUNDING_CONFIG,
     ...((raw?.walletFunding as JsonRecord | undefined) ?? {}),
@@ -718,6 +741,8 @@ export function loadConfig(): OpenFoxConfig | null {
     settlement,
     marketContracts,
     x402Server,
+    storage,
+    artifacts,
   } as OpenFoxConfig;
 }
 
@@ -743,6 +768,8 @@ export function saveConfig(config: OpenFoxConfig): void {
     settlement: config.settlement ?? DEFAULT_SETTLEMENT_CONFIG,
     marketContracts: config.marketContracts ?? DEFAULT_MARKET_CONTRACT_CONFIG,
     x402Server: config.x402Server ?? DEFAULT_X402_SERVER_CONFIG,
+    storage: config.storage ?? DEFAULT_STORAGE_MARKET_CONFIG,
+    artifacts: config.artifacts ?? DEFAULT_ARTIFACT_PIPELINE_CONFIG,
   };
   fs.writeFileSync(configPath, JSON.stringify(toSave, null, 2), {
     mode: 0o600,
@@ -829,5 +856,7 @@ export function createConfig(params: {
     settlement: DEFAULT_SETTLEMENT_CONFIG,
     marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
     x402Server: DEFAULT_X402_SERVER_CONFIG,
+    storage: DEFAULT_STORAGE_MARKET_CONFIG,
+    artifacts: DEFAULT_ARTIFACT_PIPELINE_CONFIG,
   };
 }

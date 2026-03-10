@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 17;
+export const SCHEMA_VERSION = 19;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -302,7 +302,7 @@ export const CREATE_TABLES = `
 
   CREATE TABLE IF NOT EXISTS x402_payments (
     payment_id TEXT PRIMARY KEY,
-    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','gateway_request','gateway_session')),
+    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','gateway_request','gateway_session','storage')),
     request_key TEXT NOT NULL,
     request_hash TEXT NOT NULL,
     payer_address TEXT NOT NULL,
@@ -334,6 +334,137 @@ export const CREATE_TABLES = `
 
   CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
     ON x402_payments(bound_kind, bound_subject_id);
+
+  CREATE TABLE IF NOT EXISTS storage_quotes (
+    quote_id TEXT PRIMARY KEY,
+    requester_address TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    cid TEXT NOT NULL,
+    bundle_kind TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    ttl_seconds INTEGER NOT NULL,
+    amount_wei TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('quoted','used','expired')),
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_storage_quotes_status
+    ON storage_quotes(status, expires_at);
+
+  CREATE TABLE IF NOT EXISTS storage_leases (
+    lease_id TEXT PRIMARY KEY,
+    quote_id TEXT,
+    cid TEXT NOT NULL,
+    bundle_hash TEXT NOT NULL,
+    bundle_kind TEXT NOT NULL,
+    requester_address TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    ttl_seconds INTEGER NOT NULL,
+    amount_wei TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('quoted','active','expired','released')),
+    storage_path TEXT NOT NULL,
+    request_key TEXT NOT NULL,
+    payment_id TEXT,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    anchor_tx_hash TEXT,
+    anchor_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_leases_request
+    ON storage_leases(request_key);
+
+  CREATE INDEX IF NOT EXISTS idx_storage_leases_cid
+    ON storage_leases(cid, status, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS storage_audits (
+    audit_id TEXT PRIMARY KEY,
+    lease_id TEXT NOT NULL,
+    cid TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('verified','failed')),
+    challenge_nonce TEXT NOT NULL,
+    response_hash TEXT NOT NULL,
+    details_json TEXT,
+    checked_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_storage_audits_lease
+    ON storage_audits(lease_id, checked_at DESC);
+
+  CREATE TABLE IF NOT EXISTS storage_anchors (
+    anchor_id TEXT PRIMARY KEY,
+    lease_id TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    summary_hash TEXT NOT NULL,
+    anchor_tx_hash TEXT,
+    anchor_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_anchors_lease
+    ON storage_anchors(lease_id);
+
+  CREATE TABLE IF NOT EXISTS artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('public_news.capture','oracle.evidence','oracle.aggregate','committee.vote')),
+    title TEXT NOT NULL,
+    lease_id TEXT NOT NULL,
+    quote_id TEXT,
+    cid TEXT NOT NULL,
+    bundle_hash TEXT NOT NULL,
+    provider_base_url TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    requester_address TEXT NOT NULL,
+    source_url TEXT,
+    subject_id TEXT,
+    summary_text TEXT,
+    result_digest TEXT,
+    metadata_json TEXT,
+    status TEXT NOT NULL CHECK(status IN ('stored','verified','anchored','failed')),
+    verification_id TEXT,
+    anchor_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_artifacts_kind_status
+    ON artifacts(kind, status, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_lease
+    ON artifacts(lease_id);
+
+  CREATE TABLE IF NOT EXISTS artifact_verifications (
+    verification_id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_verifications_artifact
+    ON artifact_verifications(artifact_id);
+
+  CREATE TABLE IF NOT EXISTS artifact_anchors (
+    anchor_id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    summary_hash TEXT NOT NULL,
+    anchor_tx_hash TEXT,
+    anchor_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_anchors_artifact
+    ON artifact_anchors(artifact_id);
 `;
 
 export const MIGRATION_V17 = `
@@ -371,6 +502,194 @@ export const MIGRATION_V17 = `
 
   CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
     ON x402_payments(bound_kind, bound_subject_id);
+`;
+
+export const MIGRATION_V18 = `
+  CREATE TABLE IF NOT EXISTS x402_payments_v18 (
+    payment_id TEXT PRIMARY KEY,
+    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','gateway_request','gateway_session','storage')),
+    request_key TEXT NOT NULL,
+    request_hash TEXT NOT NULL,
+    payer_address TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    chain_id TEXT NOT NULL,
+    tx_nonce TEXT NOT NULL,
+    tx_hash TEXT NOT NULL UNIQUE,
+    raw_transaction TEXT NOT NULL,
+    amount_wei TEXT NOT NULL,
+    confirmation_policy TEXT NOT NULL CHECK(confirmation_policy IN ('broadcast','receipt')),
+    status TEXT NOT NULL CHECK(status IN ('verified','submitted','confirmed','failed','replaced')),
+    attempt_count INTEGER NOT NULL DEFAULT 0,
+    max_attempts INTEGER NOT NULL DEFAULT 5,
+    receipt_json TEXT,
+    last_error TEXT,
+    next_attempt_at TEXT,
+    bound_kind TEXT,
+    bound_subject_id TEXT,
+    artifact_url TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  INSERT INTO x402_payments_v18 (
+    payment_id, service_kind, request_key, request_hash, payer_address,
+    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
+    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
+    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
+    artifact_url, created_at, updated_at
+  )
+  SELECT
+    payment_id, service_kind, request_key, request_hash, payer_address,
+    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
+    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
+    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
+    artifact_url, created_at, updated_at
+  FROM x402_payments;
+
+  DROP TABLE x402_payments;
+  ALTER TABLE x402_payments_v18 RENAME TO x402_payments;
+
+  CREATE INDEX IF NOT EXISTS idx_x402_payment_request
+    ON x402_payments(service_kind, request_key, updated_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_x402_payment_status
+    ON x402_payments(status, service_kind, next_attempt_at);
+
+  CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
+    ON x402_payments(bound_kind, bound_subject_id);
+
+  CREATE TABLE IF NOT EXISTS storage_quotes (
+    quote_id TEXT PRIMARY KEY,
+    requester_address TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    cid TEXT NOT NULL,
+    bundle_kind TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    ttl_seconds INTEGER NOT NULL,
+    amount_wei TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('quoted','used','expired')),
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_storage_quotes_status
+    ON storage_quotes(status, expires_at);
+
+  CREATE TABLE IF NOT EXISTS storage_leases (
+    lease_id TEXT PRIMARY KEY,
+    quote_id TEXT,
+    cid TEXT NOT NULL,
+    bundle_hash TEXT NOT NULL,
+    bundle_kind TEXT NOT NULL,
+    requester_address TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    size_bytes INTEGER NOT NULL,
+    ttl_seconds INTEGER NOT NULL,
+    amount_wei TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('quoted','active','expired','released')),
+    storage_path TEXT NOT NULL,
+    request_key TEXT NOT NULL,
+    payment_id TEXT,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    anchor_tx_hash TEXT,
+    anchor_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_leases_request
+    ON storage_leases(request_key);
+
+  CREATE INDEX IF NOT EXISTS idx_storage_leases_cid
+    ON storage_leases(cid, status, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS storage_audits (
+    audit_id TEXT PRIMARY KEY,
+    lease_id TEXT NOT NULL,
+    cid TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('verified','failed')),
+    challenge_nonce TEXT NOT NULL,
+    response_hash TEXT NOT NULL,
+    details_json TEXT,
+    checked_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_storage_audits_lease
+    ON storage_audits(lease_id, checked_at DESC);
+
+  CREATE TABLE IF NOT EXISTS storage_anchors (
+    anchor_id TEXT PRIMARY KEY,
+    lease_id TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    summary_hash TEXT NOT NULL,
+    anchor_tx_hash TEXT,
+    anchor_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_anchors_lease
+    ON storage_anchors(lease_id);
+`;
+
+export const MIGRATION_V19 = `
+  CREATE TABLE IF NOT EXISTS artifacts (
+    artifact_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('public_news.capture','oracle.evidence','oracle.aggregate','committee.vote')),
+    title TEXT NOT NULL,
+    lease_id TEXT NOT NULL,
+    quote_id TEXT,
+    cid TEXT NOT NULL,
+    bundle_hash TEXT NOT NULL,
+    provider_base_url TEXT NOT NULL,
+    provider_address TEXT NOT NULL,
+    requester_address TEXT NOT NULL,
+    source_url TEXT,
+    subject_id TEXT,
+    summary_text TEXT,
+    result_digest TEXT,
+    metadata_json TEXT,
+    status TEXT NOT NULL CHECK(status IN ('stored','verified','anchored','failed')),
+    verification_id TEXT,
+    anchor_id TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_artifacts_kind_status
+    ON artifacts(kind, status, created_at DESC);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_lease
+    ON artifacts(lease_id);
+
+  CREATE TABLE IF NOT EXISTS artifact_verifications (
+    verification_id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL,
+    receipt_json TEXT NOT NULL,
+    receipt_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_verifications_artifact
+    ON artifact_verifications(artifact_id);
+
+  CREATE TABLE IF NOT EXISTS artifact_anchors (
+    anchor_id TEXT PRIMARY KEY,
+    artifact_id TEXT NOT NULL,
+    summary_json TEXT NOT NULL,
+    summary_hash TEXT NOT NULL,
+    anchor_tx_hash TEXT,
+    anchor_receipt_json TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_anchors_artifact
+    ON artifact_anchors(artifact_id);
 `;
 
 export const MIGRATION_V3 = `

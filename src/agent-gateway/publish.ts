@@ -31,6 +31,7 @@ export function buildGatewayProviderRoutes(params: {
   faucetUrl?: string;
   observationUrl?: string;
   oracleUrl?: string;
+  storageUrl?: string;
 }): AgentGatewayProviderRoute[] {
   const routes: AgentGatewayProviderRoute[] = [
     ...(params.config.agentDiscovery?.gatewayClient?.routes ?? []),
@@ -72,6 +73,20 @@ export function buildGatewayProviderRoutes(params: {
       capability: oracle.capability,
       mode: "paid",
       targetUrl: params.oracleUrl,
+    });
+  }
+  const storage = params.config.storage;
+  if (
+    storage?.enabled &&
+    storage.publishToDiscovery &&
+    params.storageUrl &&
+    !routes.some((entry) => entry.capability === `${storage.capabilityPrefix}.put`)
+  ) {
+    routes.push({
+      path: "/storage",
+      capability: `${storage.capabilityPrefix}.put`,
+      mode: "paid",
+      targetUrl: params.storageUrl,
     });
   }
   return uniqueByName(routes, (entry) => `${entry.path}:${entry.capability}`);

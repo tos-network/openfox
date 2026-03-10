@@ -40,6 +40,19 @@ export interface HealthSnapshot {
   bountyRole?: "host" | "solver";
   bountyAutoEnabled: boolean;
   bountyRemoteConfigured: boolean;
+  storageEnabled: boolean;
+  storageReady: boolean;
+  storageAnonymousGet: boolean;
+  storageAnchorEnabled: boolean;
+  storageRecentLeases: number;
+  storageActiveLeases: number;
+  storageRecentAudits: number;
+  storageRecentAnchors: number;
+  artifactsEnabled: boolean;
+  artifactsReady: boolean;
+  artifactsRecentCount: number;
+  artifactsVerifiedCount: number;
+  artifactsAnchoredCount: number;
   x402ServerEnabled: boolean;
   x402ServerReady: boolean;
   x402RecentPayments: number;
@@ -90,6 +103,7 @@ function isProviderEnabled(config: OpenFoxConfig): boolean {
     config.agentDiscovery?.faucetServer?.enabled ||
       config.agentDiscovery?.observationServer?.enabled ||
       config.agentDiscovery?.oracleServer?.enabled ||
+      config.storage?.enabled ||
       (config.agentDiscovery?.gatewayClient?.enabled &&
         (config.agentDiscovery.gatewayClient.routes?.length ?? 0) > 0),
   );
@@ -108,6 +122,19 @@ async function buildConfigSnapshot(
   bountyRole?: "host" | "solver";
   bountyAutoEnabled: boolean;
   bountyRemoteConfigured: boolean;
+  storageEnabled: boolean;
+  storageReady: boolean;
+  storageAnonymousGet: boolean;
+  storageAnchorEnabled: boolean;
+  storageRecentLeases: number;
+  storageActiveLeases: number;
+  storageRecentAudits: number;
+  storageRecentAnchors: number;
+  artifactsEnabled: boolean;
+  artifactsReady: boolean;
+  artifactsRecentCount: number;
+  artifactsVerifiedCount: number;
+  artifactsAnchoredCount: number;
   x402ServerEnabled: boolean;
   x402ServerReady: boolean;
   x402RecentPayments: number;
@@ -158,6 +185,32 @@ async function buildConfigSnapshot(
           config.bounty.autoSolveEnabled),
     ),
     bountyRemoteConfigured: Boolean(config.bounty?.remoteBaseUrl),
+    storageEnabled: config.storage?.enabled === true,
+    storageReady: Boolean(
+      !config.storage?.enabled || !config.storage.anchor.enabled || config.rpcUrl,
+    ),
+    storageAnonymousGet: config.storage?.allowAnonymousGet === true,
+    storageAnchorEnabled:
+      config.storage?.enabled === true && config.storage.anchor.enabled === true,
+    storageRecentLeases: config.storage?.enabled ? db.listStorageLeases(20).length : 0,
+    storageActiveLeases: config.storage?.enabled
+      ? db.listStorageLeases(100, { status: "active" }).length
+      : 0,
+    storageRecentAudits: config.storage?.enabled ? db.listStorageAudits(20).length : 0,
+    storageRecentAnchors: config.storage?.enabled ? db.listStorageAnchors(20).length : 0,
+    artifactsEnabled: config.artifacts?.enabled === true,
+    artifactsReady: Boolean(
+      !config.artifacts?.enabled ||
+        config.artifacts.defaultProviderBaseUrl ||
+        config.storage?.enabled,
+    ),
+    artifactsRecentCount: config.artifacts?.enabled ? db.listArtifacts(20).length : 0,
+    artifactsVerifiedCount: config.artifacts?.enabled
+      ? db.listArtifacts(100, { status: "verified" }).length
+      : 0,
+    artifactsAnchoredCount: config.artifacts?.enabled
+      ? db.listArtifacts(100, { status: "anchored" }).length
+      : 0,
     x402ServerEnabled: config.x402Server?.enabled === true,
     x402ServerReady: Boolean(!config.x402Server?.enabled || config.rpcUrl),
     x402RecentPayments: config.x402Server?.enabled ? db.listX402Payments(20).length : 0,
@@ -439,6 +492,40 @@ function collectFindings(
     }
   }
 
+  if (snapshot.storageEnabled) {
+    findings.push({
+      id: "storage-enabled",
+      severity: snapshot.storageReady ? "ok" : "error",
+      summary: snapshot.storageReady
+        ? `Storage market is enabled (${snapshot.storageActiveLeases} active lease${snapshot.storageActiveLeases === 1 ? "" : "s"}, ${snapshot.storageRecentAnchors} recent anchor${snapshot.storageRecentAnchors === 1 ? "" : "s"}).`
+        : "Storage market is enabled but storage anchoring has no chain RPC configured.",
+      recommendation: snapshot.storageReady
+        ? undefined
+        : "Set `rpcUrl` or disable `storage.anchor.enabled` so storage anchors can be published cleanly.",
+    });
+    if (!snapshot.storageAnonymousGet) {
+      findings.push({
+        id: "storage-anonymous-get-disabled",
+        severity: "warn",
+        summary: "Storage retrieval requires paid or authenticated access.",
+        recommendation:
+          "This is expected for private providers. Enable `storage.allowAnonymousGet` if public retrieval is required.",
+      });
+    }
+  }
+  if (snapshot.artifactsEnabled) {
+    findings.push({
+      id: "artifacts-enabled",
+      severity: snapshot.artifactsReady ? "ok" : "warn",
+      summary: snapshot.artifactsReady
+        ? `Artifact pipeline is enabled (${snapshot.artifactsRecentCount} recent artifact${snapshot.artifactsRecentCount === 1 ? "" : "s"}, ${snapshot.artifactsAnchoredCount} anchored).`
+        : "Artifact pipeline is enabled but has no default provider and no local storage provider.",
+      recommendation: snapshot.artifactsReady
+        ? "Use `openfox artifacts list` to inspect stored public news and oracle bundles."
+        : "Set `artifacts.defaultProviderBaseUrl` or enable a local storage provider so artifact flows can store bundles.",
+    });
+  }
+
   if (snapshot.x402ServerEnabled) {
     findings.push({
       id: "x402-server-enabled",
@@ -558,6 +645,19 @@ export async function buildHealthSnapshot(
       bountyRole: undefined,
       bountyAutoEnabled: false,
       bountyRemoteConfigured: false,
+      storageEnabled: false,
+      storageReady: false,
+      storageAnonymousGet: false,
+      storageAnchorEnabled: false,
+      storageRecentLeases: 0,
+      storageActiveLeases: 0,
+      storageRecentAudits: 0,
+      storageRecentAnchors: 0,
+      artifactsEnabled: false,
+      artifactsReady: false,
+      artifactsRecentCount: 0,
+      artifactsVerifiedCount: 0,
+      artifactsAnchoredCount: 0,
       x402ServerEnabled: false,
       x402ServerReady: false,
       x402RecentPayments: 0,
@@ -628,6 +728,8 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Gateway enabled: ${yesNo(snapshot.gatewayEnabled)}`,
     `Bounty enabled: ${yesNo(snapshot.bountyEnabled)}${snapshot.bountyRole ? ` (${snapshot.bountyRole})` : ""}`,
     `Bounty auto mode: ${yesNo(snapshot.bountyAutoEnabled)}`,
+    `Storage enabled: ${yesNo(snapshot.storageEnabled)}${snapshot.storageEnabled ? ` (${snapshot.storageActiveLeases} active, ${snapshot.storageRecentAudits} audits, ${snapshot.storageRecentAnchors} anchors)` : ""}`,
+    `Artifacts enabled: ${yesNo(snapshot.artifactsEnabled)}${snapshot.artifactsEnabled ? ` (${snapshot.artifactsRecentCount} recent, ${snapshot.artifactsVerifiedCount} verified, ${snapshot.artifactsAnchoredCount} anchored)` : ""}`,
     `x402 server: ${yesNo(snapshot.x402ServerEnabled)}${snapshot.x402ServerEnabled ? ` (${snapshot.x402RecentPayments} recent, ${snapshot.x402PendingPayments} pending, ${snapshot.x402FailedPayments} failed)` : ""}`,
     `Settlement enabled: ${yesNo(snapshot.settlementEnabled)}${snapshot.settlementEnabled ? ` (${snapshot.settlementRecentCount} recent)` : ""}`,
     `Settlement callbacks: ${yesNo(snapshot.settlementCallbacksEnabled)}${snapshot.settlementCallbacksEnabled ? ` (${snapshot.settlementPendingCallbacks} pending)` : ""}`,

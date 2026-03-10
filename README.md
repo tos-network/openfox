@@ -142,9 +142,13 @@ It supports:
 - persisted result lookup with `GET /jobs/:id`
 - paid capabilities such as `oracle.resolve`
 - a built-in paid oracle resolver with `POST /oracle/quote`, `POST /oracle/resolve`, and `GET /oracle/result/:id`
+- a built-in paid storage market with `POST /storage/quote`, `POST /storage/put`, `GET /storage/head/:cid`, `GET /storage/get/:cid`, and `POST /storage/audit`
+- a verifiable public-artifact pipeline with `openfox artifacts capture-news`, `oracle-evidence`, `committee-vote`, `oracle-aggregate`, `verify`, and `anchor`
 - a durable server-side `x402` payment ledger for paid provider requests
 - `openfox payments list|get|retry` for operator-visible payment delivery and recovery
 - canonical settlement receipts and on-chain settlement anchors for bounty, observation, and oracle flows
+- canonical storage receipts, storage audits, and lightweight storage anchors for immutable bundle leases
+- canonical artifact verification receipts and lightweight artifact anchors for public news and oracle bundles
 - contract callback adapters and heartbeat-driven retry for contract-bound settlement flows
 - contract-native market bindings for bounty, observation, and oracle creation flows
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
@@ -214,6 +218,8 @@ pnpm openfox templates list
 pnpm openfox payments list
 pnpm openfox settlement list
 pnpm openfox market list
+pnpm openfox storage list
+pnpm openfox artifacts list
 pnpm openfox onboard --fund-local
 ```
 
@@ -228,6 +234,8 @@ openfox templates list
 openfox payments list
 openfox settlement list
 openfox market list
+openfox storage list
+openfox artifacts list
 ```
 
 If you are running directly from the source checkout and have not installed the binary globally yet, use:
@@ -264,6 +272,7 @@ openfox onboard --fund-testnet
 openfox wallet bootstrap-signer --type ed25519
 openfox payments list
 openfox settlement list
+openfox storage list
 ```
 
 ---
@@ -351,6 +360,7 @@ openfox models status
 openfox onboard --install-daemon
 openfox logs --tail 200
 openfox bounty --help
+openfox storage --help
 ```
 
 To run OpenFox as a long-lived Linux user service:

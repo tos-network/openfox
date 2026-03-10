@@ -10,6 +10,10 @@ function labelForKind(kind: BountyKind): string {
       return "social proof";
     case "problem_solving":
       return "problem solving";
+    case "public_news_capture":
+      return "public news capture";
+    case "oracle_evidence_capture":
+      return "oracle evidence capture";
   }
 }
 
@@ -24,6 +28,10 @@ export function buildTaskBountySolverPrompt(params: {
     "Return only the submission text with no markdown and no extra framing.",
     params.kind === "social_proof"
       ? "If the task requires a proof URL, return the required text only. The caller may attach the proof URL separately."
+      : params.kind === "public_news_capture"
+        ? "Return a concise capture summary that includes the key public facts requested by the host."
+        : params.kind === "oracle_evidence_capture"
+          ? "Return a concise evidence summary that directly supports the bounded question."
       : undefined,
     params.skillInstructions?.trim()
       ? `Skill instructions:\n${params.skillInstructions.trim()}`

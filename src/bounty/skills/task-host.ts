@@ -17,6 +17,10 @@ function labelForKind(kind: BountyKind): string {
       return "social proof";
     case "problem_solving":
       return "problem solving";
+    case "public_news_capture":
+      return "public news capture";
+    case "oracle_evidence_capture":
+      return "oracle evidence capture";
   }
 }
 
@@ -32,6 +36,10 @@ export function buildTaskBountyDraftPrompt(params: {
     "Use a short title, a clear task prompt, and a short canonical reference output.",
     params.kind === "social_proof"
       ? "For social proof bounties, require a proof URL and a short proof text."
+      : params.kind === "public_news_capture"
+        ? "For public news capture bounties, require a source URL and a concise capture summary."
+        : params.kind === "oracle_evidence_capture"
+          ? "For oracle evidence capture bounties, require a concise evidence package tied to a bounded question."
       : "Avoid subjective or open-ended tasks that cannot be judged reliably.",
     params.skillInstructions?.trim()
       ? `Skill instructions:\n${params.skillInstructions.trim()}`
@@ -100,6 +108,10 @@ export function buildTaskBountyJudgePrompt(params: {
     "Be strict and deterministic.",
     params.kind === "social_proof"
       ? "For social proof bounties, only accept if the proof URL and the submission clearly satisfy the task prompt."
+      : params.kind === "public_news_capture"
+        ? "For public news capture bounties, only accept if the submission clearly captures the requested public source and evidence."
+        : params.kind === "oracle_evidence_capture"
+          ? "For oracle evidence capture bounties, only accept if the submission clearly supports the bounded question with concrete evidence."
       : undefined,
     params.skillInstructions?.trim()
       ? `Skill instructions:\n${params.skillInstructions.trim()}`

@@ -28,6 +28,19 @@ describe("doctor report formatting", () => {
       bountyRole: "host" as const,
       bountyAutoEnabled: true,
       bountyRemoteConfigured: false,
+      storageEnabled: true,
+      storageReady: true,
+      storageAnonymousGet: true,
+      storageAnchorEnabled: true,
+      storageRecentLeases: 2,
+      storageActiveLeases: 1,
+      storageRecentAudits: 1,
+      storageRecentAnchors: 1,
+      artifactsEnabled: true,
+      artifactsReady: true,
+      artifactsRecentCount: 2,
+      artifactsVerifiedCount: 1,
+      artifactsAnchoredCount: 1,
       x402ServerEnabled: true,
       x402ServerReady: true,
       x402RecentPayments: 2,
@@ -81,6 +94,11 @@ describe("doctor report formatting", () => {
           severity: "ok" as const,
           summary: "Chain RPC probe succeeded.",
         },
+        {
+          id: "artifacts-enabled",
+          severity: "ok" as const,
+          summary: "Artifact pipeline is enabled (2 recent artifacts, 1 anchored).",
+        },
       ],
     };
 
@@ -89,14 +107,17 @@ describe("doctor report formatting", () => {
 
     expect(health).toContain("=== OPENFOX HEALTH ===");
     expect(health).toContain("Bounty enabled: yes (host)");
+    expect(health).toContain("Storage enabled: yes (1 active, 1 audits, 1 anchors)");
     expect(health).toContain("x402 server: yes (2 recent, 1 pending, 0 failed)");
     expect(health).toContain("Settlement enabled: yes (1 recent)");
     expect(health).toContain("Settlement callbacks: yes (2 pending)");
     expect(health).toContain("Market bindings: yes (1 recent, 1 pending callbacks)");
+    expect(health).toContain("Artifacts enabled: yes (2 recent, 1 verified, 1 anchored)");
     expect(health).toContain("service status report");
     expect(doctor).toContain("=== OPENFOX DOCTOR ===");
     expect(doctor).toContain("Warnings: 2");
     expect(doctor).toContain("Run `openfox service install`.");
+    expect(doctor).toContain("Artifact pipeline is enabled (2 recent artifacts, 1 anchored).");
 
     db.close();
     void config;
@@ -217,6 +238,43 @@ describe("doctor report formatting", () => {
     ).toBe(true);
   });
 
+  it("flags storage anchoring without an RPC URL", async () => {
+    const snapshot = await buildHealthSnapshot(
+      createTestConfig({
+        rpcUrl: undefined,
+        storage: {
+          enabled: true,
+          bindHost: "127.0.0.1",
+          port: 4895,
+          pathPrefix: "/storage",
+          capabilityPrefix: "storage.ipfs",
+          storageDir: "/tmp/openfox-storage",
+          quoteValiditySeconds: 300,
+          defaultTtlSeconds: 86400,
+          maxTtlSeconds: 2592000,
+          maxBundleBytes: 8 * 1024 * 1024,
+          minimumPriceWei: "1000",
+          pricePerMiBWei: "1000",
+          publishToDiscovery: true,
+          allowAnonymousGet: true,
+          anchor: {
+            enabled: true,
+            gas: "180000",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+          },
+        },
+      }),
+    );
+
+    expect(
+      snapshot.findings.some(
+        (finding) =>
+          finding.id === "storage-enabled" && finding.severity === "error",
+      ),
+    ).toBe(true);
+  });
+
   it("flags settlement callbacks missing a contract target", async () => {
     const snapshot = await buildHealthSnapshot(
       createTestConfig({
@@ -318,6 +376,59 @@ describe("doctor report formatting", () => {
         (finding) =>
           finding.id === "market-contract-callbacks-enabled" &&
           finding.severity === "error",
+      ),
+    ).toBe(true);
+  });
+
+  it("flags an artifact pipeline with no provider and no storage source", async () => {
+    const snapshot = await buildHealthSnapshot(
+      createTestConfig({
+        rpcUrl: "http://127.0.0.1:8545",
+        storage: {
+          enabled: false,
+          bindHost: "127.0.0.1",
+          port: 4895,
+          pathPrefix: "/storage",
+          capabilityPrefix: "storage.ipfs",
+          storageDir: "/tmp/openfox-storage",
+          quoteValiditySeconds: 300,
+          defaultTtlSeconds: 86400,
+          maxTtlSeconds: 2592000,
+          maxBundleBytes: 8 * 1024 * 1024,
+          minimumPriceWei: "1000",
+          pricePerMiBWei: "1000",
+          publishToDiscovery: true,
+          allowAnonymousGet: true,
+          anchor: {
+            enabled: false,
+            gas: "180000",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+          },
+        },
+        artifacts: {
+          enabled: true,
+          defaultProviderBaseUrl: undefined,
+          defaultTtlSeconds: 86400,
+          autoAnchorOnStore: false,
+          captureCapability: "public_news.capture",
+          evidenceCapability: "oracle.evidence",
+          aggregateCapability: "oracle.aggregate",
+          verificationCapability: "artifact.verify",
+          anchor: {
+            enabled: false,
+            gas: "180000",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+          },
+        },
+      }),
+    );
+
+    expect(
+      snapshot.findings.some(
+        (finding) =>
+          finding.id === "artifacts-enabled" && finding.severity === "warn",
       ),
     ).toBe(true);
   });
