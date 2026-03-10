@@ -253,6 +253,11 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Turn the existing fleet/operator/dashboard surfaces into a reusable
     exportable template for public multi-node deployments instead of leaving
     them as docs-only operator knowledge.
+- [x] Task 54: Publish ecosystem-facing `tosdk` example packs
+  - Status: Complete
+  - Goal: Give third-party builders direct requester/provider/network examples
+    for the native SDK so they do not need to read OpenFox runtime internals
+    before integrating.
 
 ## Task 53 Breakdown
 
@@ -261,6 +266,13 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add dashboard export helper scripts and operator notes.
 - [x] Cover template export with tests.
 - [x] Update template docs and roadmap references.
+
+## Task 54 Breakdown
+
+- [x] Add `tosdk/examples` with native wallet/client examples.
+- [x] Add provider-client examples for storage, artifact, signer, and paymaster flows.
+- [x] Add storage/artifact receipt hashing examples.
+- [x] Update `tosdk/README.md` and OpenFox SDK surface docs to point to the examples.
 
 ## Task 1 Breakdown
 

@@ -11,6 +11,7 @@ Use `tosdk` directly when you need:
 - native public and wallet clients
 - settlement receipt helpers
 - market binding helpers
+- repository examples for native wallets and requester/provider integrations
 
 ## 2. `openfox`
 
@@ -29,3 +30,9 @@ Use OpenFox when you need:
 - choose OpenFox for agent runtime integration
 
 That separation is the main productization boundary for the current stack.
+
+See also:
+
+- `../tosdk/examples/network-wallet.ts`
+- `../tosdk/examples/provider-clients.ts`
+- `../tosdk/examples/storage-and-artifacts.ts`

@@ -691,6 +691,30 @@ Acceptance criteria:
 - the bundle contains a repeatable dashboard export flow
 - the bundle is covered by template tests and linked from the main docs
 
+### Phase 11: Ecosystem-Facing SDK Example Packs
+
+Status: completed
+
+Goal:
+
+- publish direct builder examples for `tosdk` so third-party integrators can
+  use native wallets, provider clients, and receipt helpers without reading
+  OpenFox internals
+
+Delivered surface:
+
+- `tosdk/examples/network-wallet.ts`
+- `tosdk/examples/provider-clients.ts`
+- `tosdk/examples/storage-and-artifacts.ts`
+- updated `tosdk/README.md`
+- updated OpenFox SDK surface docs
+
+Acceptance criteria:
+
+- third-party builders can find runnable example code for the native wallet path
+- third-party builders can find example code for storage/artifact/signer/paymaster requester clients
+- storage and artifact receipt hashing examples are part of the repository
+
 The current core roadmap phases are complete.
 
 The next work should not reopen the completed core phases. It should focus on:
