@@ -89,6 +89,8 @@ openfox fleet storage --manifest ./fleet.yml
 openfox fleet artifacts --manifest ./fleet.yml
 openfox fleet signer --manifest ./fleet.yml
 openfox fleet paymaster --manifest ./fleet.yml
+openfox fleet repair storage --manifest ./fleet.yml
+openfox fleet repair artifacts --manifest ./fleet.yml
 ```
 
 Use these to answer questions such as:
@@ -109,6 +111,11 @@ Use fleet auditing for:
 - public gateway fleets
 - storage and artifact capture fleets
 - signer and paymaster provider fleets
+
+Use fleet repair for:
+
+- storage fleets with due renewals or overdue local audits
+- artifact fleets that need batch verification or anchoring catch-up
 - mixed public/private deployment topologies
 
 Do not treat the fleet API as a general public dashboard. It is an operator

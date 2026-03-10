@@ -261,4 +261,116 @@ describe("operator api", () => {
 
     db.close();
   });
+
+  it("accepts authenticated storage and artifact maintenance requests", async () => {
+    const db = createTestDb();
+    const server = await startOperatorApiServer({
+      config: createTestConfig({
+        operatorApi: {
+          enabled: true,
+          bindHost: "127.0.0.1",
+          port: 0,
+          pathPrefix: "/operator",
+          authToken: "secret-token",
+          exposeDoctor: true,
+          exposeServiceStatus: true,
+        },
+        storage: {
+          enabled: true,
+          bindHost: "127.0.0.1",
+          port: 4895,
+          pathPrefix: "/storage",
+          capabilityPrefix: "storage.ipfs",
+          storageDir: "/tmp/openfox-storage",
+          quoteValiditySeconds: 300,
+          defaultTtlSeconds: 86400,
+          maxTtlSeconds: 2592000,
+          maxBundleBytes: 8 * 1024 * 1024,
+          minimumPriceWei: "1000",
+          pricePerMiBWei: "1000",
+          publishToDiscovery: true,
+          allowAnonymousGet: true,
+          anchor: {
+            enabled: false,
+            gas: "180000",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+          },
+          leaseHealth: {
+            autoAudit: true,
+            auditIntervalSeconds: 3600,
+            autoRenew: true,
+            renewalLeadSeconds: 1800,
+            autoReplicate: false,
+          },
+          replication: {
+            enabled: false,
+            targetCopies: 1,
+            providerBaseUrls: [],
+          },
+        },
+        artifacts: {
+          enabled: true,
+          publishToDiscovery: true,
+          defaultProviderBaseUrl: "http://127.0.0.1:4895/storage",
+          defaultTtlSeconds: 604800,
+          autoAnchorOnStore: false,
+          captureCapability: "public_news.capture",
+          evidenceCapability: "oracle.evidence",
+          aggregateCapability: "oracle.aggregate",
+          verificationCapability: "artifact.verify",
+          service: {
+            enabled: true,
+            bindHost: "127.0.0.1",
+            port: 4896,
+            pathPrefix: "/artifacts",
+            requireNativeIdentity: true,
+            maxBodyBytes: 256 * 1024,
+            maxTextChars: 32 * 1024,
+          },
+          anchor: {
+            enabled: false,
+            gas: "180000",
+            waitForReceipt: true,
+            receiptTimeoutMs: 60000,
+          },
+        },
+      }),
+      db,
+    });
+    expect(server).not.toBeNull();
+    if (!server) {
+      db.close();
+      return;
+    }
+    servers.push(server);
+
+    const headers = {
+      Authorization: "Bearer secret-token",
+      "Content-Type": "application/json",
+    };
+    const storage = await fetch(`${server.url}/storage/maintain`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ limit: 2 }),
+    });
+    expect(storage.status).toBe(200);
+    expect(await storage.json()).toMatchObject({
+      kind: "storage",
+      enabled: true,
+    });
+
+    const artifacts = await fetch(`${server.url}/artifacts/maintain`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ limit: 2 }),
+    });
+    expect(artifacts.status).toBe(200);
+    expect(await artifacts.json()).toMatchObject({
+      kind: "artifacts",
+      enabled: true,
+    });
+
+    db.close();
+  });
 });

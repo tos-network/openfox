@@ -155,6 +155,7 @@ It supports:
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
 - an authenticated operator API for multi-node status, health, doctor, service, gateway, storage, artifact, signer, and paymaster inspection
 - `openfox fleet status|health|doctor|storage|artifacts|signer|paymaster` for one-shot fleet-wide auditing across public OpenFox nodes
+- `openfox storage maintain`, `openfox artifacts maintain`, and `openfox fleet repair <storage|artifacts>` for remote due-work remediation across public storage and artifact fleets
 - a paid signer-provider surface for bounded delegated execution with:
   - `openfox signer discover`
   - `openfox signer quote`
@@ -375,6 +376,7 @@ openfox fleet status --manifest ./fleet.yml
 openfox fleet doctor --manifest ./fleet.yml --json
 openfox fleet storage --manifest ./fleet.yml
 openfox fleet signer --manifest ./fleet.yml
+openfox fleet repair storage --manifest ./fleet.yml
 openfox gateway status
 openfox gateway status --json
 openfox health
@@ -439,6 +441,7 @@ And inspect the fleet from another machine:
 openfox fleet status --manifest ./fleet.yml
 openfox fleet doctor --manifest ./fleet.yml --json
 openfox fleet paymaster --manifest ./fleet.yml
+openfox fleet repair artifacts --manifest ./fleet.yml
 ```
 
 ## Agent Gateway Example

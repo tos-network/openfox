@@ -626,8 +626,10 @@ Suggested priority order:
 
 ### P1: Do Next
 
-- keep multi-node deployment and operator automation moving in parallel for the completed storage/artifact pipeline
-- deepen artifact/storage audit and renewal automation around public operator fleets
+- completed:
+  - added authenticated remote maintenance for storage and artifact nodes
+  - added `openfox storage maintain` and `openfox artifacts maintain`
+  - added `openfox fleet repair <storage|artifacts>` for batch fleet remediation
 
 ### P2: Do Later
 

@@ -218,6 +218,11 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Move beyond generic fleet reachability and expose per-component
     operator snapshots so public provider fleets can be audited by role, due
     work, and policy health instead of only by top-level runtime status.
+- [x] Task 47: Add fleet repair and remote maintenance for storage and artifact nodes
+  - Status: Complete
+  - Goal: Turn fleet auditing into fleet remediation by exposing authenticated
+    remote maintenance actions for storage lease upkeep and artifact
+    verification/anchoring, then batch them through the fleet CLI.
 
 ## Task 1 Breakdown
 

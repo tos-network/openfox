@@ -181,9 +181,16 @@ import {
 } from "./operator/status.js";
 import {
   buildFleetReport,
+  buildFleetRepairReport,
+  buildFleetRepairSnapshot,
   buildFleetSnapshot,
+  type FleetRepairComponent,
   type FleetEndpoint,
 } from "./operator/fleet.js";
+import {
+  runArtifactMaintenance,
+  runStorageMaintenance,
+} from "./operator/maintenance.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -1274,10 +1281,33 @@ Usage:
   openfox fleet artifacts --manifest <path> [--json]
   openfox fleet signer --manifest <path> [--json]
   openfox fleet paymaster --manifest <path> [--json]
+  openfox fleet repair <storage|artifacts> --manifest <path> [--limit N] [--json]
 `);
     if (!manifestPath && !helpRequested) {
       throw new Error("A fleet manifest is required. Use --manifest <path>.");
     }
+    return;
+  }
+
+  if (command === "repair") {
+    const component = args[1];
+    const normalizedComponent =
+      component === "storage" || component === "artifacts"
+        ? (component as FleetRepairComponent)
+        : null;
+    if (!normalizedComponent) {
+      throw new Error("Usage: openfox fleet repair <storage|artifacts> --manifest <path> [--limit N] [--json]");
+    }
+    const snapshot = await buildFleetRepairSnapshot({
+      manifestPath,
+      component: normalizedComponent,
+      limit: readNumberOption(args, "--limit", 10),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetRepairReport(snapshot));
     return;
   }
 
@@ -2155,6 +2185,7 @@ Usage:
   openfox storage head --provider <base-url> --cid <cid> [--json]
   openfox storage get --provider <base-url> --cid <cid> [--output <path>] [--json]
   openfox storage audit --provider <base-url> --lease <lease-id> [--json]
+  openfox storage maintain [--limit N] [--json]
 `);
     return;
   }
@@ -2165,6 +2196,16 @@ Usage:
   }
   const db = createDatabase(resolvePath(config.dbPath));
   try {
+    if (command === "maintain") {
+      const result = await runStorageMaintenance({
+        config,
+        db,
+        limit: readNumberOption(args, "--limit", 10),
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
     if (command === "list") {
       const status = readOption(args, "--status") as
         | "quoted"
@@ -2371,6 +2412,7 @@ Usage:
   openfox artifacts committee-vote --title "<text>" --question "<text>" --voter-id "<id>" --vote "<text>" [--evidence-artifact <id>]... [--provider <base-url>] [--ttl-seconds N] [--anchor] [--json]
   openfox artifacts verify --artifact-id <id> [--json]
   openfox artifacts anchor --artifact-id <id> [--json]
+  openfox artifacts maintain [--limit N] [--json]
 `);
     return;
   }
@@ -2381,6 +2423,16 @@ Usage:
   }
   const db = createDatabase(resolvePath(config.dbPath));
   try {
+    if (command === "maintain") {
+      const result = await runArtifactMaintenance({
+        config,
+        db,
+        limit: readNumberOption(args, "--limit", 10),
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
     const { account, privateKey } = await getWallet();
     const anchorPublisher =
       config.artifacts?.anchor.enabled && config.rpcUrl

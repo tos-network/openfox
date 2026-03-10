@@ -5,6 +5,8 @@ import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
   buildFleetReport,
+  buildFleetRepairReport,
+  buildFleetRepairSnapshot,
   buildFleetSnapshot,
   loadFleetManifest,
 } from "../operator/fleet.js";
@@ -148,5 +150,53 @@ describe("operator fleet", () => {
     const report = buildFleetReport(snapshot);
     expect(report).toContain("storage-1 [storage]: ok");
     expect(report).toContain("3 active leases, 1 due renewal");
+  });
+
+  it("supports fleet repair actions for storage and artifacts", async () => {
+    const storageBaseUrl = await startEndpointServer("/operator/storage/maintain", {
+      kind: "storage",
+      enabled: true,
+      renewed: 1,
+      audited: 2,
+    });
+    const artifactsBaseUrl = await startEndpointServer("/operator/artifacts/maintain", {
+      kind: "artifacts",
+      enabled: true,
+      verified: 1,
+      anchored: 1,
+    });
+
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          { name: "storage-1", role: "storage", baseUrl: storageBaseUrl },
+          { name: "artifact-1", role: "artifacts", baseUrl: artifactsBaseUrl },
+        ],
+      }),
+    );
+
+    const storageSnapshot = await buildFleetRepairSnapshot({
+      manifestPath,
+      component: "storage",
+      limit: 3,
+    });
+    expect(storageSnapshot.ok).toBe(1);
+    expect(storageSnapshot.failed).toBe(1);
+    expect((storageSnapshot.nodes[0]?.payload as { renewed?: number })?.renewed).toBe(1);
+    const storageReport = buildFleetRepairReport(storageSnapshot);
+    expect(storageReport).toContain("=== OPENFOX FLEET REPAIR ===");
+    expect(storageReport).toContain("Component: storage");
+
+    const artifactSnapshot = await buildFleetRepairSnapshot({
+      manifestPath,
+      component: "artifacts",
+      limit: 2,
+    });
+    expect(artifactSnapshot.ok).toBe(1);
+    expect(artifactSnapshot.failed).toBe(1);
+    expect((artifactSnapshot.nodes[1]?.payload as { anchored?: number })?.anchored).toBe(1);
+    const artifactReport = buildFleetRepairReport(artifactSnapshot);
+    expect(artifactReport).toContain("Component: artifacts");
   });
 });

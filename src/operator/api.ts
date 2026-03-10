@@ -16,6 +16,10 @@ import {
   buildSignerOperatorStatusSnapshot,
   buildStorageOperatorStatusSnapshot,
 } from "./components.js";
+import {
+  runArtifactMaintenance,
+  runStorageMaintenance,
+} from "./maintenance.js";
 
 const logger = createLogger("operator.api");
 
@@ -39,6 +43,20 @@ function json(res: ServerResponse, status: number, body: unknown): void {
 
 function normalizePathPrefix(pathPrefix: string): string {
   return pathPrefix.startsWith("/") ? pathPrefix : `/${pathPrefix}`;
+}
+
+async function readJsonBody(req: IncomingMessage): Promise<Record<string, unknown>> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  if (chunks.length === 0) return {};
+  const raw = Buffer.concat(chunks).toString("utf8").trim();
+  if (!raw) return {};
+  const parsed = JSON.parse(raw);
+  return typeof parsed === "object" && parsed !== null
+    ? (parsed as Record<string, unknown>)
+    : {};
 }
 
 function getBearerToken(req: IncomingMessage): string | undefined {
@@ -82,7 +100,9 @@ export async function startOperatorApiServer(
   const servicePath = `${pathPrefix}/service/status`;
   const gatewayPath = `${pathPrefix}/gateway/status`;
   const storagePath = `${pathPrefix}/storage/status`;
+  const storageMaintainPath = `${pathPrefix}/storage/maintain`;
   const artifactsPath = `${pathPrefix}/artifacts/status`;
+  const artifactsMaintainPath = `${pathPrefix}/artifacts/maintain`;
   const signerPath = `${pathPrefix}/signer/status`;
   const paymasterPath = `${pathPrefix}/paymaster/status`;
   const healthzPath = `${pathPrefix}/healthz`;
@@ -149,8 +169,44 @@ export async function startOperatorApiServer(
         return;
       }
 
+      if (req.method === "POST" && url.pathname === storageMaintainPath) {
+        const body = await readJsonBody(req);
+        const limit =
+          typeof body.limit === "number" && Number.isFinite(body.limit)
+            ? body.limit
+            : undefined;
+        json(
+          res,
+          200,
+          await runStorageMaintenance({
+            config: params.config,
+            db: params.db,
+            limit,
+          }),
+        );
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === artifactsPath) {
         json(res, 200, await buildArtifactsOperatorStatusSnapshot(params.config, params.db));
+        return;
+      }
+
+      if (req.method === "POST" && url.pathname === artifactsMaintainPath) {
+        const body = await readJsonBody(req);
+        const limit =
+          typeof body.limit === "number" && Number.isFinite(body.limit)
+            ? body.limit
+            : undefined;
+        json(
+          res,
+          200,
+          await runArtifactMaintenance({
+            config: params.config,
+            db: params.db,
+            limit,
+          }),
+        );
         return;
       }
 
