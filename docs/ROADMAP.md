@@ -182,7 +182,7 @@ Delivered surface:
 - `openfox wallet status`
 - `openfox wallet fund local`
 - `openfox wallet fund testnet`
-- `openfox wallet bootstrap-signer --type ed25519`
+- `openfox wallet bootstrap-signer --type <ed25519|secp256r1|bls12-381|elgamal>`
 - improved native wallet error guidance for RPC, balance, nonce, and signer metadata issues
 
 ### Phase 2: Launch Real Paid Services

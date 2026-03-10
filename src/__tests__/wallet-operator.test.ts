@@ -42,13 +42,21 @@ describe("wallet operator", () => {
     void privateKey;
   });
 
-  it("generates and persists ed25519 signer material", async () => {
-    const { generateEd25519SignerMaterial } = await import("../wallet/operator.js");
-    const outputPath = path.join(tempHome, ".openfox", "signers", "ed25519.json");
-    const result = generateEd25519SignerMaterial({ outputPath });
+  it.each([
+    { signerType: "ed25519", expectedPublicKeyLength: 64 },
+    { signerType: "secp256r1", expectedPublicKeyLength: 130 },
+    { signerType: "bls12-381", expectedPublicKeyLength: 96 },
+    { signerType: "elgamal", expectedPublicKeyLength: 64 },
+  ])("generates and persists $signerType signer material", async ({ signerType, expectedPublicKeyLength }) => {
+    const { generateSignerMaterial } = await import("../wallet/operator.js");
+    const outputPath = path.join(tempHome, ".openfox", "signers", `${signerType}.json`);
+    const result = generateSignerMaterial({
+      signerType: signerType as "ed25519" | "secp256r1" | "bls12-381" | "elgamal",
+      outputPath,
+    });
 
-    expect(result.signerType).toBe("ed25519");
-    expect(result.signerValue).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(result.signerType).toBe(signerType);
+    expect(result.signerValue).toMatch(new RegExp(`^0x[0-9a-f]{${expectedPublicKeyLength}}$`));
     expect(result.privateKey).toMatch(/^0x[0-9a-f]{64}$/);
     expect(fs.existsSync(outputPath)).toBe(true);
   });
@@ -143,7 +151,12 @@ describe("wallet operator", () => {
     );
   });
 
-  it("bootstraps signer metadata with generated ed25519 material", async () => {
+  it.each([
+    { signerType: "ed25519", expectedPath: path.join(".openfox", "signers", "ed25519.json") },
+    { signerType: "secp256r1", expectedPath: path.join(".openfox", "signers", "secp256r1.json") },
+    { signerType: "bls12-381", expectedPath: path.join(".openfox", "signers", "bls12-381.json") },
+    { signerType: "elgamal", expectedPath: path.join(".openfox", "signers", "elgamal.json") },
+  ])("bootstraps signer metadata with generated $signerType material", async ({ signerType, expectedPath }) => {
     const { getWallet } = await import("../identity/wallet.js");
     const { bootstrapWalletSigner } = await import("../wallet/operator.js");
 
@@ -168,14 +181,14 @@ describe("wallet operator", () => {
     });
     const result = await bootstrapWalletSigner({
       config,
-      signerType: "ed25519",
+      signerType: signerType as "ed25519" | "secp256r1" | "bls12-381" | "elgamal",
       generate: true,
       waitForReceipt: false,
     });
 
-    expect(result.signerType).toBe("ed25519");
-    expect(result.signerValue).toMatch(/^0x[0-9a-f]{64}$/);
+    expect(result.signerType).toBe(signerType);
+    expect(result.signerValue).toMatch(/^0x[0-9a-f]+$/);
     expect(result.txHash).toBe("0xbootstrap");
-    expect(result.keyPath).toContain(path.join(".openfox", "signers", "ed25519.json"));
+    expect(result.keyPath).toContain(expectedPath);
   });
 });

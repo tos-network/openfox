@@ -334,7 +334,7 @@ OpenFox now exposes a productized native wallet surface:
 openfox wallet status
 openfox wallet fund local
 openfox wallet fund testnet
-openfox wallet bootstrap-signer --type ed25519
+openfox wallet bootstrap-signer --type secp256r1
 ```
 
 What each command is for:
@@ -345,8 +345,8 @@ What each command is for:
   - request one-click funding from a local devnet node-managed account
 - `openfox wallet fund testnet`
   - request one-click funding from a configured faucet URL or a discovered `sponsor.topup.testnet` provider
-- `openfox wallet bootstrap-signer --type ed25519`
-  - generate an ed25519 signer, save the key material locally, and submit signer metadata bootstrap on-chain
+- `openfox wallet bootstrap-signer --type <ed25519|secp256r1|bls12-381|elgamal>`
+  - generate native signer material, save it locally, and submit signer metadata bootstrap on-chain
 
 Important boundary:
 

@@ -34,7 +34,7 @@ Usage:
   openfox wallet status [--json]
   openfox wallet fund local [--amount 5] [--amount-wei <wei>] [--from 0x...] [--password ...] [--wait]
   openfox wallet fund testnet [--amount 0.01] [--amount-wei <wei>] [--faucet-url <url>] [--reason "..."] [--wait]
-  openfox wallet bootstrap-signer --type ed25519 [--generate] [--public-key 0x...] [--output <path>] [--overwrite] [--wait]
+  openfox wallet bootstrap-signer --type <ed25519|secp256r1|bls12-381|elgamal> [--generate] [--public-key 0x...] [--output <path>] [--overwrite] [--wait]
 
 Notes:
   - local funding uses a local node-managed account via personal_sendTransaction
@@ -133,13 +133,10 @@ export async function runWalletCommand(args: string[]): Promise<void> {
 
   if (args[0] === "bootstrap-signer") {
     const signerType = readFlag(args, "--type") || "ed25519";
-    if (signerType !== "ed25519") {
-      throw new Error("Only ed25519 bootstrap is supported today.");
-    }
     try {
       const result = await bootstrapWalletSigner({
         config,
-        signerType: "ed25519",
+        signerType: signerType as "ed25519" | "secp256r1" | "bls12-381" | "elgamal",
         signerValue: readFlag(args, "--public-key") as `0x${string}` | undefined,
         generate: hasFlag(args, "--generate") || !readFlag(args, "--public-key"),
         outputPath: readFlag(args, "--output")

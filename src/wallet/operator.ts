@@ -1,6 +1,12 @@
 import fs from "fs";
 import path from "path";
 import { generateKeyPairSync } from "crypto";
+import {
+  bls12381PrivateKeyToAccount,
+  elgamalPrivateKeyToAccount,
+  generatePrivateKey,
+  secp256r1PrivateKeyToAccount,
+} from "tosdk";
 import type {
   FaucetInvocationRequest,
   FaucetInvocationResponse,
@@ -64,8 +70,10 @@ export interface WalletBootstrapResult {
   keyPath?: string;
 }
 
-interface Ed25519SignerMaterial {
-  type: "ed25519";
+type BootstrapSignerType = "ed25519" | "secp256r1" | "bls12-381" | "elgamal";
+
+interface SignerMaterial {
+  type: BootstrapSignerType;
   publicKey: HexAddress;
   privateKey: HexAddress;
   createdAt: string;
@@ -337,46 +345,104 @@ export async function fundWalletFromTestnet(params: {
   }
 }
 
-export function generateEd25519SignerMaterial(params?: {
+function normalizeBootstrapSignerType(value: string | undefined): BootstrapSignerType {
+  const normalized = (value || "ed25519").trim().toLowerCase();
+  if (normalized === "bls12381") return "bls12-381";
+  if (
+    normalized === "ed25519" ||
+    normalized === "secp256r1" ||
+    normalized === "bls12-381" ||
+    normalized === "elgamal"
+  ) {
+    return normalized;
+  }
+  throw new Error(`Unsupported signer type: ${value || "undefined"}`);
+}
+
+function writeSignerMaterial(params: {
+  material: SignerMaterial;
   outputPath?: string;
   overwrite?: boolean;
 }): WalletBootstrapResult & { privateKey: HexAddress } {
-  const { publicKey, privateKey } = generateKeyPairSync("ed25519");
-  const publicJwk = publicKey.export({ format: "jwk" }) as JsonWebKey;
-  const privateJwk = privateKey.export({ format: "jwk" }) as JsonWebKey;
-  if (!publicJwk.x || !privateJwk.d) {
-    throw new Error("Failed to export ed25519 signer material.");
-  }
-  const material: Ed25519SignerMaterial = {
-    type: "ed25519",
-    publicKey: base64UrlToHex(publicJwk.x),
-    privateKey: base64UrlToHex(privateJwk.d),
-    createdAt: new Date().toISOString(),
-  };
-
   const outputPath =
-    params?.outputPath ||
-    path.join(getOpenFoxDir(), "signers", "ed25519.json");
-  if (fs.existsSync(outputPath) && !params?.overwrite) {
+    params.outputPath ||
+    path.join(getOpenFoxDir(), "signers", `${params.material.type}.json`);
+  if (fs.existsSync(outputPath) && !params.overwrite) {
     throw new Error(`Signer file already exists at ${outputPath}`);
   }
   fs.mkdirSync(path.dirname(outputPath), { recursive: true, mode: 0o700 });
-  fs.writeFileSync(outputPath, JSON.stringify(material, null, 2), {
+  fs.writeFileSync(outputPath, JSON.stringify(params.material, null, 2), {
     mode: 0o600,
   });
 
   return {
-    signerType: "ed25519",
-    signerValue: material.publicKey,
-    privateKey: material.privateKey,
+    signerType: params.material.type,
+    signerValue: params.material.publicKey,
+    privateKey: params.material.privateKey,
     txHash: "0x" as HexAddress,
     keyPath: outputPath,
   };
 }
 
+function generateNativeSignerMaterial(
+  signerType: Exclude<BootstrapSignerType, "ed25519">,
+): SignerMaterial {
+  for (let attempt = 0; attempt < 256; attempt += 1) {
+    const privateKey = generatePrivateKey() as HexAddress;
+    try {
+      const account =
+        signerType === "secp256r1"
+          ? secp256r1PrivateKeyToAccount(privateKey)
+          : signerType === "bls12-381"
+            ? bls12381PrivateKeyToAccount(privateKey)
+            : elgamalPrivateKeyToAccount(privateKey);
+      return {
+        type: signerType,
+        publicKey: account.publicKey as HexAddress,
+        privateKey,
+        createdAt: new Date().toISOString(),
+      };
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(`Failed to generate ${signerType} signer material.`);
+}
+
+export function generateSignerMaterial(params: {
+  signerType: BootstrapSignerType;
+  outputPath?: string;
+  overwrite?: boolean;
+}): WalletBootstrapResult & { privateKey: HexAddress } {
+  if (params.signerType === "ed25519") {
+    const { publicKey, privateKey } = generateKeyPairSync("ed25519");
+    const publicJwk = publicKey.export({ format: "jwk" }) as JsonWebKey;
+    const privateJwk = privateKey.export({ format: "jwk" }) as JsonWebKey;
+    if (!publicJwk.x || !privateJwk.d) {
+      throw new Error("Failed to export ed25519 signer material.");
+    }
+    return writeSignerMaterial({
+      material: {
+        type: "ed25519",
+        publicKey: base64UrlToHex(publicJwk.x),
+        privateKey: base64UrlToHex(privateJwk.d),
+        createdAt: new Date().toISOString(),
+      },
+      outputPath: params.outputPath,
+      overwrite: params.overwrite,
+    });
+  }
+
+  return writeSignerMaterial({
+    material: generateNativeSignerMaterial(params.signerType),
+    outputPath: params.outputPath,
+    overwrite: params.overwrite,
+  });
+}
+
 export async function bootstrapWalletSigner(params: {
   config: OpenFoxConfig;
-  signerType: "ed25519";
+  signerType: BootstrapSignerType;
   signerValue?: HexAddress;
   generate?: boolean;
   outputPath?: string;
@@ -392,10 +458,12 @@ export async function bootstrapWalletSigner(params: {
     throw new Error("OpenFox wallet is missing.");
   }
 
+  const signerType = normalizeBootstrapSignerType(params.signerType);
   let signerValue = params.signerValue;
   let keyPath: string | undefined;
   if (!signerValue && params.generate !== false) {
-    const generated = generateEd25519SignerMaterial({
+    const generated = generateSignerMaterial({
+      signerType,
       outputPath: params.outputPath,
       overwrite: params.overwrite,
     });
@@ -409,12 +477,12 @@ export async function bootstrapWalletSigner(params: {
   const result = await setTOSSignerMetadata({
     rpcUrl,
     privateKey,
-    signerType: params.signerType,
+    signerType,
     signerValue,
     waitForReceipt: params.waitForReceipt,
   });
   return {
-    signerType: params.signerType,
+    signerType,
     signerValue,
     txHash: result.txHash,
     keyPath,
