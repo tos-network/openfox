@@ -188,6 +188,11 @@ import {
   type FleetEndpoint,
 } from "./operator/fleet.js";
 import {
+  buildFleetDashboardReport,
+  buildFleetDashboardSnapshot,
+  exportFleetDashboard,
+} from "./operator/dashboard.js";
+import {
   runArtifactMaintenance,
   runStorageMaintenance,
 } from "./operator/maintenance.js";
@@ -373,6 +378,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "dashboard") {
+    await handleDashboardCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "status") {
     await showStatus({ asJson: args.includes("--json") });
     process.exit(0);
@@ -413,6 +423,7 @@ Usage:
   openfox signer ...     Use delegated signer-provider execution
   openfox paymaster ...  Use native sponsored execution through a paymaster-provider
   openfox fleet ...      Inspect multiple OpenFox nodes through operator APIs
+  openfox dashboard ...  Build fleet dashboard snapshots and exports
   openfox status         Show the current runtime status
   openfox --version      Show version
   openfox --help         Show this help
@@ -1356,6 +1367,76 @@ Usage:
     return;
   }
   logger.info(buildFleetReport(snapshot));
+}
+
+async function handleDashboardCommand(args: string[]): Promise<void> {
+  const command = args[0] || "show";
+  const manifestPath = readFlag(args, "--manifest");
+  const asJson = args.includes("--json");
+  const helpRequested =
+    command === "--help" || command === "-h" || command === "help" || args.includes("--help") || args.includes("-h");
+
+  if (helpRequested || !manifestPath) {
+    logger.info(`
+OpenFox dashboard
+
+Usage:
+  openfox dashboard show --manifest <path> [--json]
+  openfox dashboard export --manifest <path> [--format <json|html>] [--output <path>]
+`);
+    if (!manifestPath && !helpRequested) {
+      throw new Error("A fleet manifest is required. Use --manifest <path>.");
+    }
+    return;
+  }
+
+  if (command === "show") {
+    const snapshot = await buildFleetDashboardSnapshot({ manifestPath });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetDashboardReport(snapshot));
+    return;
+  }
+
+  if (command === "export") {
+    const formatRaw = readOption(args, "--format") || "json";
+    const format =
+      formatRaw === "json" || formatRaw === "html"
+        ? formatRaw
+        : null;
+    if (!format) {
+      throw new Error("Invalid --format value. Expected json or html.");
+    }
+    const defaultOutput =
+      format === "html" ? "./openfox-dashboard.html" : "./openfox-dashboard.json";
+    const outputPath = resolvePath(readOption(args, "--output") || defaultOutput);
+    const snapshot = await exportFleetDashboard({
+      manifestPath,
+      outputPath,
+      format,
+    });
+    if (asJson) {
+      logger.info(
+        JSON.stringify(
+          {
+            format,
+            outputPath,
+            snapshot,
+          },
+          null,
+          2,
+        ),
+      );
+      return;
+    }
+    logger.info(`Dashboard exported to ${outputPath}`);
+    logger.info(buildFleetDashboardReport(snapshot));
+    return;
+  }
+
+  throw new Error(`Unknown dashboard command: ${command}`);
 }
 
 async function handleHealthCommand(args: string[]): Promise<void> {

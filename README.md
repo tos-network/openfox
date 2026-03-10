@@ -157,6 +157,7 @@ It supports:
 - an authenticated operator API for multi-node status, health, doctor, service, gateway, storage, artifact, signer, and paymaster inspection
 - `openfox fleet status|health|doctor|storage|lease-health|artifacts|signer|paymaster|providers` for one-shot fleet-wide auditing across public OpenFox nodes
 - `openfox providers reputation`, `openfox storage lease-health`, `openfox storage maintain`, `openfox artifacts maintain`, and `openfox fleet repair <storage|artifacts>` for remote due-work remediation plus provider/lease health reporting
+- `openfox dashboard show|export` for reusable JSON and HTML fleet dashboards
 - a paid signer-provider surface for bounded delegated execution with:
   - `openfox signer discover`
   - `openfox signer quote`
@@ -239,6 +240,7 @@ pnpm openfox storage list
 pnpm openfox storage renew --help
 pnpm openfox artifacts list
 pnpm openfox trails list --json
+pnpm openfox dashboard show --manifest ./fleet.yml
 pnpm openfox onboard --fund-local
 ```
 
@@ -257,6 +259,7 @@ openfox storage list
 openfox storage renew --help
 openfox artifacts list
 openfox trails list --json
+openfox dashboard show --manifest ./fleet.yml
 ```
 
 If you are running directly from the source checkout and have not installed the binary globally yet, use:
@@ -295,6 +298,7 @@ openfox payments list
 openfox settlement list
 openfox storage list
 openfox trails list --json
+openfox dashboard show --manifest ./fleet.yml
 ```
 
 ---

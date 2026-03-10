@@ -238,6 +238,11 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Link delegated/sponsored execution receipts back into storage lease,
     artifact verification, and anchoring records so public operations have one
     auditable trail across execution, maintenance, and evidence.
+- [x] Task 51: Add richer operator dashboard exports for public fleets
+  - Status: Complete
+  - Goal: Turn fleet/operator snapshots into reusable JSON and HTML dashboard
+    exports so public storage, artifact, signer, and paymaster deployments are
+    easier to inspect, share, and automate.
 
 ## Task 1 Breakdown
 

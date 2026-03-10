@@ -675,3 +675,9 @@ The next work should not reopen the completed core phases. It should focus on:
 1. broader public-network deployment hardening for storage, artifact, signer, and paymaster fleets
 2. richer operator dashboards and ecosystem-facing SDK examples on top of the now-stable runtime, marketplace, settlement, and artifact layers
 3. new work surfaces and product loops built on the completed foundations rather than more runtime rewrites
+
+The latest completed slice under this next stage is:
+
+- `openfox dashboard show --manifest ...`
+- `openfox dashboard export --manifest ... --format json|html`
+- reusable fleet dashboard snapshots and HTML exports for public operator fleets
