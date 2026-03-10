@@ -159,6 +159,24 @@ The design goal is:
 - do not make `SponsoredSignerTx` a multi-signer-type wrapper on the requester side while leaving sponsor authorization as `secp256k1`-only
 - do not force OpenFox paymaster-provider operators onto a narrower signer set than ordinary wallet operators
 
+#### SignerType Compatibility Matrix
+
+| SignerType | Requester / execution signature | Sponsor / paymaster signature | v0 expectation | Notes |
+| --- | --- | --- | --- | --- |
+| `secp256k1` | supported | supported | required | baseline compatibility path |
+| `schnorr` | supported | supported | required | sponsor side should not be forced back to ECDSA |
+| `secp256r1` | supported | supported | required | useful for hardware- and enterprise-style signer flows |
+| `ed25519` | supported | supported | required | important for agent and session-key ergonomics |
+| `bls12-381` | supported | supported | required | especially relevant for aggregate or committee-oriented sponsor operations |
+| `elgamal` | supported | supported | required | keeps parity with the broader `SignerTx` matrix already recognized by `gtos` |
+
+Interpretation rules:
+
+- every signer type supported by ordinary `SignerTx` should also be accepted by `SponsoredSignerTx` on the requester side
+- every signer type supported by ordinary `SignerTx` should also be accepted by `SponsoredSignerTx` on the sponsor side
+- no signer type should be "requester-only" in the final `v0` design unless the ordinary `SignerTx` matrix itself is intentionally reduced
+- if implementation staging temporarily lands with partial sponsor-side support, that should be treated as incomplete work, not as the target architecture
+
 ### 7.2 Dual Authorization
 
 Sponsored execution requires two independent approvals:
