@@ -169,25 +169,45 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Extend the first storage market slice with renewal, replication, and
     scheduler-driven lease health maintenance so stored bundles can survive as
     long-lived operator assets.
-- [ ] Task 37: Define the signer-provider protocol and wallet-policy profile
-  - Status: Planned
+- [x] Task 37: Define the signer-provider protocol and wallet-policy profile
+  - Status: Complete
   - Goal: Turn `tolang` programmable-wallet delegation into a stable OpenFox
     network protocol for bounded delegated execution, without falling back to
     custodial hosted-wallet behavior.
-- [ ] Task 38: Add a signer-provider service mode to OpenFox
-  - Status: Planned
+- [x] Task 38: Add a signer-provider service mode to OpenFox
+  - Status: Complete
   - Goal: Let one OpenFox node act as a paid signer-provider that accepts
     bounded execution requests, submits them to `TOS`, and returns durable
     execution receipts.
-- [ ] Task 39: Add requester and remote-execution UX for signer-provider flows
-  - Status: Planned
+- [x] Task 39: Add requester and remote-execution UX for signer-provider flows
+  - Status: Complete
   - Goal: Let another OpenFox node discover a signer-provider, pay for one
     delegated execution, and use it beside the existing local-wallet path.
-- [ ] Task 40: Add signer-provider operator visibility, diagnostics, and docs
-  - Status: Planned
+- [x] Task 40: Add signer-provider operator visibility, diagnostics, and docs
+  - Status: Complete
   - Goal: Make signer-provider state visible through status/health/doctor/docs
     so programmable delegated execution becomes part of the same operator story
     as storage, artifacts, settlement, and paid services.
+- [ ] Task 41: Define the paymaster-provider protocol and sponsor-policy profile
+  - Status: Planned
+  - Goal: Turn native sponsored execution into a stable OpenFox/TOS protocol
+    surface for bounded execution funding, without falling back to faucet or
+    top-up workarounds.
+- [ ] Task 42: Add native sponsored transaction support across GTOS, tolang, and tosdk
+  - Status: Planned
+  - Goal: Add first-class sponsor-aware transaction semantics, validation, and
+    client encoding so sponsor-side gas funding becomes native protocol
+    behavior.
+- [ ] Task 43: Add a paymaster-provider service mode and requester UX to OpenFox
+  - Status: Planned
+  - Goal: Let one OpenFox node publish sponsorship capability and let another
+    node discover it, obtain one sponsorship authorization, and execute a
+    sponsored call through the native TOS path.
+- [ ] Task 44: Add paymaster-provider operator visibility, diagnostics, and docs
+  - Status: Planned
+  - Goal: Make sponsored execution state visible through status/health/doctor,
+    service UX, and operator guides so paymaster-provider becomes part of the
+    same runtime story as signer-provider and paid services.
 
 ## Task 1 Breakdown
 
@@ -507,51 +527,103 @@ building OpenFox into a TOS-native agent platform.
 
 ## Task 37 Breakdown
 
-- [ ] Define canonical `signer.quote`, `signer.submit`, `signer.status`, and `signer.receipt` request/response objects.
-- [ ] Define a canonical `SignerPolicyRef` shape with `wallet_address`, `policy_hash`, `delegate_identity`, `scope_hash`, and expiry metadata.
-- [ ] Define a canonical signer-provider `trust_tier` model:
+- [x] Define canonical `signer.quote`, `signer.submit`, `signer.status`, and `signer.receipt` request/response objects.
+- [x] Define a canonical `SignerPolicyRef` shape with `wallet_address`, `policy_hash`, `delegate_identity`, `scope_hash`, and expiry metadata.
+- [x] Define a canonical signer-provider `trust_tier` model:
   - `self_hosted`
   - `org_trusted`
   - `public_low_trust`
-- [ ] Define the first supported wallet-policy profile for bounded delegated execution:
+- [x] Define the first supported wallet-policy profile for bounded delegated execution:
   - allowed target addresses
   - allowed function selectors
   - value caps
   - expiry
   - replay protection expectations
-- [ ] Map each `trust_tier` to default policy constraints so provider choice becomes an explicit risk profile instead of an informal trust judgment.
-- [ ] Define payment idempotency and payment-to-execution binding rules for signer-provider flows.
-- [ ] Define how signer-provider capability publication maps into Agent Discovery and optional Agent Gateway routes.
-- [ ] Document the funding boundary clearly:
+- [x] Map each `trust_tier` to default policy constraints so provider choice becomes an explicit risk profile instead of an informal trust judgment.
+- [x] Define payment idempotency and payment-to-execution binding rules for signer-provider flows.
+- [x] Define how signer-provider capability publication maps into Agent Discovery and optional Agent Gateway routes.
+- [x] Document the funding boundary clearly:
   - `v0` assumes the programmable wallet already has enough `TOS` or uses a separate funding flow.
-- [ ] Keep the protocol explicitly execution-centric, not a raw arbitrary-byte signing API.
+- [x] Keep the protocol explicitly execution-centric, not a raw arbitrary-byte signing API.
 
 ## Task 38 Breakdown
 
-- [ ] Add signer-provider config and local database tables for quotes, execution requests, and execution receipts.
-- [ ] Add a signer-provider HTTP service with bounded `quote`, `submit`, `status`, and `receipt` flows.
-- [ ] Reuse the existing paid-provider pattern so signer-provider requests can charge via `x402`.
-- [ ] Bind accepted payments to persisted signer execution receipts.
-- [ ] Add the first runtime path that submits a delegated programmable-wallet call to `TOS`.
-- [ ] Keep provider behavior constrained to delegated/session-key execution instead of root-key custody.
-- [ ] Add targeted tests for schema validation, idempotency, receipt persistence, and submission behavior.
+- [x] Add signer-provider config and local database tables for quotes, execution requests, and execution receipts.
+- [x] Add a signer-provider HTTP service with bounded `quote`, `submit`, `status`, and `receipt` flows.
+- [x] Reuse the existing paid-provider pattern so signer-provider requests can charge via `x402`.
+- [x] Bind accepted payments to persisted signer execution receipts.
+- [x] Add the first runtime path that submits a delegated programmable-wallet call to `TOS`.
+- [x] Keep provider behavior constrained to delegated/session-key execution instead of root-key custody.
+- [x] Add targeted tests for schema validation, idempotency, receipt persistence, and submission behavior.
 
 ## Task 39 Breakdown
 
-- [ ] Add a requester-side signer-provider client that can request a quote and submit one bounded execution request.
-- [ ] Add `openfox signer ...` CLI surfaces for provider discovery, quote, submit, and receipt lookup.
-- [ ] Add a remote delegated-execution path beside the current local wallet path instead of replacing it.
-- [ ] Support discovery-first invocation so a requester can find signer-provider agents through Agent Discovery.
-- [ ] Keep gateway compatibility so a signer-provider can sit behind Agent Gateway if needed.
-- [ ] Let the requester choose or enforce `trust_tier` during provider selection and invocation.
-- [ ] Add targeted tests for requester-side quote/submit/result flows.
+- [x] Add a requester-side signer-provider client that can request a quote and submit one bounded execution request.
+- [x] Add `openfox signer ...` CLI surfaces for provider discovery, quote, submit, and receipt lookup.
+- [x] Add a remote delegated-execution path beside the current local wallet path instead of replacing it.
+- [x] Support discovery-first invocation so a requester can find signer-provider agents through Agent Discovery.
+- [x] Keep gateway compatibility so a signer-provider can sit behind Agent Gateway if needed.
+- [x] Let the requester choose or enforce `trust_tier` during provider selection and invocation.
+- [x] Add targeted tests for requester-side quote/submit/result flows.
 
 ## Task 40 Breakdown
 
-- [ ] Surface signer-provider routes, receipts, and recent execution state in `openfox status`.
-- [ ] Add signer-provider findings to `openfox health` and `openfox doctor`, especially for missing policy, expired delegation, or insufficient wallet funding.
-- [ ] Expose signer-provider service/operator state through the existing managed-service and service-status UX.
-- [ ] Document the operator flow for principal, requester, and signer-provider roles.
-- [ ] Surface the selected `trust_tier` and warn when a provider choice is too permissive for the intended execution scope.
-- [ ] Add a multi-node example showing programmable-wallet delegation plus signer-provider execution.
-- [ ] Link signer-provider docs back into the roadmap and operator-facing guides so the feature is part of the main runtime narrative.
+- [x] Surface signer-provider routes, receipts, and recent execution state in `openfox status`.
+- [x] Add signer-provider findings to `openfox health` and `openfox doctor`, especially for missing policy, expired delegation, or insufficient wallet funding.
+- [x] Expose signer-provider service/operator state through the existing managed-service and service-status UX.
+- [x] Document the operator flow for principal, requester, and signer-provider roles.
+- [x] Surface the selected `trust_tier` and warn when a provider choice is too permissive for the intended execution scope.
+- [x] Add a multi-node example showing programmable-wallet delegation plus signer-provider execution.
+- [x] Link signer-provider docs back into the roadmap and operator-facing guides so the feature is part of the main runtime narrative.
+
+## Task 41 Breakdown
+
+- [ ] Define canonical `paymaster.quote`, `paymaster.authorize`, `paymaster.status`, and `paymaster.receipt` request/response objects.
+- [ ] Define a canonical `PaymasterPolicyRef` shape with `sponsor_address`, `policy_hash`, wallet/target constraints, gas caps, and expiry metadata.
+- [ ] Define a canonical paymaster-provider `trust_tier` model aligned with signer-provider:
+  - `self_hosted`
+  - `org_trusted`
+  - `public_low_trust`
+- [ ] Define the first supported sponsor-policy profile for bounded native sponsored execution:
+  - allowed requester wallets
+  - allowed target addresses
+  - allowed function selectors
+  - max validation gas
+  - max execution gas
+  - max value
+  - expiry
+  - replay protection expectations
+- [ ] Define payment idempotency and payment-to-authorization binding rules for paymaster-provider flows.
+- [ ] Define how paymaster-provider capability publication maps into Agent Discovery and optional Agent Gateway routes.
+- [ ] Keep the protocol explicitly native sponsored execution, not a disguised top-up or faucet path.
+
+## Task 42 Breakdown
+
+- [ ] Add a native sponsored transaction type or equivalent sponsor-aware transaction semantics in `gtos`.
+- [ ] Add sponsor identity, sponsor witness, sponsor nonce, sponsor expiry, and sponsor policy-hash fields to the native transaction model.
+- [ ] Update mempool and state-transition rules so sponsor-side balance and sponsor-side authorization replace requester-side gas funding.
+- [ ] Add first-class sponsor validation hooks in `gtos` and `tolang`.
+- [ ] Add `tosdk` encoding, hashing, signing, and client support for native sponsored transactions.
+- [ ] Add targeted tests for sponsored validation, replay protection, rejection outside policy, and sponsor-funded execution paths.
+
+## Task 43 Breakdown
+
+- [ ] Add paymaster-provider config and local database tables for sponsorship quotes, authorizations, and receipts.
+- [ ] Add a paymaster-provider HTTP service with bounded `quote`, `authorize`, `status`, and `receipt` flows.
+- [ ] Reuse the paid-provider pattern so paymaster-provider requests can charge via `x402` when appropriate.
+- [ ] Add a requester-side paymaster-provider client that can request a quote and obtain one bounded sponsorship authorization.
+- [ ] Add `openfox paymaster ...` CLI surfaces for provider discovery, quote, authorize, and receipt lookup.
+- [ ] Support composition across:
+  - local wallet + paymaster-provider
+  - signer-provider + paymaster-provider
+  - combined signer-provider + paymaster-provider
+- [ ] Keep discovery-first invocation and optional gateway compatibility for paymaster-provider routes.
+
+## Task 44 Breakdown
+
+- [ ] Surface paymaster-provider routes, authorizations, receipts, and recent sponsorship state in `openfox status`.
+- [ ] Add paymaster-provider findings to `openfox health` and `openfox doctor`, especially for missing sponsor policy, expired sponsorship windows, or insufficient sponsor funding.
+- [ ] Expose paymaster-provider service/operator state through the existing managed-service and service-status UX.
+- [ ] Document the operator flow for requester, sponsor principal, and paymaster-provider roles.
+- [ ] Add a multi-node example showing signer-provider plus paymaster-provider composition.
+- [ ] Link paymaster-provider docs back into the roadmap and operator-facing guides so sponsored execution becomes part of the main runtime narrative.

@@ -140,6 +140,9 @@ function getInvokableEndpoint(
   card: AgentDiscoveryCard,
   capability?: string,
 ): VerifiedAgentProvider["endpoint"] | null {
+  const httpEndpoints = card.endpoints.filter(
+    (endpoint) => endpoint.kind === "https" || endpoint.kind === "http",
+  );
   if (capability === "gateway.relay") {
     return (
       card.endpoints.find((endpoint) => endpoint.role === "provider_relay") ??
@@ -147,9 +150,41 @@ function getInvokableEndpoint(
       null
     );
   }
+  if (capability?.endsWith(".quote")) {
+    return (
+      httpEndpoints.find((endpoint) => endpoint.url.endsWith("/quote")) ??
+      httpEndpoints[0] ??
+      card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
+      null
+    );
+  }
+  if (capability?.endsWith(".submit")) {
+    return (
+      httpEndpoints.find((endpoint) => endpoint.url.endsWith("/submit")) ??
+      httpEndpoints[0] ??
+      card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
+      null
+    );
+  }
+  if (capability?.endsWith(".status")) {
+    return (
+      httpEndpoints.find((endpoint) => endpoint.url.endsWith("/status")) ??
+      httpEndpoints[0] ??
+      card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
+      null
+    );
+  }
+  if (capability?.endsWith(".receipt")) {
+    return (
+      httpEndpoints.find((endpoint) => endpoint.url.endsWith("/receipt")) ??
+      httpEndpoints[0] ??
+      card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
+      null
+    );
+  }
   return (
-    card.endpoints.find((endpoint) => endpoint.kind === "https") ??
-    card.endpoints.find((endpoint) => endpoint.kind === "http") ??
+    httpEndpoints.find((endpoint) => endpoint.kind === "https") ??
+    httpEndpoints.find((endpoint) => endpoint.kind === "http") ??
     card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
     null
   );

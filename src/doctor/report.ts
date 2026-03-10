@@ -36,6 +36,13 @@ export interface HealthSnapshot {
   discoveryEnabled: boolean;
   gatewayEnabled: boolean;
   providerEnabled: boolean;
+  signerProviderEnabled: boolean;
+  signerProviderReady: boolean;
+  signerRecentQuotes: number;
+  signerRecentExecutions: number;
+  signerPendingExecutions: number;
+  signerPolicyConfigured: boolean;
+  signerPolicyExpired: boolean;
   bountyEnabled: boolean;
   bountyRole?: "host" | "solver";
   bountyAutoEnabled: boolean;
@@ -104,9 +111,10 @@ function hasConfiguredInference(config: OpenFoxConfig): boolean {
 
 function isProviderEnabled(config: OpenFoxConfig): boolean {
   return Boolean(
-    config.agentDiscovery?.faucetServer?.enabled ||
+      config.agentDiscovery?.faucetServer?.enabled ||
       config.agentDiscovery?.observationServer?.enabled ||
       config.agentDiscovery?.oracleServer?.enabled ||
+      config.signerProvider?.enabled ||
       config.storage?.enabled ||
       (config.agentDiscovery?.gatewayClient?.enabled &&
         (config.agentDiscovery.gatewayClient.routes?.length ?? 0) > 0),
@@ -122,6 +130,13 @@ async function buildConfigSnapshot(
   discoveryEnabled: boolean;
   gatewayEnabled: boolean;
   providerEnabled: boolean;
+  signerProviderEnabled: boolean;
+  signerProviderReady: boolean;
+  signerRecentQuotes: number;
+  signerRecentExecutions: number;
+  signerPendingExecutions: number;
+  signerPolicyConfigured: boolean;
+  signerPolicyExpired: boolean;
   bountyEnabled: boolean;
   bountyRole?: "host" | "solver";
   bountyAutoEnabled: boolean;
@@ -211,6 +226,26 @@ async function buildConfigSnapshot(
       config.agentDiscovery?.gatewayServer?.enabled === true ||
       config.agentDiscovery?.gatewayClient?.enabled === true,
     providerEnabled: isProviderEnabled(config),
+    signerProviderEnabled: config.signerProvider?.enabled === true,
+    signerProviderReady: Boolean(!config.signerProvider?.enabled || config.rpcUrl),
+    signerRecentQuotes: config.signerProvider?.enabled ? db.listSignerQuotes(20).length : 0,
+    signerRecentExecutions: config.signerProvider?.enabled
+      ? db.listSignerExecutions(20).length
+      : 0,
+    signerPendingExecutions: config.signerProvider?.enabled
+      ? db.listSignerExecutions(100, { status: "pending" }).length +
+        db.listSignerExecutions(100, { status: "submitted" }).length
+      : 0,
+    signerPolicyConfigured: Boolean(
+      !config.signerProvider?.enabled ||
+        ((config.signerProvider.policy.allowedTargets?.length ?? 0) > 0 &&
+          config.signerProvider.policy.policyId),
+    ),
+    signerPolicyExpired: Boolean(
+      config.signerProvider?.enabled &&
+        config.signerProvider.policy.expiresAt &&
+        new Date(config.signerProvider.policy.expiresAt).getTime() <= Date.now(),
+    ),
     bountyEnabled: config.bounty?.enabled === true,
     bountyRole: config.bounty?.enabled ? config.bounty.role : undefined,
     bountyAutoEnabled: Boolean(
@@ -505,6 +540,36 @@ function collectFindings(
     });
   }
 
+  if (snapshot.signerProviderEnabled) {
+    findings.push({
+      id: "signer-provider-enabled",
+      severity:
+        !snapshot.signerProviderReady ||
+        !snapshot.signerPolicyConfigured ||
+        snapshot.signerPolicyExpired
+          ? "error"
+          : "ok",
+      summary:
+        !snapshot.signerProviderReady
+          ? "Signer-provider is enabled but no chain RPC is configured."
+          : !snapshot.signerPolicyConfigured
+            ? "Signer-provider is enabled but the policy is missing allowed targets or policy_id."
+            : snapshot.signerPolicyExpired
+              ? "Signer-provider is enabled but the configured policy has expired."
+              : `Signer-provider is enabled (${snapshot.signerRecentQuotes} recent quote${snapshot.signerRecentQuotes === 1 ? "" : "s"}, ${snapshot.signerRecentExecutions} recent execution${snapshot.signerRecentExecutions === 1 ? "" : "s"}).`,
+      recommendation:
+        !snapshot.signerProviderReady
+          ? "Set `rpcUrl` so OpenFox can submit signer-provider executions on-chain."
+          : !snapshot.signerPolicyConfigured
+            ? "Set `signerProvider.policy.policyId` and at least one `allowedTargets` entry."
+            : snapshot.signerPolicyExpired
+              ? "Extend `signerProvider.policy.expiresAt` or remove the expiry."
+              : snapshot.signerPendingExecutions > 0
+                ? "Run `openfox signer list --status pending` to inspect pending delegated executions."
+                : undefined,
+    });
+  }
+
   if (snapshot.bountyEnabled) {
     findings.push({
       id: "bounty-enabled",
@@ -713,6 +778,13 @@ export async function buildHealthSnapshot(
       discoveryEnabled: false,
       gatewayEnabled: false,
       providerEnabled: false,
+      signerProviderEnabled: false,
+      signerProviderReady: false,
+      signerRecentQuotes: 0,
+      signerRecentExecutions: 0,
+      signerPendingExecutions: 0,
+      signerPolicyConfigured: false,
+      signerPolicyExpired: false,
       bountyEnabled: false,
       bountyRole: undefined,
       bountyAutoEnabled: false,
@@ -801,6 +873,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `RPC configured: ${yesNo(snapshot.rpcConfigured)}`,
     `Discovery enabled: ${yesNo(snapshot.discoveryEnabled)}`,
     `Provider enabled: ${yesNo(snapshot.providerEnabled)}`,
+    `Signer provider enabled: ${yesNo(snapshot.signerProviderEnabled)}${snapshot.signerProviderEnabled ? ` (${snapshot.signerRecentQuotes} quotes, ${snapshot.signerRecentExecutions} executions, ${snapshot.signerPendingExecutions} pending)` : ""}`,
     `Gateway enabled: ${yesNo(snapshot.gatewayEnabled)}`,
     `Bounty enabled: ${yesNo(snapshot.bountyEnabled)}${snapshot.bountyRole ? ` (${snapshot.bountyRole})` : ""}`,
     `Bounty auto mode: ${yesNo(snapshot.bountyAutoEnabled)}`,

@@ -19,6 +19,7 @@ import type {
   ArtifactPipelineConfig,
   MarketContractConfig,
   OpportunityScoutConfig,
+  SignerProviderConfig,
   SettlementConfig,
   StorageMarketConfig,
   WalletFundingConfig,
@@ -44,6 +45,7 @@ import {
   DEFAULT_BOUNTY_POLICY,
   DEFAULT_MARKET_CONTRACT_CONFIG,
   DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+  DEFAULT_SIGNER_PROVIDER_CONFIG,
   DEFAULT_SETTLEMENT_CONFIG,
   DEFAULT_STORAGE_MARKET_CONFIG,
   DEFAULT_WALLET_FUNDING_CONFIG,
@@ -587,6 +589,34 @@ export function loadConfig(): OpenFoxConfig | null {
     ...((raw?.x402Server as JsonRecord | undefined) ?? {}),
   };
 
+  const signerProvider: SignerProviderConfig = {
+    ...DEFAULT_SIGNER_PROVIDER_CONFIG,
+    ...((raw?.signerProvider as JsonRecord | undefined) ?? {}),
+    policy: {
+      ...DEFAULT_SIGNER_PROVIDER_CONFIG.policy,
+      ...(((raw?.signerProvider as JsonRecord | undefined)?.policy as JsonRecord | undefined) ??
+        {}),
+      allowedTargets: Array.isArray(
+        ((raw?.signerProvider as JsonRecord | undefined)?.policy as JsonRecord | undefined)
+          ?.allowedTargets,
+      )
+        ? (
+            (((raw?.signerProvider as JsonRecord | undefined)?.policy as JsonRecord | undefined)
+              ?.allowedTargets as unknown[]) ?? []
+          ).filter((value): value is `0x${string}` => typeof value === "string" && value.trim().length > 0)
+        : DEFAULT_SIGNER_PROVIDER_CONFIG.policy.allowedTargets,
+      allowedFunctionSelectors: Array.isArray(
+        ((raw?.signerProvider as JsonRecord | undefined)?.policy as JsonRecord | undefined)
+          ?.allowedFunctionSelectors,
+      )
+        ? (
+            (((raw?.signerProvider as JsonRecord | undefined)?.policy as JsonRecord | undefined)
+              ?.allowedFunctionSelectors as unknown[]) ?? []
+          ).filter((value): value is `0x${string}` => typeof value === "string" && value.trim().length > 0)
+        : DEFAULT_SIGNER_PROVIDER_CONFIG.policy.allowedFunctionSelectors,
+    },
+  };
+
   const storage: StorageMarketConfig = {
     ...DEFAULT_STORAGE_MARKET_CONFIG,
     ...((raw?.storage as JsonRecord | undefined) ?? {}),
@@ -756,6 +786,7 @@ export function loadConfig(): OpenFoxConfig | null {
     settlement,
     marketContracts,
     x402Server,
+    signerProvider,
     storage,
     artifacts,
   } as OpenFoxConfig;

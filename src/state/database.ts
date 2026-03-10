@@ -54,6 +54,10 @@ import type {
   StorageLeaseStatus,
   StorageQuoteRecord,
   StorageRenewalRecord,
+  SignerExecutionRecord,
+  SignerExecutionStatus,
+  SignerQuoteRecord,
+  SignerQuoteStatus,
 } from "../types.js";
 import { DEFAULT_BOUNTY_POLICY } from "../types.js";
 import {
@@ -84,6 +88,7 @@ import {
   MIGRATION_V18,
   MIGRATION_V19,
   MIGRATION_V20,
+  MIGRATION_V22,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -1124,6 +1129,210 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     return rows.map(deserializeX402PaymentRecord);
   };
 
+  const upsertSignerQuote = (record: SignerQuoteRecord): void => {
+    db.prepare(
+      `INSERT INTO signer_quotes (
+        quote_id, provider_address, wallet_address, requester_address, target_address,
+        value_wei, data_hex, gas, policy_id, policy_hash, scope_hash,
+        delegate_identity, trust_tier, amount_wei, status, expires_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(quote_id) DO UPDATE SET
+        provider_address = excluded.provider_address,
+        wallet_address = excluded.wallet_address,
+        requester_address = excluded.requester_address,
+        target_address = excluded.target_address,
+        value_wei = excluded.value_wei,
+        data_hex = excluded.data_hex,
+        gas = excluded.gas,
+        policy_id = excluded.policy_id,
+        policy_hash = excluded.policy_hash,
+        scope_hash = excluded.scope_hash,
+        delegate_identity = excluded.delegate_identity,
+        trust_tier = excluded.trust_tier,
+        amount_wei = excluded.amount_wei,
+        status = excluded.status,
+        expires_at = excluded.expires_at,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.quoteId,
+      record.providerAddress,
+      record.walletAddress,
+      record.requesterAddress,
+      record.targetAddress,
+      record.valueWei,
+      record.dataHex,
+      record.gas,
+      record.policyId,
+      record.policyHash,
+      record.scopeHash,
+      record.delegateIdentity ?? null,
+      record.trustTier,
+      record.amountWei,
+      record.status,
+      record.expiresAt,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getSignerQuote = (quoteId: string): SignerQuoteRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM signer_quotes WHERE quote_id = ?")
+      .get(quoteId) as any | undefined;
+    return row ? deserializeSignerQuoteRecord(row) : undefined;
+  };
+
+  const listSignerQuotes = (
+    limit: number,
+    filters?: {
+      status?: SignerQuoteStatus;
+      requesterAddress?: string;
+      walletAddress?: string;
+    },
+  ): SignerQuoteRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.requesterAddress) {
+      clauses.push("requester_address = ?");
+      params.push(filters.requesterAddress);
+    }
+    if (filters?.walletAddress) {
+      clauses.push("wallet_address = ?");
+      params.push(filters.walletAddress);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(
+        `SELECT * FROM signer_quotes ${where} ORDER BY updated_at DESC, created_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as any[];
+    return rows.map(deserializeSignerQuoteRecord);
+  };
+
+  const upsertSignerExecution = (record: SignerExecutionRecord): void => {
+    db.prepare(
+      `INSERT INTO signer_executions (
+        execution_id, quote_id, request_key, request_hash, provider_address,
+        wallet_address, requester_address, target_address, value_wei, data_hex, gas,
+        policy_id, policy_hash, scope_hash, delegate_identity, trust_tier,
+        request_nonce, request_expires_at, reason, payment_id, submitted_tx_hash,
+        submitted_receipt_json, receipt_hash, status, last_error, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(execution_id) DO UPDATE SET
+        quote_id = excluded.quote_id,
+        request_key = excluded.request_key,
+        request_hash = excluded.request_hash,
+        provider_address = excluded.provider_address,
+        wallet_address = excluded.wallet_address,
+        requester_address = excluded.requester_address,
+        target_address = excluded.target_address,
+        value_wei = excluded.value_wei,
+        data_hex = excluded.data_hex,
+        gas = excluded.gas,
+        policy_id = excluded.policy_id,
+        policy_hash = excluded.policy_hash,
+        scope_hash = excluded.scope_hash,
+        delegate_identity = excluded.delegate_identity,
+        trust_tier = excluded.trust_tier,
+        request_nonce = excluded.request_nonce,
+        request_expires_at = excluded.request_expires_at,
+        reason = excluded.reason,
+        payment_id = excluded.payment_id,
+        submitted_tx_hash = excluded.submitted_tx_hash,
+        submitted_receipt_json = excluded.submitted_receipt_json,
+        receipt_hash = excluded.receipt_hash,
+        status = excluded.status,
+        last_error = excluded.last_error,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.executionId,
+      record.quoteId,
+      record.requestKey,
+      record.requestHash,
+      record.providerAddress,
+      record.walletAddress,
+      record.requesterAddress,
+      record.targetAddress,
+      record.valueWei,
+      record.dataHex,
+      record.gas,
+      record.policyId,
+      record.policyHash,
+      record.scopeHash,
+      record.delegateIdentity ?? null,
+      record.trustTier,
+      record.requestNonce,
+      record.requestExpiresAt,
+      record.reason ?? null,
+      record.paymentId ?? null,
+      record.submittedTxHash ?? null,
+      record.submittedReceipt ? JSON.stringify(record.submittedReceipt) : null,
+      record.receiptHash ?? null,
+      record.status,
+      record.lastError ?? null,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getSignerExecution = (
+    executionId: string,
+  ): SignerExecutionRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM signer_executions WHERE execution_id = ?")
+      .get(executionId) as any | undefined;
+    return row ? deserializeSignerExecutionRecord(row) : undefined;
+  };
+
+  const getLatestSignerExecutionByRequestKey = (
+    requestKey: string,
+  ): SignerExecutionRecord | undefined => {
+    const row = db
+      .prepare(
+        `SELECT * FROM signer_executions
+         WHERE request_key = ?
+         ORDER BY updated_at DESC, created_at DESC
+         LIMIT 1`,
+      )
+      .get(requestKey) as any | undefined;
+    return row ? deserializeSignerExecutionRecord(row) : undefined;
+  };
+
+  const listSignerExecutions = (
+    limit: number,
+    filters?: {
+      status?: SignerExecutionStatus;
+      requesterAddress?: string;
+      walletAddress?: string;
+    },
+  ): SignerExecutionRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.requesterAddress) {
+      clauses.push("requester_address = ?");
+      params.push(filters.requesterAddress);
+    }
+    if (filters?.walletAddress) {
+      clauses.push("wallet_address = ?");
+      params.push(filters.walletAddress);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(
+        `SELECT * FROM signer_executions ${where} ORDER BY updated_at DESC, created_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as any[];
+    return rows.map(deserializeSignerExecutionRecord);
+  };
+
   const upsertStorageQuote = (record: StorageQuoteRecord): void => {
     db.prepare(
       `INSERT INTO storage_quotes (
@@ -1760,6 +1969,13 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     getLatestX402PaymentByRequestKey,
     listX402Payments,
     listPendingX402Payments,
+    upsertSignerQuote,
+    getSignerQuote,
+    listSignerQuotes,
+    upsertSignerExecution,
+    getSignerExecution,
+    getLatestSignerExecutionByRequestKey,
+    listSignerExecutions,
     upsertStorageQuote,
     getStorageQuote,
     listStorageQuotes,
@@ -1927,6 +2143,10 @@ function applyMigrations(db: DatabaseType): void {
             ON storage_renewals(cid, created_at DESC);
         `);
       },
+    },
+    {
+      version: 22,
+      apply: () => db.exec(MIGRATION_V22),
     },
   ];
 
@@ -3180,6 +3400,67 @@ function deserializeX402PaymentRecord(row: any): X402PaymentRecord {
     boundKind: row.bound_kind ?? null,
     boundSubjectId: row.bound_subject_id ?? null,
     artifactUrl: row.artifact_url ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeSignerQuoteRecord(row: any): SignerQuoteRecord {
+  return {
+    quoteId: row.quote_id,
+    providerAddress: row.provider_address,
+    walletAddress: row.wallet_address,
+    requesterAddress: row.requester_address,
+    targetAddress: row.target_address,
+    valueWei: row.value_wei,
+    dataHex: row.data_hex,
+    gas: row.gas,
+    policyId: row.policy_id,
+    policyHash: row.policy_hash,
+    scopeHash: row.scope_hash,
+    delegateIdentity: row.delegate_identity ?? null,
+    trustTier: row.trust_tier,
+    amountWei: row.amount_wei,
+    status: row.status,
+    expiresAt: row.expires_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeSignerExecutionRecord(row: any): SignerExecutionRecord {
+  return {
+    executionId: row.execution_id,
+    quoteId: row.quote_id,
+    requestKey: row.request_key,
+    requestHash: row.request_hash,
+    providerAddress: row.provider_address,
+    walletAddress: row.wallet_address,
+    requesterAddress: row.requester_address,
+    targetAddress: row.target_address,
+    valueWei: row.value_wei,
+    dataHex: row.data_hex,
+    gas: row.gas,
+    policyId: row.policy_id,
+    policyHash: row.policy_hash,
+    scopeHash: row.scope_hash,
+    delegateIdentity: row.delegate_identity ?? null,
+    trustTier: row.trust_tier,
+    requestNonce: row.request_nonce,
+    requestExpiresAt: Number(row.request_expires_at || 0),
+    reason: row.reason ?? null,
+    paymentId: row.payment_id ?? null,
+    submittedTxHash: row.submitted_tx_hash ?? null,
+    submittedReceipt: row.submitted_receipt_json
+      ? parseJsonSafe(
+          row.submitted_receipt_json,
+          null as SignerExecutionRecord["submittedReceipt"],
+          "deserializeSignerExecutionRecord.submitted_receipt_json",
+        )
+      : null,
+    receiptHash: row.receipt_hash ?? null,
+    status: row.status,
+    lastError: row.last_error ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

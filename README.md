@@ -153,6 +153,12 @@ It supports:
 - contract callback adapters and heartbeat-driven retry for contract-bound settlement flows
 - contract-native market bindings for bounty, observation, and oracle creation flows
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
+- a paid signer-provider surface for bounded delegated execution with:
+  - `openfox signer discover`
+  - `openfox signer quote`
+  - `openfox signer submit`
+  - `openfox signer status`
+  - `openfox signer receipt`
 - gateway-backed provider endpoints for agents behind NAT
 
 The Gateway v1 path is:
@@ -363,6 +369,7 @@ openfox models status
 openfox onboard --install-daemon
 openfox logs --tail 200
 openfox bounty --help
+openfox signer --help
 openfox storage --help
 ```
 
@@ -468,6 +475,7 @@ Current support includes:
 - native TOS transfer sending
 - TOS `x402` exact payment selection and payment flow
 - durable server-side `x402` payment ledger and retry semantics for paid services
+- bounded delegated execution through signer-provider discovery, quotes, submission, and receipts
 
 CLI examples:
 
@@ -501,6 +509,7 @@ Start here if you want to integrate OpenFox without reading the internals:
 - [Integration Examples](./docs/OpenFox-Integration-Examples.md)
 - [Operator Examples](./docs/OpenFox-Operator-Examples.md)
 - [SDK and Runtime Surfaces](./docs/OpenFox-SDK-Surfaces.md)
+- [Signer-Provider Operator Guide](./docs/OpenFox-Signer-Provider-Operator-Guide.md)
 
 Bundled starter templates are available through:
 

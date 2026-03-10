@@ -437,6 +437,7 @@ export interface OpenFoxConfig {
   settlement?: SettlementConfig;
   marketContracts?: MarketContractConfig;
   x402Server?: X402ServerConfig;
+  signerProvider?: SignerProviderConfig;
   storage?: StorageMarketConfig;
   artifacts?: ArtifactPipelineConfig;
 }
@@ -577,6 +578,98 @@ export interface OpportunityScoutConfig {
   remoteBaseUrls: string[];
   maxItems: number;
   minRewardWei: string;
+}
+
+export type SignerProviderTrustTier =
+  | "self_hosted"
+  | "org_trusted"
+  | "public_low_trust";
+
+export interface SignerProviderPolicyConfig {
+  trustTier: SignerProviderTrustTier;
+  walletAddress?: Address;
+  policyId: string;
+  delegateIdentity?: string;
+  allowedTargets: Address[];
+  allowedFunctionSelectors: Hex[];
+  maxValueWei: string;
+  expiresAt?: string;
+  allowSystemAction?: boolean;
+}
+
+export interface SignerProviderConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  pathPrefix: string;
+  capabilityPrefix: string;
+  publishToDiscovery: boolean;
+  quoteValiditySeconds: number;
+  quotePriceWei: string;
+  submitPriceWei: string;
+  requestTimeoutMs: number;
+  maxDataBytes: number;
+  defaultGas: string;
+  policy: SignerProviderPolicyConfig;
+}
+
+export type SignerQuoteStatus = "quoted" | "used" | "expired";
+export type SignerExecutionStatus =
+  | "pending"
+  | "submitted"
+  | "confirmed"
+  | "failed"
+  | "rejected";
+
+export interface SignerQuoteRecord {
+  quoteId: string;
+  providerAddress: Address;
+  walletAddress: Address;
+  requesterAddress: Address;
+  targetAddress: Address;
+  valueWei: string;
+  dataHex: Hex;
+  gas: string;
+  policyId: string;
+  policyHash: Hex;
+  scopeHash: Hex;
+  delegateIdentity?: string | null;
+  trustTier: SignerProviderTrustTier;
+  amountWei: string;
+  status: SignerQuoteStatus;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SignerExecutionRecord {
+  executionId: string;
+  quoteId: string;
+  requestKey: string;
+  requestHash: Hex;
+  providerAddress: Address;
+  walletAddress: Address;
+  requesterAddress: Address;
+  targetAddress: Address;
+  valueWei: string;
+  dataHex: Hex;
+  gas: string;
+  policyId: string;
+  policyHash: Hex;
+  scopeHash: Hex;
+  delegateIdentity?: string | null;
+  trustTier: SignerProviderTrustTier;
+  requestNonce: string;
+  requestExpiresAt: number;
+  reason?: string | null;
+  paymentId?: Hex | null;
+  submittedTxHash?: Hex | null;
+  submittedReceipt?: Record<string, unknown> | null;
+  receiptHash?: Hex | null;
+  status: SignerExecutionStatus;
+  lastError?: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type StorageLeaseStatus = "quoted" | "active" | "expired" | "released";
@@ -932,6 +1025,7 @@ export interface MarketContractCallbackRecord {
 export type X402PaymentServiceKind =
   | "observation"
   | "oracle"
+  | "signer"
   | "storage"
   | "gateway_request"
   | "gateway_session";
@@ -1093,6 +1187,29 @@ export const DEFAULT_OPPORTUNITY_SCOUT_CONFIG: OpportunityScoutConfig = {
   minRewardWei: "0",
 };
 
+export const DEFAULT_SIGNER_PROVIDER_CONFIG: SignerProviderConfig = {
+  enabled: false,
+  bindHost: "127.0.0.1",
+  port: 4898,
+  pathPrefix: "/signer",
+  capabilityPrefix: "signer",
+  publishToDiscovery: true,
+  quoteValiditySeconds: 300,
+  quotePriceWei: "0",
+  submitPriceWei: "1000000000000000",
+  requestTimeoutMs: 15000,
+  maxDataBytes: 16384,
+  defaultGas: "180000",
+  policy: {
+    trustTier: "self_hosted",
+    policyId: "default",
+    allowedTargets: [],
+    allowedFunctionSelectors: [],
+    maxValueWei: "0",
+    allowSystemAction: false,
+  },
+};
+
 export const DEFAULT_SETTLEMENT_CONFIG: SettlementConfig = {
   enabled: false,
   sinkAddress: undefined,
@@ -1222,6 +1339,7 @@ export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   settlement: DEFAULT_SETTLEMENT_CONFIG,
   marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
   x402Server: DEFAULT_X402_SERVER_CONFIG,
+  signerProvider: DEFAULT_SIGNER_PROVIDER_CONFIG,
   storage: DEFAULT_STORAGE_MARKET_CONFIG,
   artifacts: DEFAULT_ARTIFACT_PIPELINE_CONFIG,
 };
@@ -1917,6 +2035,27 @@ export interface OpenFoxDatabase {
     },
   ): X402PaymentRecord[];
   listPendingX402Payments(limit: number, nowIso?: string): X402PaymentRecord[];
+
+  // Signer provider
+  upsertSignerQuote(record: SignerQuoteRecord): void;
+  getSignerQuote(quoteId: string): SignerQuoteRecord | undefined;
+  listSignerQuotes(
+    limit: number,
+    filters?: { status?: SignerQuoteStatus; requesterAddress?: Address; walletAddress?: Address },
+  ): SignerQuoteRecord[];
+  upsertSignerExecution(record: SignerExecutionRecord): void;
+  getSignerExecution(executionId: string): SignerExecutionRecord | undefined;
+  getLatestSignerExecutionByRequestKey(
+    requestKey: string,
+  ): SignerExecutionRecord | undefined;
+  listSignerExecutions(
+    limit: number,
+    filters?: {
+      status?: SignerExecutionStatus;
+      requesterAddress?: Address;
+      walletAddress?: Address;
+    },
+  ): SignerExecutionRecord[];
 
   // Storage market
   upsertStorageQuote(record: StorageQuoteRecord): void;

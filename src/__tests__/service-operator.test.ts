@@ -103,6 +103,32 @@ describe("service operator", () => {
           routes: [],
         },
       },
+      signerProvider: {
+        enabled: true,
+        bindHost: "127.0.0.1",
+        port: 4898,
+        pathPrefix: "/signer",
+        capabilityPrefix: "signer",
+        publishToDiscovery: true,
+        quoteValiditySeconds: 300,
+        quotePriceWei: "0",
+        submitPriceWei: "1000",
+        requestTimeoutMs: 15000,
+        maxDataBytes: 2048,
+        defaultGas: "21000",
+        policy: {
+          trustTier: "self_hosted",
+          policyId: "policy-test",
+          walletAddress:
+            "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+          allowedTargets: [
+            "0x9999999999999999999999999999999999999999999999999999999999999999",
+          ],
+          allowedFunctionSelectors: [],
+          maxValueWei: "1000",
+          allowSystemAction: false,
+        },
+      },
       storage: {
         enabled: true,
         bindHost: "127.0.0.1",
@@ -155,6 +181,7 @@ describe("service operator", () => {
 
     const snapshot = buildServiceStatusSnapshot(config, db.raw);
     expect(snapshot.roles).toEqual(["requester", "provider", "gateway"]);
+    expect(snapshot.providerSurfaces.signer?.capabilityPrefix).toBe("signer");
     expect(snapshot.providerSurfaces.storage?.capabilityPrefix).toBe("storage.ipfs");
     expect(snapshot.providerSurfaces.artifacts?.captureCapability).toBe("public_news.capture");
     expect(snapshot.gatewayCache?.providerSessionCacheEntries).toBe(1);
@@ -164,6 +191,7 @@ describe("service operator", () => {
     const report = buildServiceStatusReport(config, db.raw);
     expect(report).toContain("Roles: requester, provider, gateway");
     expect(report).toContain("x402 server:");
+    expect(report).toContain("signer:");
     expect(report).toContain("capability_prefix=storage.ipfs");
     expect(report).toContain("artifacts:");
     expect(report).toContain("provider session cache entries: 1");

@@ -31,6 +31,7 @@ export function buildGatewayProviderRoutes(params: {
   faucetUrl?: string;
   observationUrl?: string;
   oracleUrl?: string;
+  signerUrl?: string;
   storageUrl?: string;
   artifactUrl?: string;
 }): AgentGatewayProviderRoute[] {
@@ -75,6 +76,45 @@ export function buildGatewayProviderRoutes(params: {
       mode: "paid",
       targetUrl: params.oracleUrl,
     });
+  }
+  const signer = params.config.signerProvider;
+  if (
+    signer?.enabled &&
+    params.signerUrl
+  ) {
+    const pathPrefix = signer.pathPrefix.replace(/\/+$/, "");
+    if (!routes.some((entry) => entry.capability === `${signer.capabilityPrefix}.quote`)) {
+      routes.push({
+        path: `${pathPrefix}/quote`,
+        capability: `${signer.capabilityPrefix}.quote`,
+        mode: "sponsored",
+        targetUrl: `${params.signerUrl}/quote`,
+      });
+    }
+    if (!routes.some((entry) => entry.capability === `${signer.capabilityPrefix}.submit`)) {
+      routes.push({
+        path: `${pathPrefix}/submit`,
+        capability: `${signer.capabilityPrefix}.submit`,
+        mode: "paid",
+        targetUrl: `${params.signerUrl}/submit`,
+      });
+    }
+    if (!routes.some((entry) => entry.capability === `${signer.capabilityPrefix}.status`)) {
+      routes.push({
+        path: `${pathPrefix}/status`,
+        capability: `${signer.capabilityPrefix}.status`,
+        mode: "sponsored",
+        targetUrl: `${params.signerUrl}/status`,
+      });
+    }
+    if (!routes.some((entry) => entry.capability === `${signer.capabilityPrefix}.receipt`)) {
+      routes.push({
+        path: `${pathPrefix}/receipt`,
+        capability: `${signer.capabilityPrefix}.receipt`,
+        mode: "sponsored",
+        targetUrl: `${params.signerUrl}/receipt`,
+      });
+    }
   }
   const storage = params.config.storage;
   if (

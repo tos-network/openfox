@@ -53,6 +53,14 @@ export interface ServiceStatusSnapshot {
           capability: string;
         }
       | null;
+    signer:
+      | {
+          url: string;
+          capabilityPrefix: string;
+          walletAddress: string;
+          trustTier: string;
+        }
+      | null;
     storage:
       | {
           url: string;
@@ -175,6 +183,7 @@ function detectServiceRoles(config: OpenFoxConfig): string[] {
     config.agentDiscovery?.faucetServer?.enabled ||
     config.agentDiscovery?.observationServer?.enabled ||
     config.agentDiscovery?.oracleServer?.enabled ||
+    config.signerProvider?.enabled ||
     config.storage?.enabled ||
     config.artifacts?.enabled ||
     (config.agentDiscovery?.gatewayClient?.enabled &&
@@ -224,6 +233,21 @@ function inferProviderRoutes(config: OpenFoxConfig): Array<{
       capability: oracle.capability,
       mode: "paid",
       targetUrl: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
+    });
+  }
+  const signer = config.signerProvider;
+  if (signer?.enabled && signer.port > 0) {
+    routes.push({
+      path: `${signer.pathPrefix.replace(/\/$/, "")}/quote`,
+      capability: `${signer.capabilityPrefix}.quote`,
+      mode: "sponsored",
+      targetUrl: buildLocalHttpUrl(signer.bindHost, signer.port, `${signer.pathPrefix}/quote`),
+    });
+    routes.push({
+      path: `${signer.pathPrefix.replace(/\/$/, "")}/submit`,
+      capability: `${signer.capabilityPrefix}.submit`,
+      mode: "paid",
+      targetUrl: buildLocalHttpUrl(signer.bindHost, signer.port, `${signer.pathPrefix}/submit`),
     });
   }
   const storage = config.storage;
@@ -383,6 +407,11 @@ export function buildServiceStatusReport(
       `  - oracle: ${snapshot.providerSurfaces.oracle.url}  capability=${snapshot.providerSurfaces.oracle.capability}`,
     );
   }
+  if (snapshot.providerSurfaces.signer) {
+    lines.push(
+      `  - signer: ${snapshot.providerSurfaces.signer.url}  capability_prefix=${snapshot.providerSurfaces.signer.capabilityPrefix}  wallet=${snapshot.providerSurfaces.signer.walletAddress}  trust_tier=${snapshot.providerSurfaces.signer.trustTier}`,
+    );
+  }
   if (snapshot.providerSurfaces.storage) {
     lines.push(
       `  - storage: ${snapshot.providerSurfaces.storage.url}  capability_prefix=${snapshot.providerSurfaces.storage.capabilityPrefix}  anonymous_get=${yesNo(snapshot.providerSurfaces.storage.allowAnonymousGet)}  auto_audit=${yesNo(snapshot.providerSurfaces.storage.autoAudit)}  auto_renew=${yesNo(snapshot.providerSurfaces.storage.autoRenew)}  replication_target=${snapshot.providerSurfaces.storage.replicationTarget}`,
@@ -402,6 +431,7 @@ export function buildServiceStatusReport(
     !snapshot.providerSurfaces.faucet &&
     !snapshot.providerSurfaces.observation &&
     !snapshot.providerSurfaces.oracle &&
+    !snapshot.providerSurfaces.signer &&
     !snapshot.providerSurfaces.storage &&
     !snapshot.providerSurfaces.artifacts &&
     snapshot.providerSurfaces.routes.length === 0
@@ -459,6 +489,7 @@ export function buildServiceStatusSnapshot(
   const faucet = config.agentDiscovery?.faucetServer;
   const observation = config.agentDiscovery?.observationServer;
   const oracle = config.agentDiscovery?.oracleServer;
+  const signer = config.signerProvider;
   const storage = config.storage;
   const artifacts = config.artifacts;
 
@@ -500,6 +531,15 @@ export function buildServiceStatusSnapshot(
           ? {
               url: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
               capability: oracle.capability,
+            }
+          : null,
+      signer:
+        signer?.enabled && signer.port > 0
+          ? {
+              url: buildLocalHttpUrl(signer.bindHost, signer.port, signer.pathPrefix),
+              capabilityPrefix: signer.capabilityPrefix,
+              walletAddress: signer.policy.walletAddress || config.walletAddress,
+              trustTier: signer.policy.trustTier,
             }
           : null,
       storage:

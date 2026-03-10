@@ -39,6 +39,7 @@ import { DEFAULT_TREASURY_POLICY } from "./types.js";
 import { createLogger, setGlobalLogLevel } from "./observability/logger.js";
 import {
   clearLocalAgentDiscoveryCard,
+  discoverCapabilityProviders,
   publishLocalAgentDiscoveryCard,
 } from "./agent-discovery/client.js";
 import { startAgentDiscoveryFaucetServer } from "./agent-discovery/faucet-server.js";
@@ -146,6 +147,16 @@ import {
 import { createArtifactManager } from "./artifacts/manager.js";
 import { createNativeArtifactAnchorPublisher } from "./artifacts/publisher.js";
 import { startArtifactCaptureServer } from "./artifacts/server.js";
+import { startSignerProviderServer } from "./signer/http.js";
+import {
+  fetchSignerExecutionReceipt,
+  fetchSignerExecutionStatus,
+  fetchSignerQuote,
+  submitSignerExecution,
+} from "./signer/client.js";
+import type { SignerProviderTrustTier } from "./types.js";
+import type { VerifiedAgentProvider } from "./agent-discovery/types.js";
+import { hashSignerPolicy } from "./signer/policy.js";
 import fs from "fs/promises";
 
 const logger = createLogger("main");
@@ -299,6 +310,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "signer") {
+    await handleSignerCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "status") {
     await showStatus({ asJson: args.includes("--json") });
     process.exit(0);
@@ -335,6 +351,7 @@ Usage:
   openfox scout ...      Discover earning opportunities and task surfaces
   openfox storage ...    Use the OpenFox storage market
   openfox artifacts ...  Build and verify public news and oracle bundles
+  openfox signer ...     Use delegated signer-provider execution
   openfox status         Show the current runtime status
   openfox --version      Show version
   openfox --help         Show this help
@@ -563,6 +580,68 @@ function collectRepeatedOption(args: string[], flag: string): string[] {
     }
   }
   return values;
+}
+
+function readSignerTrustTierOption(
+  args: string[],
+): SignerProviderTrustTier | undefined {
+  const raw = readOption(args, "--trust-tier");
+  if (!raw) return undefined;
+  if (
+    raw !== "self_hosted" &&
+    raw !== "org_trusted" &&
+    raw !== "public_low_trust"
+  ) {
+    throw new Error(
+      `Invalid --trust-tier value: ${raw}. Expected self_hosted, org_trusted, or public_low_trust.`,
+    );
+  }
+  return raw;
+}
+
+async function resolveSignerProviderBaseUrl(params: {
+  config: NonNullable<ReturnType<typeof loadConfig>>;
+  capabilityPrefix: string;
+  providerBaseUrl?: string;
+  db?: ReturnType<typeof createDatabase>;
+  requiredTrustTier?: SignerProviderTrustTier;
+}): Promise<{ providerBaseUrl: string; provider?: VerifiedAgentProvider }> {
+  if (params.providerBaseUrl) {
+    return { providerBaseUrl: params.providerBaseUrl.replace(/\/+$/, "") };
+  }
+  if (!params.config.agentDiscovery?.enabled) {
+    throw new Error(
+      "No --provider was given and Agent Discovery is not enabled for signer discovery.",
+    );
+  }
+  const providers = await discoverCapabilityProviders({
+    config: params.config,
+    capability: `${params.capabilityPrefix}.quote`,
+    limit: 5,
+    db: params.db,
+  });
+  const matchingProviders = params.requiredTrustTier
+    ? providers.filter(
+        (provider) =>
+          provider.matchedCapability.policy?.trust_tier ===
+          params.requiredTrustTier,
+      )
+    : providers;
+  if (!matchingProviders.length) {
+    throw new Error(
+      params.requiredTrustTier
+        ? `No signer-provider advertising ${params.capabilityPrefix}.quote with trust_tier=${params.requiredTrustTier} was discovered.`
+        : `No signer-provider advertising ${params.capabilityPrefix}.quote was discovered.`,
+    );
+  }
+  const provider = matchingProviders[0];
+  const endpointUrl = provider.endpoint.url.replace(/\/+$/, "");
+  return {
+    provider,
+    providerBaseUrl: endpointUrl.endsWith("/quote")
+      ? endpointUrl.slice(0, -"/quote".length)
+      : endpointUrl,
+  };
 }
 
 async function withHeartbeatContext<T>(
@@ -2310,6 +2389,234 @@ Usage:
   }
 }
 
+async function handleSignerCommand(args: string[]): Promise<void> {
+  const command = args[0];
+  if (!command || command === "--help" || command === "help") {
+    logger.info(`
+OpenFox signer
+
+Usage:
+  openfox signer list [--status <pending|submitted|confirmed|failed|rejected>] [--json]
+  openfox signer get --execution <id> [--json]
+  openfox signer discover [--capability-prefix <prefix>] [--json]
+  openfox signer quote [--provider <base-url>] [--capability-prefix <prefix>] [--trust-tier <tier>] --target <address> [--value-wei <wei>] [--data <hex>] [--gas <gas>] [--reason <text>] [--json]
+  openfox signer submit [--provider <base-url>] [--capability-prefix <prefix>] [--trust-tier <tier>] --quote-id <id> --target <address> [--value-wei <wei>] [--data <hex>] [--gas <gas>] [--reason <text>] [--json]
+  openfox signer status --provider <base-url> --execution <id> [--json]
+  openfox signer receipt --provider <base-url> --execution <id> [--json]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run `openfox --setup` first.");
+  }
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    const wantsJson = args.includes("--json");
+    if (command === "list") {
+      const status = readOption(args, "--status") as
+        | "pending"
+        | "submitted"
+        | "confirmed"
+        | "failed"
+        | "rejected"
+        | undefined;
+      const items = db.listSignerExecutions(50, status ? { status } : undefined);
+      if (wantsJson) {
+        logger.info(JSON.stringify(items, null, 2));
+        return;
+      }
+      if (!items.length) {
+        logger.info("No signer executions found.");
+        return;
+      }
+      for (const item of items) {
+        logger.info(
+          `${item.executionId}  [${item.status}] wallet=${item.walletAddress} target=${item.targetAddress} tx=${item.submittedTxHash || "(pending)"}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "get") {
+      const executionId = readOption(args, "--execution");
+      if (!executionId) {
+        throw new Error("Usage: openfox signer get --execution <id> [--json]");
+      }
+      const record = db.getSignerExecution(executionId);
+      if (!record) {
+        throw new Error(`Signer execution not found: ${executionId}`);
+      }
+      logger.info(JSON.stringify(record, null, 2));
+      return;
+    }
+
+    if (command === "discover") {
+      const capabilityPrefix =
+        readOption(args, "--capability-prefix") ||
+        config.signerProvider?.capabilityPrefix ||
+        "signer";
+      const requiredTrustTier = readSignerTrustTierOption(args);
+      const providers = (await discoverCapabilityProviders({
+        config,
+        capability: `${capabilityPrefix}.quote`,
+        limit: 10,
+        db,
+      })).filter((provider) =>
+        requiredTrustTier
+          ? provider.matchedCapability.policy?.trust_tier === requiredTrustTier
+          : true,
+      );
+      const discovered = providers.map((provider) => ({
+        providerAddress: provider.search.primaryIdentity,
+        nodeId: provider.search.nodeId,
+        capability: provider.matchedCapability.name,
+        mode: provider.matchedCapability.mode,
+        endpoint: provider.endpoint.url,
+        trustTier: provider.matchedCapability.policy?.trust_tier ?? null,
+        trust: provider.search.trust,
+      }));
+      if (wantsJson) {
+        logger.info(JSON.stringify(discovered, null, 2));
+        return;
+      }
+      if (!discovered.length) {
+        logger.info("No signer providers discovered.");
+        return;
+      }
+      for (const provider of discovered) {
+        logger.info(
+          `${provider.providerAddress}  capability=${provider.capability}  mode=${provider.mode}  trust_tier=${provider.trustTier || "(unknown)"}  endpoint=${provider.endpoint}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "quote") {
+      const capabilityPrefix =
+        readOption(args, "--capability-prefix") ||
+        config.signerProvider?.capabilityPrefix ||
+        "signer";
+      const requiredTrustTier = readSignerTrustTierOption(args);
+      const { providerBaseUrl, provider } = await resolveSignerProviderBaseUrl({
+        config,
+        capabilityPrefix,
+        providerBaseUrl: readOption(args, "--provider"),
+        db,
+        requiredTrustTier,
+      });
+      const target = readOption(args, "--target");
+      if (!providerBaseUrl || !target) {
+        throw new Error("Usage: openfox signer quote [--provider <base-url>] [--capability-prefix <prefix>] [--trust-tier <tier>] --target <address> [--value-wei <wei>] [--data <hex>] [--gas <gas>] [--reason <text>] [--json]");
+      }
+      const result = await fetchSignerQuote({
+        providerBaseUrl,
+        requesterAddress: config.walletAddress,
+        target: target as `0x${string}`,
+        valueWei: readOption(args, "--value-wei") || "0",
+        data: (readOption(args, "--data") as `0x${string}` | undefined) ?? undefined,
+        gas: readOption(args, "--gas") || undefined,
+        reason: readOption(args, "--reason") || undefined,
+      });
+      if (
+        requiredTrustTier &&
+        result.trust_tier &&
+        result.trust_tier !== requiredTrustTier
+      ) {
+        throw new Error(
+          `Signer provider returned trust_tier=${String(result.trust_tier)} but ${requiredTrustTier} was required.`,
+        );
+      }
+      if (
+        !requiredTrustTier &&
+        (result.trust_tier === "public_low_trust" ||
+          provider?.matchedCapability.policy?.trust_tier === "public_low_trust")
+      ) {
+        logger.warn(
+          "Selected signer-provider is public_low_trust. Re-run with --trust-tier self_hosted or --trust-tier org_trusted for a stricter policy boundary.",
+        );
+      }
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "submit") {
+      const capabilityPrefix =
+        readOption(args, "--capability-prefix") ||
+        config.signerProvider?.capabilityPrefix ||
+        "signer";
+      const requiredTrustTier = readSignerTrustTierOption(args);
+      const { providerBaseUrl, provider } = await resolveSignerProviderBaseUrl({
+        config,
+        capabilityPrefix,
+        providerBaseUrl: readOption(args, "--provider"),
+        db,
+        requiredTrustTier,
+      });
+      const quoteId = readOption(args, "--quote-id");
+      const target = readOption(args, "--target");
+      if (!providerBaseUrl || !quoteId || !target) {
+        throw new Error("Usage: openfox signer submit [--provider <base-url>] [--capability-prefix <prefix>] [--trust-tier <tier>] --quote-id <id> --target <address> [--value-wei <wei>] [--data <hex>] [--gas <gas>] [--reason <text>] [--json]");
+      }
+      if (!config.rpcUrl) {
+        throw new Error("rpcUrl is required for signer submit");
+      }
+      const { account } = await getWallet();
+      const result = await submitSignerExecution({
+        providerBaseUrl,
+        account,
+        rpcUrl: config.rpcUrl,
+        requesterAddress: config.walletAddress,
+        quoteId,
+        target: target as `0x${string}`,
+        valueWei: readOption(args, "--value-wei") || "0",
+        data: (readOption(args, "--data") as `0x${string}` | undefined) ?? undefined,
+        gas: readOption(args, "--gas") || undefined,
+        requestNonce: randomUUID().replace(/-/g, ""),
+        requestExpiresAt: Math.floor(Date.now() / 1000) + 300,
+        reason: readOption(args, "--reason") || undefined,
+      });
+      if (
+        !requiredTrustTier &&
+        provider?.matchedCapability.policy?.trust_tier === "public_low_trust"
+      ) {
+        logger.warn(
+          "Submitted through a public_low_trust signer-provider. Prefer --trust-tier self_hosted or org_trusted for higher-value delegated execution.",
+        );
+      }
+      logger.info(JSON.stringify(result.body, null, 2));
+      return;
+    }
+
+    if (command === "status") {
+      const providerBaseUrl = readOption(args, "--provider");
+      const executionId = readOption(args, "--execution");
+      if (!providerBaseUrl || !executionId) {
+        throw new Error("Usage: openfox signer status --provider <base-url> --execution <id> [--json]");
+      }
+      const result = await fetchSignerExecutionStatus(providerBaseUrl, executionId);
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "receipt") {
+      const providerBaseUrl = readOption(args, "--provider");
+      const executionId = readOption(args, "--execution");
+      if (!providerBaseUrl || !executionId) {
+        throw new Error("Usage: openfox signer receipt --provider <base-url> --execution <id> [--json]");
+      }
+      const result = await fetchSignerExecutionReceipt(providerBaseUrl, executionId);
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    throw new Error(`Unknown signer command: ${command}`);
+  } finally {
+    db.close();
+  }
+}
+
 // ─── Status Command ────────────────────────────────────────────
 
 async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
@@ -2353,6 +2660,11 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
   const failedX402Payments = db.listX402Payments(100, {
     status: "failed",
   }).length;
+  const signerQuotes = db.listSignerQuotes(5);
+  const signerExecutions = db.listSignerExecutions(5);
+  const pendingSignerExecutions =
+    db.listSignerExecutions(100, { status: "pending" }).length +
+    db.listSignerExecutions(100, { status: "submitted" }).length;
   const storageLeases = db.listStorageLeases(5);
   const storageRenewals = db.listStorageRenewals(5);
   const activeStorageLeaseCount = db.listStorageLeases(100, { status: "active" }).length;
@@ -2418,6 +2730,53 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
             boundKind: item.boundKind,
             boundSubjectId: item.boundSubjectId,
           })),
+        }
+      : null,
+    signerProvider: config.signerProvider
+      ? {
+          enabled: config.signerProvider.enabled,
+          bind: `${config.signerProvider.bindHost}:${config.signerProvider.port}`,
+          pathPrefix: config.signerProvider.pathPrefix,
+          capabilityPrefix: config.signerProvider.capabilityPrefix,
+          publishToDiscovery: config.signerProvider.publishToDiscovery,
+          quoteValiditySeconds: config.signerProvider.quoteValiditySeconds,
+          quotePriceWei: config.signerProvider.quotePriceWei,
+          submitPriceWei: config.signerProvider.submitPriceWei,
+          requestTimeoutMs: config.signerProvider.requestTimeoutMs,
+          maxDataBytes: config.signerProvider.maxDataBytes,
+          policy: {
+            trustTier: config.signerProvider.policy.trustTier,
+            walletAddress:
+              config.signerProvider.policy.walletAddress || config.walletAddress,
+            policyId: config.signerProvider.policy.policyId,
+            delegateIdentity:
+              config.signerProvider.policy.delegateIdentity || null,
+            allowedTargets: config.signerProvider.policy.allowedTargets,
+            allowedFunctionSelectors:
+              config.signerProvider.policy.allowedFunctionSelectors,
+            maxValueWei: config.signerProvider.policy.maxValueWei,
+            expiresAt: config.signerProvider.policy.expiresAt || null,
+            allowSystemAction:
+              config.signerProvider.policy.allowSystemAction === true,
+          },
+          recentQuotes: signerQuotes.map((item) => ({
+            quoteId: item.quoteId,
+            requesterAddress: item.requesterAddress,
+            targetAddress: item.targetAddress,
+            status: item.status,
+            amountWei: item.amountWei,
+            expiresAt: item.expiresAt,
+          })),
+          recentExecutions: signerExecutions.map((item) => ({
+            executionId: item.executionId,
+            quoteId: item.quoteId,
+            status: item.status,
+            requesterAddress: item.requesterAddress,
+            targetAddress: item.targetAddress,
+            submittedTxHash: item.submittedTxHash,
+            paymentId: item.paymentId,
+          })),
+          pendingExecutions: pendingSignerExecutions,
         }
       : null,
     storage: config.storage
@@ -2606,6 +2965,7 @@ Bounty auto: ${config.bounty?.enabled ? `open=${config.bounty.autoOpenOnStartup 
 Storage:    ${config.storage?.enabled ? `enabled (${activeStorageLeaseCount} active lease${activeStorageLeaseCount === 1 ? "" : "s"}, ${storageAnchors.length} recent anchor${storageAnchors.length === 1 ? "" : "s"})` : "disabled"}
 Artifacts:  ${config.artifacts?.enabled ? `enabled (${artifacts.length} recent, ${anchoredArtifactCount} anchored)` : "disabled"}
 x402:       ${config.x402Server?.enabled ? `enabled (${x402Payments.length} recent payment${x402Payments.length === 1 ? "" : "s"}, ${pendingX402Payments} pending, ${failedX402Payments} failed)` : "disabled"}
+Signer:     ${config.signerProvider?.enabled ? `enabled (${signerQuotes.length} recent quote${signerQuotes.length === 1 ? "" : "s"}, ${signerExecutions.length} recent execution${signerExecutions.length === 1 ? "" : "s"}, ${pendingSignerExecutions} pending)` : "disabled"}
 Settlement: ${config.settlement?.enabled ? `enabled (${settlements.length} recent receipt${settlements.length === 1 ? "" : "s"}, ${pendingSettlementCallbacks} pending callback${pendingSettlementCallbacks === 1 ? "" : "s"})` : "disabled"}
 Market:     ${config.marketContracts?.enabled ? `enabled (${marketBindings.length} recent binding${marketBindings.length === 1 ? "" : "s"}, ${pendingMarketCallbacks} pending callback${pendingMarketCallbacks === 1 ? "" : "s"})` : "disabled"}
 Scout:      ${config.opportunityScout?.enabled ? "enabled" : "disabled"}
@@ -2726,6 +3086,9 @@ async function run(): Promise<void> {
     | undefined;
   let artifactServer:
     | Awaited<ReturnType<typeof startArtifactCaptureServer>>
+    | undefined;
+  let signerProviderServer:
+    | Awaited<ReturnType<typeof startSignerProviderServer>>
     | undefined;
   let bountyServer:
     | Awaited<ReturnType<typeof startBountyHttpServer>>
@@ -2901,6 +3264,24 @@ async function run(): Promise<void> {
     }
   }
 
+  if (config.signerProvider?.enabled) {
+    try {
+      signerProviderServer = await startSignerProviderServer({
+        identity,
+        config,
+        db,
+        address,
+        privateKey,
+        signerConfig: config.signerProvider,
+      });
+      logger.info(`Signer provider enabled at ${signerProviderServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Signer provider failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   if (config.agentDiscovery?.gatewayServer?.enabled) {
     try {
       if (
@@ -2981,6 +3362,7 @@ async function run(): Promise<void> {
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
         oracleUrl: oracleServer?.url,
+        signerUrl: signerProviderServer?.url,
         storageUrl: storageServer?.url,
         artifactUrl: artifactServer?.url,
       });
@@ -3066,6 +3448,66 @@ async function run(): Promise<void> {
             name: "task.solve",
             mode: "sponsored",
             description: "Submit a solution to an open third-party problem-solving task",
+          },
+        ],
+      };
+    }
+    if (
+      current &&
+      signerProviderServer &&
+      config.signerProvider?.enabled &&
+      config.signerProvider.publishToDiscovery
+    ) {
+      const signerPolicyHash = hashSignerPolicy({
+        providerAddress: address,
+        policy: config.signerProvider.policy,
+      });
+      const signerPolicy = {
+        trust_tier: config.signerProvider.policy.trustTier,
+        wallet_address:
+          config.signerProvider.policy.walletAddress || address,
+        policy_id: config.signerProvider.policy.policyId,
+        policy_hash: signerPolicyHash,
+        delegate_identity:
+          config.signerProvider.policy.delegateIdentity || null,
+        expires_at: config.signerProvider.policy.expiresAt || null,
+      };
+      current = {
+        ...current,
+        endpoints: [
+          ...current.endpoints,
+          {
+            kind: "http",
+            url: signerProviderServer.url,
+            role: "requester_invocation",
+          },
+        ],
+        capabilities: [
+          ...current.capabilities,
+          {
+            name: `${config.signerProvider.capabilityPrefix}.quote`,
+            mode: "sponsored",
+            policy: signerPolicy,
+            description: "Request one bounded signer-provider execution quote",
+          },
+          {
+            name: `${config.signerProvider.capabilityPrefix}.submit`,
+            mode: "paid",
+            priceModel: "x402-exact",
+            policy: signerPolicy,
+            description: "Submit one bounded signer-provider execution request",
+          },
+          {
+            name: `${config.signerProvider.capabilityPrefix}.status`,
+            mode: "sponsored",
+            policy: signerPolicy,
+            description: "Fetch signer-provider execution status",
+          },
+          {
+            name: `${config.signerProvider.capabilityPrefix}.receipt`,
+            mode: "sponsored",
+            policy: signerPolicy,
+            description: "Fetch signer-provider execution receipt",
           },
         ],
       };
@@ -3192,6 +3634,7 @@ async function run(): Promise<void> {
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
         oracleUrl: oracleServer?.url,
+        signerUrl: signerProviderServer?.url,
         storageUrl: storageServer?.url,
         artifactUrl: artifactServer?.url,
       });
@@ -3402,6 +3845,7 @@ async function run(): Promise<void> {
     Promise.allSettled([
       bountyServer?.close(),
       bountyAutomation?.close(),
+      signerProviderServer?.close(),
       storageServer?.close(),
       artifactServer?.close(),
       gatewayProviderSessions?.close(),

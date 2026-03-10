@@ -487,7 +487,7 @@ Delivered surface:
 
 ### Phase 8: Programmable Wallet and Signer-Provider v0
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -530,6 +530,70 @@ Acceptance criteria:
 Design reference:
 
 - `OpenFox-Signer-Provider-v0.md`
+- `OpenFox-Signer-Provider-Operator-Guide.md`
+
+Delivered surface:
+
+- canonical signer-provider quote, submit, status, and receipt objects
+- signer-provider policy hashing and bounded execution validation
+- signer-provider HTTP service mode inside OpenFox
+- persistent signer quote and execution records in the OpenFox database
+- `x402` payment binding for paid signer submission flows
+- requester-side `openfox signer discover|quote|submit|status|receipt`
+- discovery publication for signer capabilities and optional gateway relay publication
+- `trust_tier` selection and requester-side warnings for overly permissive providers
+- signer-provider visibility in `openfox status`, `openfox health`, `openfox doctor`, and service operator UX
+- operator guidance for principal, requester, and signer-provider roles
+
+### Phase 9: Native Sponsored Execution and Paymaster-Provider v0
+
+Status: planned
+
+Goal:
+
+- add native sponsor-aware transaction support to `TOS/GTOS`, then expose it through OpenFox as a paymaster-provider capability
+
+This phase should not be treated as an afterthought or a faucet variant.
+It is the funding-control layer that completes the programmable execution stack introduced in Phase 8.
+
+Signer-provider and paymaster-provider solve different problems:
+
+- signer-provider decides who may execute
+- paymaster-provider decides who may pay for execution
+
+Suggested capability surface:
+
+- `paymaster.quote`
+- `paymaster.authorize`
+- `paymaster.status`
+- `paymaster.receipt`
+
+Required work:
+
+- add a native sponsored transaction type or equivalent sponsor-aware transaction semantics in `gtos`
+- add sponsor identity, sponsor witness, and sponsor policy binding to the transaction model
+- change mempool and state-transition rules so sponsor-side balance and sponsor-side authorization can replace requester-side gas funding
+- add first-class sponsor validation hooks in `gtos` and `tolang`
+- add an OpenFox paymaster-provider service mode and client path
+- support composition across:
+  - local wallet + paymaster-provider
+  - signer-provider + paymaster-provider
+  - combined signer-provider + paymaster-provider
+- persist sponsorship quotes, authorizations, and receipts in OpenFox
+- expose sponsored execution visibility in `status`, `health`, and `doctor`
+- optimize for a clean protocol design now, not for backward compatibility or migration workarounds
+
+Acceptance criteria:
+
+- a wallet with insufficient own `TOS` can execute through valid sponsor authorization
+- validation and execution costs are charged to the sponsor side
+- sponsorship is rejected outside sponsor policy boundaries
+- sponsored execution composes with signer-provider flows
+- OpenFox persists auditable sponsorship receipts
+
+Design reference:
+
+- `OpenFox-Paymaster-Provider-v0.md`
 
 ## 4. Near-Term Priorities
 
@@ -544,17 +608,14 @@ Suggested priority order:
 
 ### P1: Do Next
 
-- run a broader multi-node testnet deployment for client/provider/gateway/storage-provider roles
-- add audit, renewal, and replication policy for stored bundles
-- extend operator deployment automation and monitoring around long-lived storage leases
-- add stronger public indexing and search over anchored bundle summaries
-- finalize the signer-provider protocol and wallet-policy profile for programmable delegated execution
+- finalize the native sponsored transaction and paymaster-provider protocol for `TOS/GTOS` and OpenFox
+- keep multi-node deployment and operator automation moving in parallel for the completed storage/artifact pipeline
 
 ### P2: Do Later
 
 - add stronger provider reputation and lease-health reporting
 - extract more reusable SDK surfaces for third-party storage and artifact clients
-- implement the first signer-provider provider/requester pair inside OpenFox
+- implement the first native sponsored transaction and paymaster-provider path across `gtos`, `tolang`, and OpenFox
 - add tighter integration between signer receipts and storage/artifact audit trails
 
 ## 5. What Not to Do Yet
@@ -567,6 +628,8 @@ Suggested priority order:
 - do not try to build a Filecoin-scale storage economy in v0
 - do not model signer-provider as raw arbitrary-byte signing
 - do not turn signer-provider into custodial hosted-wallet outsourcing in v0
+- do not pretend `sponsor.topup.testnet` is equivalent to real paymaster support
+- do not optimize the paymaster design around backward compatibility when the protocol is still unreleased
 - do not assume ERC-4337-style paymaster economics already exist in the current `gtos` path
 
 The more reasonable strategy for now is:
@@ -578,12 +641,13 @@ The more reasonable strategy for now is:
 - the current mainline now includes `agent-native paid storage + immutable artifact bundles + lightweight TOS anchors`
 - the next mainline broadens public artifact capture, indexing, and multi-node deployment on top of that storage layer
 - the following mainline turns programmable delegated execution into a paid network service through signer-provider agents
+- the next mainline after that adds native sponsored execution and paymaster-provider agents so execution funding becomes as programmable as execution authority
 
 ## 6. Recommended Next Step
 
 There are only two next steps that matter most:
 
-1. run a broader multi-node deployment for client/provider/gateway/storage-provider roles around the completed artifact pipeline
-2. finalize the signer-provider protocol so programmable wallet delegation becomes part of the same operator/runtime story as storage, artifacts, settlement, and paid services
+1. finalize the signer-provider protocol so programmable wallet delegation becomes part of the same operator/runtime story as storage, artifacts, settlement, and paid services
+2. finalize the native sponsored transaction and paymaster-provider design so `TOS` supports strong sponsored execution directly in the protocol
 
 Only after these two steps are complete should we expand into broader marketplace, reputation, and ecosystem-facing phases.
