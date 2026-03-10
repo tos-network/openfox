@@ -35,6 +35,8 @@ export interface HealthSnapshot {
   inferenceConfigured: boolean;
   rpcConfigured: boolean;
   discoveryEnabled: boolean;
+  operatorApiEnabled: boolean;
+  operatorApiReady: boolean;
   gatewayEnabled: boolean;
   providerEnabled: boolean;
   signerProviderEnabled: boolean;
@@ -139,6 +141,8 @@ async function buildConfigSnapshot(
   inferenceConfigured: boolean;
   rpcConfigured: boolean;
   discoveryEnabled: boolean;
+  operatorApiEnabled: boolean;
+  operatorApiReady: boolean;
   gatewayEnabled: boolean;
   providerEnabled: boolean;
   signerProviderEnabled: boolean;
@@ -258,6 +262,10 @@ async function buildConfigSnapshot(
     inferenceConfigured: hasConfiguredInference(config),
     rpcConfigured: Boolean(config.rpcUrl),
     discoveryEnabled: config.agentDiscovery?.enabled === true,
+    operatorApiEnabled: config.operatorApi?.enabled === true,
+    operatorApiReady: Boolean(
+      !config.operatorApi?.enabled || config.operatorApi.authToken,
+    ),
     gatewayEnabled:
       config.agentDiscovery?.gatewayServer?.enabled === true ||
       config.agentDiscovery?.gatewayClient?.enabled === true,
@@ -472,6 +480,22 @@ function collectFindings(
       id: "rpc-configured",
       severity: "ok",
       summary: "Chain RPC URL is configured.",
+    });
+  }
+
+  if (snapshot.operatorApiEnabled && !snapshot.operatorApiReady) {
+    findings.push({
+      id: "operator-api-misconfigured",
+      severity: "error",
+      summary: "Operator API is enabled without an auth token.",
+      recommendation:
+        "Set operatorApi.authToken in ~/.openfox/openfox.json before exposing multi-node operator endpoints.",
+    });
+  } else if (snapshot.operatorApiEnabled) {
+    findings.push({
+      id: "operator-api-enabled",
+      severity: "ok",
+      summary: "Operator API is enabled for remote status and audit access.",
     });
   }
 
@@ -882,6 +906,8 @@ export async function buildHealthSnapshot(
       inferenceConfigured: false,
       rpcConfigured: false,
       discoveryEnabled: false,
+      operatorApiEnabled: false,
+      operatorApiReady: false,
       gatewayEnabled: false,
       providerEnabled: false,
       signerProviderEnabled: false,
@@ -987,6 +1013,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Inference configured: ${yesNo(snapshot.inferenceConfigured)}`,
     `RPC configured: ${yesNo(snapshot.rpcConfigured)}`,
     `Discovery enabled: ${yesNo(snapshot.discoveryEnabled)}`,
+    `Operator API enabled: ${yesNo(snapshot.operatorApiEnabled)}${snapshot.operatorApiEnabled ? ` (auth=${snapshot.operatorApiReady ? "configured" : "missing"})` : ""}`,
     `Provider enabled: ${yesNo(snapshot.providerEnabled)}`,
     `Signer provider enabled: ${yesNo(snapshot.signerProviderEnabled)}${snapshot.signerProviderEnabled ? ` (${snapshot.signerRecentQuotes} quotes, ${snapshot.signerRecentExecutions} executions, ${snapshot.signerPendingExecutions} pending)` : ""}`,
     `Paymaster provider enabled: ${yesNo(snapshot.paymasterProviderEnabled)}${snapshot.paymasterProviderEnabled ? ` (${snapshot.paymasterRecentQuotes} quotes, ${snapshot.paymasterRecentAuthorizations} authorizations, ${snapshot.paymasterPendingAuthorizations} pending, sponsor funded=${snapshot.paymasterSponsorFunded === null ? "unknown" : yesNo(snapshot.paymasterSponsorFunded)}, signer parity=${snapshot.paymasterSignerParityAligned ? "aligned" : "secp256k1-only"})` : ""}`,

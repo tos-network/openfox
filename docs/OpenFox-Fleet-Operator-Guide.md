@@ -1,0 +1,103 @@
+# OpenFox Fleet Operator Guide
+
+This guide describes the minimum operator surface for auditing multiple
+OpenFox nodes that expose public storage, artifact, signer, paymaster, gateway,
+or marketplace roles.
+
+## 1. Enable the Operator API on Each Node
+
+Add this to `~/.openfox/openfox.json` on every node that should be visible to a
+fleet operator:
+
+```json
+{
+  "operatorApi": {
+    "enabled": true,
+    "bindHost": "0.0.0.0",
+    "port": 4903,
+    "pathPrefix": "/operator",
+    "authToken": "replace-with-a-secret-token",
+    "exposeDoctor": true,
+    "exposeServiceStatus": true
+  }
+}
+```
+
+Recommended practice:
+
+- use a long random bearer token
+- terminate public access behind HTTPS
+- keep `/operator/healthz` public only for basic load balancer checks
+- require auth for `/operator/status`, `/operator/health`, `/operator/doctor`,
+  `/operator/service/status`, and `/operator/gateway/status`
+
+## 2. Supported Operator API Endpoints
+
+- `GET /operator/healthz`
+- `GET /operator/status`
+- `GET /operator/health`
+- `GET /operator/doctor`
+- `GET /operator/service/status`
+- `GET /operator/gateway/status`
+
+Authenticated requests accept either:
+
+- `Authorization: Bearer <token>`
+- `X-OpenFox-Operator-Token: <token>`
+
+## 3. Create a Fleet Manifest
+
+`fleet.yml`
+
+```yaml
+version: 1
+nodes:
+  - name: public-gateway
+    role: gateway
+    baseUrl: https://gw.example.com/operator
+    authToken: replace-with-a-secret-token
+
+  - name: signer-provider-1
+    role: signer
+    baseUrl: https://signer-1.example.com/operator
+    authToken: replace-with-a-secret-token
+
+  - name: paymaster-provider-1
+    role: paymaster
+    baseUrl: https://paymaster-1.example.com/operator
+    authToken: replace-with-a-secret-token
+
+  - name: storage-provider-1
+    role: storage
+    baseUrl: https://storage-1.example.com/operator
+    authToken: replace-with-a-secret-token
+```
+
+Both JSON and YAML manifests are supported.
+
+## 4. Audit the Fleet
+
+```bash
+openfox fleet status --manifest ./fleet.yml
+openfox fleet health --manifest ./fleet.yml
+openfox fleet doctor --manifest ./fleet.yml --json
+```
+
+Use these to answer questions such as:
+
+- which nodes are reachable
+- which nodes fail health checks
+- which public deployments have misconfigured operator auth
+- which gateway/service roles are currently exposed
+
+## 5. Recommended Use
+
+Use fleet auditing for:
+
+- public gateway fleets
+- storage and artifact capture fleets
+- signer and paymaster provider fleets
+- mixed public/private deployment topologies
+
+Do not treat the fleet API as a general public dashboard. It is an operator
+surface and should remain authenticated.

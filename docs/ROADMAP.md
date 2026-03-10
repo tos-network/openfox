@@ -655,12 +655,13 @@ The more reasonable strategy for now is:
 - the next mainline broadens public artifact capture, indexing, and multi-node deployment on top of that storage layer
 - the following mainline turns programmable delegated execution into a paid network service through signer-provider agents
 - the current mainline now includes native sponsored execution and paymaster-provider agents so execution funding becomes as programmable as execution authority
+- the current mainline now includes authenticated multi-node operator APIs and fleet-level status/health/doctor auditing for public OpenFox deployments
 
 ## 6. Recommended Next Step
 
 There are only two next steps that matter most:
 
-1. deepen multi-node storage, artifact, signer, and paymaster operations so public deployments become easier to run and audit
+1. continue deepening multi-node storage, artifact, signer, and paymaster operations on top of the new operator API and fleet audit surface so public deployments become easier to run and audit
 2. widen sponsored-execution signer parity and reusable SDK surfaces so OpenFox’s funded execution path can support more native signer classes over time
 
 Only after these two steps are complete should we expand into broader marketplace, reputation, and ecosystem-facing phases.

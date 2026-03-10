@@ -153,6 +153,8 @@ It supports:
 - contract callback adapters and heartbeat-driven retry for contract-bound settlement flows
 - contract-native market bindings for bounty, observation, and oracle creation flows
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
+- an authenticated operator API for multi-node status, health, doctor, service, and gateway inspection
+- `openfox fleet status|health|doctor` for one-shot fleet-wide auditing across public OpenFox nodes
 - a paid signer-provider surface for bounded delegated execution with:
   - `openfox signer discover`
   - `openfox signer quote`
@@ -367,6 +369,8 @@ openfox cron list
 openfox cron list --json
 openfox service status
 openfox service status --json
+openfox fleet status --manifest ./fleet.yml
+openfox fleet doctor --manifest ./fleet.yml --json
 openfox gateway status
 openfox gateway status --json
 openfox health
@@ -392,6 +396,44 @@ To remove the managed service again:
 
 ```bash
 openfox service uninstall
+```
+
+To expose a node for remote fleet auditing, enable the operator API:
+
+```json
+{
+  "operatorApi": {
+    "enabled": true,
+    "bindHost": "0.0.0.0",
+    "port": 4903,
+    "pathPrefix": "/operator",
+    "authToken": "replace-with-a-secret-token",
+    "exposeDoctor": true,
+    "exposeServiceStatus": true
+  }
+}
+```
+
+Then point a fleet manifest at those nodes:
+
+```yaml
+version: 1
+nodes:
+  - name: public-gateway
+    role: gateway
+    baseUrl: https://gw.example.com/operator
+    authToken: replace-with-a-secret-token
+  - name: storage-provider-1
+    role: storage
+    baseUrl: https://storage-1.example.com/operator
+    authToken: replace-with-a-secret-token
+```
+
+And inspect the fleet from another machine:
+
+```bash
+openfox fleet status --manifest ./fleet.yml
+openfox fleet doctor --manifest ./fleet.yml --json
 ```
 
 ## Agent Gateway Example
@@ -521,6 +563,7 @@ Start here if you want to integrate OpenFox without reading the internals:
 - [Template Guide](./docs/OpenFox-Template-Guide.md)
 - [Integration Examples](./docs/OpenFox-Integration-Examples.md)
 - [Operator Examples](./docs/OpenFox-Operator-Examples.md)
+- [Fleet Operator Guide](./docs/OpenFox-Fleet-Operator-Guide.md)
 - [SDK and Runtime Surfaces](./docs/OpenFox-SDK-Surfaces.md)
 - [Signer-Provider Operator Guide](./docs/OpenFox-Signer-Provider-Operator-Guide.md)
 - [Paymaster-Provider Operator Guide](./docs/OpenFox-Paymaster-Provider-Operator-Guide.md)

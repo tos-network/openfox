@@ -21,9 +21,7 @@ import {
 } from "./heartbeat/config.js";
 import {
   consumeNextWakeEvent,
-  getUnconsumedWakeEvents,
   insertWakeEvent,
-  isHeartbeatPaused,
 } from "./state/database.js";
 import { runAgentLoop } from "./agent/loop.js";
 import { ModelRegistry } from "./inference/registry.js";
@@ -176,6 +174,12 @@ import type { VerifiedAgentProvider } from "./agent-discovery/types.js";
 import { hashSignerPolicy } from "./signer/policy.js";
 import { hashPaymasterPolicy } from "./paymaster/policy.js";
 import fs from "fs/promises";
+import { startOperatorApiServer } from "./operator/api.js";
+import {
+  buildRuntimeStatusReport,
+  buildRuntimeStatusSnapshot,
+} from "./operator/status.js";
+import { buildFleetReport, buildFleetSnapshot } from "./operator/fleet.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -338,6 +342,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "fleet") {
+    await handleFleetCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "status") {
     await showStatus({ asJson: args.includes("--json") });
     process.exit(0);
@@ -376,6 +385,7 @@ Usage:
   openfox artifacts ...  Build and verify public news and oracle bundles
   openfox signer ...     Use delegated signer-provider execution
   openfox paymaster ...  Use native sponsored execution through a paymaster-provider
+  openfox fleet ...      Inspect multiple OpenFox nodes through operator APIs
   openfox status         Show the current runtime status
   openfox --version      Show version
   openfox --help         Show this help
@@ -1229,6 +1239,47 @@ Usage:
 
     throw new Error(`Unknown gateway command: ${command}`);
   });
+}
+
+async function handleFleetCommand(args: string[]): Promise<void> {
+  const command = args[0] || "status";
+  const asJson = args.includes("--json");
+  const manifestPath = readFlag(args, "--manifest");
+  const helpRequested =
+    command === "--help" || command === "-h" || command === "help" || args.includes("--help") || args.includes("-h");
+
+  if (helpRequested || !manifestPath) {
+    logger.info(`
+OpenFox fleet
+
+Usage:
+  openfox fleet status --manifest <path> [--json]
+  openfox fleet health --manifest <path> [--json]
+  openfox fleet doctor --manifest <path> [--json]
+`);
+    if (!manifestPath && !helpRequested) {
+      throw new Error("A fleet manifest is required. Use --manifest <path>.");
+    }
+    return;
+  }
+
+  const endpoint =
+    command === "status" || command === "health" || command === "doctor"
+      ? command
+      : null;
+  if (!endpoint) {
+    throw new Error(`Unknown fleet command: ${command}`);
+  }
+
+  const snapshot = await buildFleetSnapshot({
+    manifestPath,
+    endpoint,
+  });
+  if (asJson) {
+    logger.info(JSON.stringify(snapshot, null, 2));
+    return;
+  }
+  logger.info(buildFleetReport(snapshot));
 }
 
 async function handleHealthCommand(args: string[]): Promise<void> {
@@ -3067,417 +3118,16 @@ async function showStatus(options: { asJson?: boolean } = {}): Promise<void> {
 
   const dbPath = resolvePath(config.dbPath);
   const db = createDatabase(dbPath);
-
-  const state = db.getAgentState();
-  const turnCount = db.getTurnCount();
-  const tools = db.getInstalledTools();
-  const heartbeats = db.getHeartbeatEntries();
-  const heartbeatPaused = isHeartbeatPaused(db.raw);
-  const pendingWakes = getUnconsumedWakeEvents(db.raw);
-  const skills = db.getSkills(true);
-  const children = db.getChildren();
-  const settlements = db.listSettlementReceipts(5);
-  const settlementCallbacks = db.listSettlementCallbacks(5);
-  const pendingSettlementCallbacks = db.listSettlementCallbacks(100, {
-    status: "pending",
-  }).length;
-  const marketBindings = db.listMarketBindings(5);
-  const marketCallbacks = db.listMarketContractCallbacks(5);
-  const pendingMarketCallbacks = db.listMarketContractCallbacks(100, {
-    status: "pending",
-  }).length;
-  const x402Payments = db.listX402Payments(5);
-  const pendingX402Payments =
-    db.listX402Payments(100, { status: "verified" }).length +
-    db.listX402Payments(100, { status: "submitted" }).length;
-  const failedX402Payments = db.listX402Payments(100, {
-    status: "failed",
-  }).length;
-  const signerQuotes = db.listSignerQuotes(5);
-  const signerExecutions = db.listSignerExecutions(5);
-  const pendingSignerExecutions =
-    db.listSignerExecutions(100, { status: "pending" }).length +
-    db.listSignerExecutions(100, { status: "submitted" }).length;
-  const paymasterQuotes = db.listPaymasterQuotes(5);
-  const paymasterAuthorizations = db.listPaymasterAuthorizations(5);
-  const pendingPaymasterAuthorizations =
-    db.listPaymasterAuthorizations(100, { status: "authorized" }).length +
-    db.listPaymasterAuthorizations(100, { status: "submitted" }).length;
-  const storageLeases = db.listStorageLeases(5);
-  const storageRenewals = db.listStorageRenewals(5);
-  const activeStorageLeaseCount = db.listStorageLeases(100, { status: "active" }).length;
-  const storageAudits = db.listStorageAudits(5);
-  const storageAnchors = db.listStorageAnchors(5);
-  const artifacts = db.listArtifacts(5);
-  const verifiedArtifactCount = db.listArtifacts(100, { status: "verified" }).length;
-  const anchoredArtifactCount = db.listArtifacts(100, { status: "anchored" }).length;
-  const artifactAnchors = db.listArtifactAnchors(5);
-  const discovery = config.agentDiscovery;
-  const gatewaySummary = discovery?.gatewayClient?.enabled
-    ? discovery.gatewayClient.gatewayUrl || "discovery/bootnodes"
-    : discovery?.gatewayServer?.enabled
-      ? discovery.gatewayServer.publicBaseUrl
-      : "disabled";
-  const managedService = getManagedServiceStatus();
-
-  const snapshot = {
-    configured: true,
-    name: config.name,
-    wallet: config.walletAddress,
-    service: managedService,
-    discovery: {
-      enabled: discovery?.enabled === true,
-      gateway: gatewaySummary,
-      agentId: config.agentId || null,
-    },
-    creator: config.creatorAddress || null,
-    sandboxId: config.sandboxId || null,
-    bounty: config.bounty
-      ? {
-          enabled: config.bounty.enabled,
-          role: config.bounty.role,
-          defaultKind: config.bounty.defaultKind,
-          skill: config.bounty.skill,
-          bind: `${config.bounty.bindHost}:${config.bounty.port}`,
-          pathPrefix: config.bounty.pathPrefix,
-          remoteBaseUrl: config.bounty.remoteBaseUrl || null,
-          discoveryCapability: config.bounty.discoveryCapability,
-          pollIntervalSeconds: config.bounty.pollIntervalSeconds,
-          autoOpenOnStartup: config.bounty.autoOpenOnStartup,
-          autoOpenWhenIdle: config.bounty.autoOpenWhenIdle,
-          autoSolveOnStartup: config.bounty.autoSolveOnStartup,
-          autoSolveEnabled: config.bounty.autoSolveEnabled,
-          policy: config.bounty.policy,
-        }
-      : null,
-    x402Payments: config.x402Server
-      ? {
-          enabled: config.x402Server.enabled,
-          confirmationPolicy: config.x402Server.confirmationPolicy,
-          retryBatchSize: config.x402Server.retryBatchSize,
-          retryAfterSeconds: config.x402Server.retryAfterSeconds,
-          maxAttempts: config.x402Server.maxAttempts,
-          pendingCount: pendingX402Payments,
-          failedCount: failedX402Payments,
-          recentPayments: x402Payments.map((item) => ({
-            paymentId: item.paymentId,
-            serviceKind: item.serviceKind,
-            status: item.status,
-            requestKey: item.requestKey,
-            txHash: item.txHash,
-            boundKind: item.boundKind,
-            boundSubjectId: item.boundSubjectId,
-          })),
-        }
-      : null,
-    signerProvider: config.signerProvider
-      ? {
-          enabled: config.signerProvider.enabled,
-          bind: `${config.signerProvider.bindHost}:${config.signerProvider.port}`,
-          pathPrefix: config.signerProvider.pathPrefix,
-          capabilityPrefix: config.signerProvider.capabilityPrefix,
-          publishToDiscovery: config.signerProvider.publishToDiscovery,
-          quoteValiditySeconds: config.signerProvider.quoteValiditySeconds,
-          quotePriceWei: config.signerProvider.quotePriceWei,
-          submitPriceWei: config.signerProvider.submitPriceWei,
-          requestTimeoutMs: config.signerProvider.requestTimeoutMs,
-          maxDataBytes: config.signerProvider.maxDataBytes,
-          policy: {
-            trustTier: config.signerProvider.policy.trustTier,
-            walletAddress:
-              config.signerProvider.policy.walletAddress || config.walletAddress,
-            policyId: config.signerProvider.policy.policyId,
-            delegateIdentity:
-              config.signerProvider.policy.delegateIdentity || null,
-            allowedTargets: config.signerProvider.policy.allowedTargets,
-            allowedFunctionSelectors:
-              config.signerProvider.policy.allowedFunctionSelectors,
-            maxValueWei: config.signerProvider.policy.maxValueWei,
-            expiresAt: config.signerProvider.policy.expiresAt || null,
-            allowSystemAction:
-              config.signerProvider.policy.allowSystemAction === true,
-          },
-          recentQuotes: signerQuotes.map((item) => ({
-            quoteId: item.quoteId,
-            requesterAddress: item.requesterAddress,
-            targetAddress: item.targetAddress,
-            status: item.status,
-            amountWei: item.amountWei,
-            expiresAt: item.expiresAt,
-          })),
-          recentExecutions: signerExecutions.map((item) => ({
-            executionId: item.executionId,
-            quoteId: item.quoteId,
-            status: item.status,
-            requesterAddress: item.requesterAddress,
-            targetAddress: item.targetAddress,
-            submittedTxHash: item.submittedTxHash,
-            paymentId: item.paymentId,
-          })),
-          pendingExecutions: pendingSignerExecutions,
-        }
-      : null,
-    paymasterProvider: config.paymasterProvider
-      ? {
-          enabled: config.paymasterProvider.enabled,
-          bind: `${config.paymasterProvider.bindHost}:${config.paymasterProvider.port}`,
-          pathPrefix: config.paymasterProvider.pathPrefix,
-          capabilityPrefix: config.paymasterProvider.capabilityPrefix,
-          publishToDiscovery: config.paymasterProvider.publishToDiscovery,
-          quoteValiditySeconds: config.paymasterProvider.quoteValiditySeconds,
-          authorizationValiditySeconds:
-            config.paymasterProvider.authorizationValiditySeconds,
-          quotePriceWei: config.paymasterProvider.quotePriceWei,
-          authorizePriceWei: config.paymasterProvider.authorizePriceWei,
-          requestTimeoutMs: config.paymasterProvider.requestTimeoutMs,
-          maxDataBytes: config.paymasterProvider.maxDataBytes,
-          defaultGas: config.paymasterProvider.defaultGas,
-          policy: {
-            trustTier: config.paymasterProvider.policy.trustTier,
-            sponsorAddress:
-              config.paymasterProvider.policy.sponsorAddress || config.walletAddress,
-            policyId: config.paymasterProvider.policy.policyId,
-            delegateIdentity:
-              config.paymasterProvider.policy.delegateIdentity || null,
-            allowedWallets: config.paymasterProvider.policy.allowedWallets,
-            allowedTargets: config.paymasterProvider.policy.allowedTargets,
-            allowedFunctionSelectors:
-              config.paymasterProvider.policy.allowedFunctionSelectors,
-            maxValueWei: config.paymasterProvider.policy.maxValueWei,
-            expiresAt: config.paymasterProvider.policy.expiresAt || null,
-            allowSystemAction:
-              config.paymasterProvider.policy.allowSystemAction === true,
-          },
-          recentQuotes: paymasterQuotes.map((item) => ({
-            quoteId: item.quoteId,
-            requesterAddress: item.requesterAddress,
-            walletAddress: item.walletAddress,
-            targetAddress: item.targetAddress,
-            status: item.status,
-            amountWei: item.amountWei,
-            expiresAt: item.expiresAt,
-          })),
-          recentAuthorizations: paymasterAuthorizations.map((item) => ({
-            authorizationId: item.authorizationId,
-            quoteId: item.quoteId,
-            status: item.status,
-            requesterAddress: item.requesterAddress,
-            walletAddress: item.walletAddress,
-            targetAddress: item.targetAddress,
-            submittedTxHash: item.submittedTxHash,
-            paymentId: item.paymentId,
-          })),
-          pendingAuthorizations: pendingPaymasterAuthorizations,
-        }
-      : null,
-    storage: config.storage
-      ? {
-          enabled: config.storage.enabled,
-          bind: `${config.storage.bindHost}:${config.storage.port}`,
-          pathPrefix: config.storage.pathPrefix,
-          capabilityPrefix: config.storage.capabilityPrefix,
-          storageDir: config.storage.storageDir,
-          publishToDiscovery: config.storage.publishToDiscovery,
-          allowAnonymousGet: config.storage.allowAnonymousGet,
-          leaseHealth: {
-            autoAudit: config.storage.leaseHealth.autoAudit,
-            auditIntervalSeconds: config.storage.leaseHealth.auditIntervalSeconds,
-            autoRenew: config.storage.leaseHealth.autoRenew,
-            renewalLeadSeconds: config.storage.leaseHealth.renewalLeadSeconds,
-            autoReplicate: config.storage.leaseHealth.autoReplicate,
-          },
-          replication: {
-            enabled: config.storage.replication.enabled,
-            targetCopies: config.storage.replication.targetCopies,
-            providerBaseUrls: config.storage.replication.providerBaseUrls,
-          },
-          anchor: {
-            enabled: config.storage.anchor.enabled,
-            sinkAddress: config.storage.anchor.sinkAddress || null,
-          },
-          activeLeaseCount: activeStorageLeaseCount,
-          recentLeases: storageLeases.map((item) => ({
-            leaseId: item.leaseId,
-            cid: item.cid,
-            bundleKind: item.bundleKind,
-            status: item.status,
-            expiresAt: item.receipt.expiresAt,
-            providerBaseUrl: item.providerBaseUrl || null,
-            anchorTxHash: item.anchorTxHash,
-          })),
-          recentRenewals: storageRenewals.map((item) => ({
-            renewalId: item.renewalId,
-            leaseId: item.leaseId,
-            cid: item.cid,
-            renewedExpiresAt: item.renewedExpiresAt,
-            addedTtlSeconds: item.addedTtlSeconds,
-            providerBaseUrl: item.providerBaseUrl || null,
-          })),
-          recentAudits: storageAudits.map((item) => ({
-            auditId: item.auditId,
-            leaseId: item.leaseId,
-            status: item.status,
-            checkedAt: item.checkedAt,
-          })),
-          recentAnchors: storageAnchors.map((item) => ({
-            anchorId: item.anchorId,
-            leaseId: item.leaseId,
-            summaryHash: item.summaryHash,
-            anchorTxHash: item.anchorTxHash,
-          })),
-        }
-      : null,
-    artifacts: config.artifacts
-      ? {
-          enabled: config.artifacts.enabled,
-          defaultProviderBaseUrl: config.artifacts.defaultProviderBaseUrl || null,
-          defaultTtlSeconds: config.artifacts.defaultTtlSeconds,
-          autoAnchorOnStore: config.artifacts.autoAnchorOnStore,
-          captureCapability: config.artifacts.captureCapability,
-          evidenceCapability: config.artifacts.evidenceCapability,
-          aggregateCapability: config.artifacts.aggregateCapability,
-          verificationCapability: config.artifacts.verificationCapability,
-          anchor: {
-            enabled: config.artifacts.anchor.enabled,
-            sinkAddress: config.artifacts.anchor.sinkAddress || null,
-          },
-          verifiedCount: verifiedArtifactCount,
-          anchoredCount: anchoredArtifactCount,
-          recentArtifacts: artifacts.map((item) => ({
-            artifactId: item.artifactId,
-            kind: item.kind,
-            status: item.status,
-            cid: item.cid,
-            title: item.title,
-            anchorId: item.anchorId,
-          })),
-          recentAnchors: artifactAnchors.map((item) => ({
-            anchorId: item.anchorId,
-            artifactId: item.artifactId,
-            summaryHash: item.summaryHash,
-            anchorTxHash: item.anchorTxHash,
-          })),
-        }
-      : null,
-    settlement: config.settlement
-      ? {
-          enabled: config.settlement.enabled,
-          sinkAddress: config.settlement.sinkAddress || null,
-          waitForReceipt: config.settlement.waitForReceipt,
-          gas: config.settlement.gas,
-          publishBounties: config.settlement.publishBounties,
-          publishObservations: config.settlement.publishObservations,
-          publishOracleResults: config.settlement.publishOracleResults,
-          callbacks: {
-            enabled: config.settlement.callbacks.enabled,
-            retryBatchSize: config.settlement.callbacks.retryBatchSize,
-            retryAfterSeconds: config.settlement.callbacks.retryAfterSeconds,
-            pendingCount: pendingSettlementCallbacks,
-            recentCallbacks: settlementCallbacks.map((item) => ({
-              callbackId: item.callbackId,
-              receiptId: item.receiptId,
-              kind: item.kind,
-              status: item.status,
-              callbackTxHash: item.callbackTxHash,
-            })),
-          },
-          receiptCount: settlements.length,
-          recentReceipts: settlements.map((item) => ({
-            receiptId: item.receiptId,
-            kind: item.kind,
-            subjectId: item.subjectId,
-            receiptHash: item.receiptHash,
-            settlementTxHash: item.settlementTxHash,
-          })),
-        }
-      : null,
-    marketContracts: config.marketContracts
-      ? {
-          enabled: config.marketContracts.enabled,
-          retryBatchSize: config.marketContracts.retryBatchSize,
-          retryAfterSeconds: config.marketContracts.retryAfterSeconds,
-          pendingCount: pendingMarketCallbacks,
-          recentBindings: marketBindings.map((item) => ({
-            bindingId: item.bindingId,
-            kind: item.kind,
-            subjectId: item.subjectId,
-            receiptHash: item.receiptHash,
-            callbackTxHash: item.callbackTxHash,
-          })),
-          recentCallbacks: marketCallbacks.map((item) => ({
-            callbackId: item.callbackId,
-            bindingId: item.bindingId,
-            kind: item.kind,
-            status: item.status,
-            callbackTxHash: item.callbackTxHash,
-            packageName: item.packageName,
-            functionSignature: item.functionSignature,
-          })),
-        }
-      : null,
-    opportunityScout: config.opportunityScout
-      ? {
-          enabled: config.opportunityScout.enabled,
-          maxItems: config.opportunityScout.maxItems,
-          discoveryCapabilities: config.opportunityScout.discoveryCapabilities,
-          remoteBaseUrls: config.opportunityScout.remoteBaseUrls,
-        }
-      : null,
-    state,
-    turns: turnCount,
-    toolsInstalled: tools.length,
-    activeSkills: skills.length,
-    activeHeartbeats: heartbeats.filter((h) => h.enabled).length,
-    heartbeatPaused,
-    pendingWakes: pendingWakes.length,
-    children: {
-      alive: children.filter((c) => c.status !== "dead").length,
-      total: children.length,
-    },
-    model: config.inferenceModelRef || config.inferenceModel,
-    version: config.version,
-  };
-
-  if (options.asJson) {
-    logger.info(JSON.stringify(snapshot, null, 2));
+  try {
+    const snapshot = buildRuntimeStatusSnapshot(config, db);
+    if (options.asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildRuntimeStatusReport(snapshot));
+  } finally {
     db.close();
-    return;
   }
-
-  logger.info(`
-=== OPENFOX STATUS ===
-Name:       ${config.name}
-Wallet:     ${config.walletAddress}
-Service:    ${managedService.installed ? managedService.active || "installed" : "not installed"}
-Discovery:  ${discovery?.enabled ? "enabled" : "disabled"}
-Gateway:    ${gatewaySummary}
-Bounty:     ${config.bounty?.enabled ? `${config.bounty.role}/${config.bounty.defaultKind} @ ${config.bounty.bindHost}:${config.bounty.port}${config.bounty.pathPrefix}` : "disabled"}
-Bounty auto: ${config.bounty?.enabled ? `open=${config.bounty.autoOpenOnStartup || config.bounty.autoOpenWhenIdle ? "on" : "off"} solve=${config.bounty.autoSolveOnStartup || config.bounty.autoSolveEnabled ? "on" : "off"}` : "disabled"}
-Storage:    ${config.storage?.enabled ? `enabled (${activeStorageLeaseCount} active lease${activeStorageLeaseCount === 1 ? "" : "s"}, ${storageAnchors.length} recent anchor${storageAnchors.length === 1 ? "" : "s"})` : "disabled"}
-Artifacts:  ${config.artifacts?.enabled ? `enabled (${artifacts.length} recent, ${anchoredArtifactCount} anchored)` : "disabled"}
-x402:       ${config.x402Server?.enabled ? `enabled (${x402Payments.length} recent payment${x402Payments.length === 1 ? "" : "s"}, ${pendingX402Payments} pending, ${failedX402Payments} failed)` : "disabled"}
-Signer:     ${config.signerProvider?.enabled ? `enabled (${signerQuotes.length} recent quote${signerQuotes.length === 1 ? "" : "s"}, ${signerExecutions.length} recent execution${signerExecutions.length === 1 ? "" : "s"}, ${pendingSignerExecutions} pending)` : "disabled"}
-Paymaster:  ${config.paymasterProvider?.enabled ? `enabled (${paymasterQuotes.length} recent quote${paymasterQuotes.length === 1 ? "" : "s"}, ${paymasterAuthorizations.length} recent authorization${paymasterAuthorizations.length === 1 ? "" : "s"}, ${pendingPaymasterAuthorizations} pending)` : "disabled"}
-Settlement: ${config.settlement?.enabled ? `enabled (${settlements.length} recent receipt${settlements.length === 1 ? "" : "s"}, ${pendingSettlementCallbacks} pending callback${pendingSettlementCallbacks === 1 ? "" : "s"})` : "disabled"}
-Market:     ${config.marketContracts?.enabled ? `enabled (${marketBindings.length} recent binding${marketBindings.length === 1 ? "" : "s"}, ${pendingMarketCallbacks} pending callback${pendingMarketCallbacks === 1 ? "" : "s"})` : "disabled"}
-Scout:      ${config.opportunityScout?.enabled ? "enabled" : "disabled"}
-Creator:    ${config.creatorAddress}
-Sandbox:    ${config.sandboxId}
-State:      ${state}
-Turns:      ${turnCount}
-Tools:      ${tools.length} installed
-Skills:     ${skills.length} active
-Heartbeats: ${heartbeats.filter((h) => h.enabled).length} active
-Heartbeat paused: ${heartbeatPaused ? "yes" : "no"}
-Pending wakes: ${pendingWakes.length}
-Children:   ${children.filter((c) => c.status !== "dead").length} alive / ${children.length} total
-Agent ID:   ${config.agentId || "not configured"}
-Model:      ${config.inferenceModelRef || config.inferenceModel}
-Version:    ${config.version}
-========================
-`);
-
-  db.close();
 }
 
 // ─── Main Run ──────────────────────────────────────────────────
@@ -3594,6 +3244,9 @@ async function run(): Promise<void> {
   let runtimeArtifactManager: ReturnType<typeof createArtifactManager> | undefined;
   let gatewayServer:
     | Awaited<ReturnType<typeof startAgentGatewayServer>>
+    | undefined;
+  let operatorApiServer:
+    | Awaited<ReturnType<typeof startOperatorApiServer>>
     | undefined;
   let gatewayProviderSessions:
     | Awaited<ReturnType<typeof startAgentGatewayProviderSessions>>
@@ -4412,6 +4065,19 @@ async function run(): Promise<void> {
   heartbeat.start();
   logger.info(`[${new Date().toISOString()}] Heartbeat daemon started.`);
 
+  if (config.operatorApi?.enabled) {
+    try {
+      operatorApiServer = await startOperatorApiServer({
+        config,
+        db,
+      });
+    } catch (error) {
+      logger.warn(
+        `Operator API failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
   // Handle graceful shutdown
   const shutdown = () => {
     logger.info(`[${new Date().toISOString()}] Shutting down...`);
@@ -4426,6 +4092,7 @@ async function run(): Promise<void> {
       artifactServer?.close(),
       gatewayProviderSessions?.close(),
       gatewayServer?.close(),
+      operatorApiServer?.close(),
       faucetServer?.close(),
       observationServer?.close(),
       oracleServer?.close(),

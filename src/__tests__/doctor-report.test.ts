@@ -22,6 +22,8 @@ describe("doctor report formatting", () => {
       inferenceConfigured: true,
       rpcConfigured: true,
       discoveryEnabled: true,
+      operatorApiEnabled: true,
+      operatorApiReady: true,
       gatewayEnabled: false,
       providerEnabled: false,
       signerProviderEnabled: true,
@@ -126,6 +128,7 @@ describe("doctor report formatting", () => {
     const doctor = buildDoctorReport(snapshot);
 
     expect(health).toContain("=== OPENFOX HEALTH ===");
+    expect(health).toContain("Operator API enabled: yes (auth=configured)");
     expect(health).toContain("Signer provider enabled: yes (2 quotes, 1 executions, 1 pending)");
     expect(
       health,
@@ -185,6 +188,30 @@ describe("doctor report formatting", () => {
       snapshot.findings.some(
         (finding) =>
           finding.id === "signer-provider-enabled" && finding.severity === "error",
+      ),
+    ).toBe(true);
+  });
+
+  it("flags operator api when auth is missing", async () => {
+    const snapshot = await buildHealthSnapshot(
+      createTestConfig({
+        operatorApi: {
+          enabled: true,
+          bindHost: "0.0.0.0",
+          port: 4903,
+          pathPrefix: "/operator",
+          authToken: undefined,
+          exposeDoctor: true,
+          exposeServiceStatus: true,
+        },
+      }),
+    );
+
+    expect(
+      snapshot.findings.some(
+        (finding) =>
+          finding.id === "operator-api-misconfigured" &&
+          finding.severity === "error",
       ),
     ).toBe(true);
   });

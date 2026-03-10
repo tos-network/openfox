@@ -208,6 +208,11 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Make sponsored execution state visible through status/health/doctor,
     service UX, and operator guides so paymaster-provider becomes part of the
     same runtime story as signer-provider and paid services.
+- [x] Task 45: Add multi-node operator APIs and fleet auditing UX
+  - Status: Complete
+  - Goal: Make public storage, artifact, signer, and paymaster deployments
+    easier to run and audit across multiple OpenFox nodes through a stable
+    authenticated operator API and a fleet-level CLI surface.
 
 ## Task 1 Breakdown
 

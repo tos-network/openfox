@@ -19,6 +19,7 @@ import type {
   ArtifactPipelineConfig,
   MarketContractConfig,
   OpportunityScoutConfig,
+  OperatorApiConfig,
   SignerProviderConfig,
   SettlementConfig,
   StorageMarketConfig,
@@ -45,6 +46,7 @@ import {
   DEFAULT_BOUNTY_POLICY,
   DEFAULT_MARKET_CONTRACT_CONFIG,
   DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+  DEFAULT_OPERATOR_API_CONFIG,
   DEFAULT_SIGNER_PROVIDER_CONFIG,
   DEFAULT_SETTLEMENT_CONFIG,
   DEFAULT_STORAGE_MARKET_CONFIG,
@@ -529,6 +531,11 @@ export function loadConfig(): OpenFoxConfig | null {
     ...((raw?.opportunityScout as JsonRecord | undefined) ?? {}),
   };
 
+  const operatorApi: OperatorApiConfig = {
+    ...DEFAULT_OPERATOR_API_CONFIG,
+    ...((raw?.operatorApi as JsonRecord | undefined) ?? {}),
+  };
+
   const settlement: SettlementConfig = {
     ...DEFAULT_SETTLEMENT_CONFIG,
     ...((raw?.settlement as JsonRecord | undefined) ?? {}),
@@ -783,6 +790,7 @@ export function loadConfig(): OpenFoxConfig | null {
     agentDiscovery,
     bounty,
     opportunityScout,
+    operatorApi,
     settlement,
     marketContracts,
     x402Server,
@@ -811,6 +819,7 @@ export function saveConfig(config: OpenFoxConfig): void {
     agentDiscovery: config.agentDiscovery ?? DEFAULT_AGENT_DISCOVERY_CONFIG,
     bounty: config.bounty ?? DEFAULT_BOUNTY_CONFIG,
     opportunityScout: config.opportunityScout ?? DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+    operatorApi: config.operatorApi ?? DEFAULT_OPERATOR_API_CONFIG,
     settlement: config.settlement ?? DEFAULT_SETTLEMENT_CONFIG,
     marketContracts: config.marketContracts ?? DEFAULT_MARKET_CONTRACT_CONFIG,
     x402Server: config.x402Server ?? DEFAULT_X402_SERVER_CONFIG,
@@ -899,6 +908,7 @@ export function createConfig(params: {
     agentDiscovery: DEFAULT_AGENT_DISCOVERY_CONFIG,
     bounty: DEFAULT_BOUNTY_CONFIG,
     opportunityScout: DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+    operatorApi: DEFAULT_OPERATOR_API_CONFIG,
     settlement: DEFAULT_SETTLEMENT_CONFIG,
     marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
     x402Server: DEFAULT_X402_SERVER_CONFIG,

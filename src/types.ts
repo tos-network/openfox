@@ -438,6 +438,7 @@ export interface OpenFoxConfig {
   settlement?: SettlementConfig;
   marketContracts?: MarketContractConfig;
   x402Server?: X402ServerConfig;
+  operatorApi?: OperatorApiConfig;
   signerProvider?: SignerProviderConfig;
   paymasterProvider?: PaymasterProviderConfig;
   storage?: StorageMarketConfig;
@@ -580,6 +581,16 @@ export interface OpportunityScoutConfig {
   remoteBaseUrls: string[];
   maxItems: number;
   minRewardWei: string;
+}
+
+export interface OperatorApiConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  pathPrefix: string;
+  authToken?: string;
+  exposeDoctor: boolean;
+  exposeServiceStatus: boolean;
 }
 
 export type SignerProviderTrustTier =
@@ -1293,6 +1304,16 @@ export const DEFAULT_OPPORTUNITY_SCOUT_CONFIG: OpportunityScoutConfig = {
   minRewardWei: "0",
 };
 
+export const DEFAULT_OPERATOR_API_CONFIG: OperatorApiConfig = {
+  enabled: false,
+  bindHost: "127.0.0.1",
+  port: 4903,
+  pathPrefix: "/operator",
+  authToken: undefined,
+  exposeDoctor: true,
+  exposeServiceStatus: true,
+};
+
 export const DEFAULT_SIGNER_PROVIDER_CONFIG: SignerProviderConfig = {
   enabled: false,
   bindHost: "127.0.0.1",
@@ -1467,6 +1488,7 @@ export const DEFAULT_CONFIG: Partial<OpenFoxConfig> = {
   agentDiscovery: DEFAULT_AGENT_DISCOVERY_CONFIG,
   bounty: DEFAULT_BOUNTY_CONFIG,
   opportunityScout: DEFAULT_OPPORTUNITY_SCOUT_CONFIG,
+  operatorApi: DEFAULT_OPERATOR_API_CONFIG,
   settlement: DEFAULT_SETTLEMENT_CONFIG,
   marketContracts: DEFAULT_MARKET_CONTRACT_CONFIG,
   x402Server: DEFAULT_X402_SERVER_CONFIG,
