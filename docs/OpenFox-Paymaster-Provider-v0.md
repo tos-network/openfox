@@ -104,15 +104,17 @@ The on-chain identity from which validation and execution charges are paid.
 
 ## 7. Native Protocol Shape
 
-### 7.1 Sponsored Transaction Type
+### 7.1 Unified Sponsor-Aware Native Transaction
 
-`v0` should introduce a dedicated sponsored transaction type instead of pretending the current sender-pays envelope is sufficient.
+`v0` should unify sponsored execution into the ordinary native transaction
+envelope instead of introducing a second transaction family.
 
 Suggested direction:
 
 - keep ordinary sender-pays transactions for simple direct use
-- add `SponsoredSignerTx` for sponsored execution
-- keep `SponsoredSignerTx` aligned with ordinary `SignerTx` on signer-type coverage instead of shrinking sponsorship to `secp256k1` only
+- add optional sponsor authorization fields to the native transaction
+- keep sponsor-side authorization aligned with ordinary native execution on
+  signer-type coverage instead of shrinking sponsorship to `secp256k1` only
 
 Suggested fields:
 
@@ -138,7 +140,8 @@ Neither the relay nor the counterparty should be able to swap sponsor details af
 
 ### 7.1.1 Signer-Type Compatibility
 
-`SponsoredSignerTx` should support the same signer-type matrix as ordinary `SignerTx`.
+Unified sponsor-aware native transactions should support the same signer-type
+matrix as ordinary native execution.
 
 That requirement applies to both:
 
@@ -156,7 +159,7 @@ That requirement applies to both:
 
 The design goal is:
 
-- do not make `SponsoredSignerTx` a multi-signer-type wrapper on the requester side while leaving sponsor authorization as `secp256k1`-only
+- do not make sponsor-aware native execution a multi-signer-type wrapper on the requester side while leaving sponsor authorization as `secp256k1`-only
 - do not force OpenFox paymaster-provider operators onto a narrower signer set than ordinary wallet operators
 
 #### SignerType Compatibility Matrix
@@ -172,8 +175,8 @@ The design goal is:
 
 Interpretation rules:
 
-- every signer type supported by ordinary `SignerTx` should also be accepted by `SponsoredSignerTx` on the requester side
-- every signer type supported by ordinary `SignerTx` should also be accepted by `SponsoredSignerTx` on the sponsor side
+- every signer type supported by ordinary native execution should also be accepted by sponsor-aware native execution on the requester side
+- every signer type supported by ordinary native execution should also be accepted by sponsor-aware native execution on the sponsor side
 - no signer type should be "requester-only" in the final `v0` design unless the ordinary `SignerTx` matrix itself is intentionally reduced
 - if implementation staging temporarily lands with partial sponsor-side support, that should be treated as incomplete work, not as the target architecture
 
@@ -202,7 +205,7 @@ This is the core protocol change.
 
 ### 8.1 Transaction Envelope
 
-- add a native sponsored transaction type
+- add unified sponsor-aware fields to the native transaction envelope
 - add sponsor identity and sponsor witness fields
 - add `sponsor_signer_type` so sponsor-side verification is not implicitly hard-coded to one algorithm family
 - update hashing, signing, and RPC encoding accordingly
@@ -235,7 +238,7 @@ The exact mechanism can vary, but `v0` needs a first-class protocol hook for spo
 
 This means:
 
-- ordinary `SignerTx` and `SponsoredSignerTx` should share the same supported `SignerType` matrix
+- ordinary native execution and sponsor-aware native execution should share the same supported `SignerType` matrix
 - requester-side and sponsor-side verification should both flow through the same signer-type-aware verification framework
 - sponsor-side signing helpers should not be hard-coded to `secp256k1`
 
@@ -367,7 +370,7 @@ Suggested fields:
 1. Requester prepares a wallet call locally.
 2. Requester discovers a paymaster-provider and requests a quote.
 3. Paymaster-provider authorizes sponsorship for that exact request.
-4. Requester or relay submits a `SponsoredSignerTx`.
+4. Requester or relay submits a sponsor-aware native transaction.
 5. Protocol validates both wallet authorization and sponsor authorization.
 6. Sponsor side pays validation and execution cost.
 7. OpenFox persists a sponsorship receipt.

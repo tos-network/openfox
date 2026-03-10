@@ -82,7 +82,7 @@ export async function authorizePaymasterExecution(
     blockTag: "pending",
   });
   const chainId = await publicClient.getChainId();
-  const executionSignature = await walletClient.signSponsoredExecution({
+  const executionSignature = await walletClient.signAuthorization({
     account: input.account,
     chainId,
     nonce: executionNonce,
@@ -92,6 +92,7 @@ export async function authorizePaymasterExecution(
     data: input.quote.dataHex,
     from: input.quote.walletAddress,
     sponsor: input.quote.sponsorAddress,
+    sponsorSignerType: "secp256k1",
     sponsorNonce: BigInt(input.quote.sponsorNonce),
     sponsorExpiry: BigInt(input.quote.sponsorExpiry),
     sponsorPolicyHash: input.quote.policyHash,

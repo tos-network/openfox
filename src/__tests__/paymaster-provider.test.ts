@@ -215,7 +215,7 @@ describe("paymaster provider", () => {
         },
       },
       async submitSponsoredTransaction({ transaction, executionSignature }) {
-        const sponsorSignature = await identity.account.signSponsoredExecution(transaction);
+        const sponsorSignature = await identity.account.signAuthorization(transaction);
         expect(executionSignature.r).toMatch(/^0x[0-9a-f]+$/);
         return {
           sponsorSignature,
@@ -248,8 +248,7 @@ describe("paymaster provider", () => {
     expect(quote.json.requester_signer_type).toBe("secp256k1");
     expect(quote.json.sponsor_signer_type).toBe("secp256k1");
 
-    const executionSignature = await requester.signSponsoredExecution({
-      type: "sponsored",
+    const executionSignature = await requester.signAuthorization({
       chainId: BigInt(String(quote.json.chain_id)),
       nonce: 9n,
       gas: BigInt(String(quote.json.gas)),
@@ -260,6 +259,7 @@ describe("paymaster provider", () => {
       from: requester.address,
       signerType: "secp256k1",
       sponsor: String(quote.json.sponsor_address) as Hex,
+      sponsorSignerType: "secp256k1",
       sponsorNonce: BigInt(String(quote.json.sponsor_nonce)),
       sponsorExpiry: BigInt(Number(quote.json.sponsor_expiry)),
       sponsorPolicyHash: String(quote.json.policy_hash) as Hex,
@@ -451,8 +451,7 @@ describe("paymaster provider", () => {
     });
     expect(quote.status).toBe(200);
 
-    const executionSignature = await requester.signSponsoredExecution({
-      type: "sponsored",
+    const executionSignature = await requester.signAuthorization({
       chainId: BigInt(String(quote.json.chain_id)),
       nonce: 1n,
       gas: BigInt(String(quote.json.gas)),
@@ -463,6 +462,7 @@ describe("paymaster provider", () => {
       from: requester.address,
       signerType: "secp256k1",
       sponsor: String(quote.json.sponsor_address) as Hex,
+      sponsorSignerType: "secp256k1",
       sponsorNonce: BigInt(String(quote.json.sponsor_nonce)),
       sponsorExpiry: BigInt(Number(quote.json.sponsor_expiry)),
       sponsorPolicyHash: String(quote.json.policy_hash) as Hex,

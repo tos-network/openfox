@@ -6,10 +6,10 @@ import {
   http as httpTransport,
   privateKeyToAccount,
   recoverAddress,
-  serializeTransactionSponsored,
+  serializeTransaction,
   type Hex,
   type Signature,
-  type TransactionSerializableSponsored,
+  type TransactionSerializableNative,
 } from "tosdk";
 import type {
   OpenFoxConfig,
@@ -108,7 +108,7 @@ export interface StartPaymasterProviderServerParams {
   submitSponsoredTransaction?: (params: {
     rpcUrl: string;
     privateKey: Hex;
-    transaction: TransactionSerializableSponsored;
+    transaction: TransactionSerializableNative;
     executionSignature: Signature;
     timeoutMs: number;
   }) => Promise<{
@@ -270,7 +270,7 @@ function buildAuthorizationResponse(params: {
 async function submitSponsoredTransaction(params: {
   rpcUrl: string;
   privateKey: Hex;
-  transaction: TransactionSerializableSponsored;
+  transaction: TransactionSerializableNative;
   executionSignature: Signature;
   timeoutMs: number;
 }): Promise<{
@@ -280,8 +280,8 @@ async function submitSponsoredTransaction(params: {
   receipt?: Record<string, unknown> | null;
 }> {
   const account = privateKeyToAccount(params.privateKey);
-  const sponsorSignature = await account.signSponsoredExecution(params.transaction);
-  const rawTransaction = serializeTransactionSponsored(params.transaction, {
+  const sponsorSignature = await account.signAuthorization(params.transaction);
+  const rawTransaction = serializeTransaction(params.transaction, {
     execution: params.executionSignature,
     sponsor: sponsorSignature,
   });
@@ -555,8 +555,7 @@ export async function startPaymasterProviderServer(
           });
           return;
         }
-        const transaction: TransactionSerializableSponsored = {
-          type: "sponsored",
+        const transaction: TransactionSerializableNative = {
           chainId: BigInt(quote.chainId),
           nonce: executionNonce,
           gas: BigInt(quote.gas),
@@ -566,6 +565,7 @@ export async function startPaymasterProviderServer(
           from: quote.walletAddress,
           signerType: "secp256k1",
           sponsor: quote.sponsorAddress,
+          sponsorSignerType: "secp256k1",
           sponsorNonce: BigInt(quote.sponsorNonce),
           sponsorExpiry: BigInt(quote.sponsorExpiry),
           sponsorPolicyHash: quote.policyHash,

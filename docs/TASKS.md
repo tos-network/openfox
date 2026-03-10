@@ -595,7 +595,7 @@ building OpenFox into a TOS-native agent platform.
   - expiry
   - replay protection expectations
 - [x] Define signer-type parity as a hard protocol requirement:
-  - `SponsoredSignerTxType` must support the same `SignerType` set as ordinary `SignerTxType`
+  - unified sponsor-aware native transactions must support the same `SignerType` set for both execution-side and sponsor-side authorization
   - this applies to both requester/execution signatures and sponsor/paymaster signatures
 - [x] Define payment idempotency and payment-to-authorization binding rules for paymaster-provider flows.
 - [x] Define how paymaster-provider capability publication maps into Agent Discovery and optional Agent Gateway routes.
@@ -608,7 +608,7 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add `sponsor_signer_type` to the native transaction model and hashing/signing path.
 - [x] Update mempool and state-transition rules so sponsor-side balance and sponsor-side authorization replace requester-side gas funding.
 - [x] Add first-class sponsor validation hooks in `gtos` and `tolang`.
-- [x] Make `SponsoredSignerTxType` support the same `SignerType` matrix as ordinary `SignerTxType`, rather than leaving sponsor-side signing locked to `secp256k1`.
+- [x] Make unified sponsor-aware native transactions support the same `SignerType` matrix on both execution-side and sponsor-side authorization paths, rather than leaving sponsor-side signing locked to `secp256k1`.
 - [x] Route both requester-side and sponsor-side verification through signer-type-aware verification code paths instead of hard-coded ECDSA-only helpers.
 - [x] Add `tosdk` encoding, hashing, signing, and client support for native sponsored transactions.
 - [x] Add targeted tests for sponsored validation, replay protection, rejection outside policy, and sponsor-funded execution paths.
