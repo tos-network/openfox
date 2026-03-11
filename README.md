@@ -187,7 +187,8 @@ It supports:
   post-approval action queue and action journal
 - `openfox report action-execute <action-id>` and
   `openfox report action-executions` for bounded remote execution of queued
-  owner pursue actions against bounty and campaign hosts
+  owner pursue and delegate actions against bounty, campaign, observation,
+  oracle, and provider hosts
 - a built-in owner report web surface for mobile-friendly review of the latest
   daily and weekly reports, owner opportunity alerts, queued owner actions,
   execution history, and persisted web/email delivery logs

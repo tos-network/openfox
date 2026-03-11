@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import { ulid } from "ulid";
 import type { Address } from "tosdk";
 import type {
@@ -15,6 +16,14 @@ import {
   fetchRemoteCampaign,
   solveRemoteBounty,
 } from "../bounty/client.js";
+import type {
+  ObservationInvocationRequest,
+  ObservationInvocationResponse,
+  OracleResolutionRequest,
+  OracleResolutionResponse,
+  OracleResolutionQueryKind,
+} from "../agent-discovery/types.js";
+import { x402Fetch } from "../runtime/x402.js";
 
 type SupportedActionExecutionPlan =
   | {
@@ -30,6 +39,27 @@ type SupportedActionExecutionPlan =
       targetRef: string;
       remoteBaseUrl: string;
       campaignId: string;
+    }
+  | {
+      kind: "remote_observation_request";
+      targetKind: "provider";
+      targetRef: string;
+      remoteBaseUrl: string;
+      capability: string;
+      targetUrl: string;
+      reason: string;
+    }
+  | {
+      kind: "remote_oracle_request";
+      targetKind: "provider";
+      targetRef: string;
+      remoteBaseUrl: string;
+      capability: string;
+      query: string;
+      queryKind: OracleResolutionQueryKind;
+      options?: string[];
+      context?: string;
+      reason: string;
     };
 
 export interface ExecuteOwnerOpportunityActionResult {
@@ -40,11 +70,33 @@ export interface ExecuteOwnerOpportunityActionResult {
 function buildUnsupportedExecutionPlan(
   action: OwnerOpportunityActionRecord,
 ): SupportedActionExecutionPlan {
+  const payload = asRecord(action.payload);
+  const nested = nestedPayload(action);
+  const remoteBaseUrl = firstString(
+    action.baseUrl,
+    payload.baseUrl,
+    nested.baseUrl,
+  ) || "";
+  const capability = firstString(action.capability, payload.capability, nested.capability);
+  const targetRef =
+    firstString(payload.providerAgentId, nested.providerAgentId, capability, remoteBaseUrl, action.actionId) ||
+    action.actionId;
+  if (action.kind === "delegate") {
+    return {
+      kind: "remote_observation_request",
+      targetKind: "provider",
+      targetRef,
+      remoteBaseUrl,
+      capability: capability || "provider.call",
+      targetUrl: firstString(payload.targetUrl, nested.targetUrl) || "",
+      reason: "unsupported delegated provider request",
+    };
+  }
   return {
     kind: "remote_bounty_solve",
     targetKind: "bounty",
     targetRef: action.actionId,
-    remoteBaseUrl: action.baseUrl || "",
+    remoteBaseUrl,
     bountyId: action.actionId,
   };
 }
@@ -72,9 +124,6 @@ function nestedPayload(action: OwnerOpportunityActionRecord): Record<string, unk
 function buildExecutionPlan(
   action: OwnerOpportunityActionRecord,
 ): SupportedActionExecutionPlan | null {
-  if (action.kind !== "pursue") {
-    return null;
-  }
   const payload = asRecord(action.payload);
   const nested = nestedPayload(action);
   const remoteBaseUrl = firstString(
@@ -82,6 +131,70 @@ function buildExecutionPlan(
     payload.baseUrl,
     nested.baseUrl,
   );
+  const capability = firstString(action.capability, payload.capability, nested.capability);
+  const targetRef =
+    firstString(payload.providerAgentId, nested.providerAgentId, capability, remoteBaseUrl, action.actionId) ||
+    action.actionId;
+  if (action.kind === "delegate" && remoteBaseUrl && capability) {
+    if (capability.startsWith("observation.")) {
+      const targetUrl = firstString(payload.targetUrl, nested.targetUrl);
+      if (!targetUrl) {
+        return null;
+      }
+      return {
+        kind: "remote_observation_request",
+        targetKind: "provider",
+        targetRef,
+        remoteBaseUrl,
+        capability,
+        targetUrl,
+        reason:
+          firstString(payload.reason, nested.reason, action.summary, action.title) ||
+          "owner delegated paid observation",
+      };
+    }
+    if (capability.startsWith("oracle.")) {
+      const query = firstString(payload.query, nested.query, action.summary, action.title);
+      if (!query) {
+        return null;
+      }
+      const queryKindRaw = firstString(payload.queryKind, nested.queryKind)?.toLowerCase();
+      const queryKind =
+        queryKindRaw === "binary" ||
+        queryKindRaw === "enum" ||
+        queryKindRaw === "scalar" ||
+        queryKindRaw === "text"
+          ? queryKindRaw
+          : "text";
+      const optionsValue = Array.isArray(payload.options)
+        ? payload.options
+        : Array.isArray(nested.options)
+          ? nested.options
+          : [];
+      const options = optionsValue.filter(
+        (value): value is string => typeof value === "string" && value.trim().length > 0,
+      );
+      return {
+        kind: "remote_oracle_request",
+        targetKind: "provider",
+        targetRef,
+        remoteBaseUrl,
+        capability,
+        query,
+        queryKind,
+        options: options.length ? options : undefined,
+        context: firstString(payload.context, nested.context),
+        reason:
+          firstString(payload.reason, nested.reason, action.summary, action.title) ||
+          "owner delegated oracle resolution",
+      };
+    }
+    return null;
+  }
+
+  if (action.kind !== "pursue") {
+    return null;
+  }
   const bountyId = firstString(payload.bountyId, nested.bountyId);
   if (remoteBaseUrl && bountyId) {
     return {
@@ -103,6 +216,28 @@ function buildExecutionPlan(
     };
   }
   return null;
+}
+
+async function invokeDirectProvider<TRequest, TResponse>(params: {
+  identity: OpenFoxIdentity;
+  remoteBaseUrl: string;
+  request: TRequest;
+}): Promise<TResponse> {
+  const result = await x402Fetch(
+    params.remoteBaseUrl,
+    params.identity.account,
+    "POST",
+    JSON.stringify(params.request),
+    { Accept: "application/json" },
+  );
+  if (!result.success) {
+    throw new Error(result.error || `provider request failed with status ${result.status}`);
+  }
+  const response =
+    typeof result.response === "string"
+      ? (JSON.parse(result.response) as TResponse)
+      : (result.response as TResponse);
+  return response;
 }
 
 function resolveSolverSkillInstructions(
@@ -194,7 +329,7 @@ async function executePlan(params: {
   requestPayload: Record<string, unknown>;
   resultPayload: Record<string, unknown>;
   executionRef?: string | null;
-  resolutionKind: "bounty" | "campaign";
+  resolutionKind: "bounty" | "campaign" | "provider_call";
   resolutionRef: string;
 }> {
   if (params.plan.kind === "remote_bounty_solve") {
@@ -226,6 +361,79 @@ async function executePlan(params: {
       executionRef: submissionId ?? params.plan.bountyId,
       resolutionKind: "bounty",
       resolutionRef: submissionId ?? params.plan.bountyId,
+    };
+  }
+
+  if (params.plan.kind === "remote_observation_request") {
+    const request: ObservationInvocationRequest = {
+      capability: params.plan.capability,
+      requester: {
+        agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+        identity: {
+          kind: "tos",
+          value: params.identity.address.toLowerCase(),
+        },
+      },
+      request_nonce: randomBytes(16).toString("hex"),
+      request_expires_at: Math.floor(Date.now() / 1000) + 300,
+      target_url: params.plan.targetUrl,
+      reason: params.plan.reason,
+    };
+    const response = await invokeDirectProvider<
+      ObservationInvocationRequest,
+      ObservationInvocationResponse
+    >({
+      identity: params.identity,
+      remoteBaseUrl: params.plan.remoteBaseUrl,
+      request,
+    });
+    if (!response || response.status !== "ok") {
+      throw new Error("provider returned an invalid observation response");
+    }
+    return {
+      requestPayload: request as unknown as Record<string, unknown>,
+      resultPayload: response as unknown as Record<string, unknown>,
+      executionRef: response.job_id ?? params.plan.targetRef,
+      resolutionKind: "provider_call",
+      resolutionRef: response.job_id ?? params.plan.targetRef,
+    };
+  }
+
+  if (params.plan.kind === "remote_oracle_request") {
+    const request: OracleResolutionRequest = {
+      capability: params.plan.capability,
+      requester: {
+        agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+        identity: {
+          kind: "tos",
+          value: params.identity.address.toLowerCase(),
+        },
+      },
+      request_nonce: randomBytes(16).toString("hex"),
+      request_expires_at: Math.floor(Date.now() / 1000) + 300,
+      query: params.plan.query,
+      query_kind: params.plan.queryKind,
+      ...(params.plan.options?.length ? { options: params.plan.options } : {}),
+      ...(params.plan.context ? { context: params.plan.context } : {}),
+      reason: params.plan.reason,
+    };
+    const response = await invokeDirectProvider<
+      OracleResolutionRequest,
+      OracleResolutionResponse
+    >({
+      identity: params.identity,
+      remoteBaseUrl: params.plan.remoteBaseUrl,
+      request,
+    });
+    if (!response || response.status !== "ok") {
+      throw new Error("provider returned an invalid oracle response");
+    }
+    return {
+      requestPayload: request as unknown as Record<string, unknown>,
+      resultPayload: response as unknown as Record<string, unknown>,
+      executionRef: response.result_id ?? params.plan.targetRef,
+      resolutionKind: "provider_call",
+      resolutionRef: response.result_id ?? params.plan.targetRef,
     };
   }
 
@@ -293,7 +501,7 @@ export async function executeOwnerOpportunityAction(params: {
         payload: action.payload,
       },
       errorMessage:
-        "owner action is not auto-executable; only pursue actions with remote bounty or campaign targets are supported",
+        "owner action is not auto-executable; only pursue actions with remote bounty/campaign targets or delegate actions with supported provider targets are supported",
     });
     params.db.upsertOwnerOpportunityActionExecution(skipped);
     return { action, execution: skipped };
@@ -362,6 +570,7 @@ export async function executeQueuedOwnerOpportunityActions(params: {
   limit?: number;
   cooldownSeconds?: number;
   autoExecutePursue?: boolean;
+  autoExecuteDelegate?: boolean;
 }): Promise<{
   attempted: number;
   completed: number;
@@ -380,7 +589,13 @@ export async function executeQueuedOwnerOpportunityActions(params: {
   }
   const actions = params.db
     .listOwnerOpportunityActions(params.limit ?? 10, { status: "queued" })
-    .filter((action) => action.kind === "pursue");
+    .filter((action) =>
+      action.kind === "pursue"
+        ? params.autoExecutePursue !== false
+        : action.kind === "delegate"
+          ? params.autoExecuteDelegate === true
+          : false,
+    );
   const items: OwnerOpportunityActionExecutionRecord[] = [];
   let attempted = 0;
   let completed = 0;

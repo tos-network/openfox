@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 36;
+export const SCHEMA_VERSION = 37;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -519,8 +519,8 @@ export const CREATE_TABLES = `
   CREATE TABLE IF NOT EXISTS owner_opportunity_action_executions (
     execution_id TEXT PRIMARY KEY,
     action_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve')),
-    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign')),
+    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve','remote_observation_request','remote_oracle_request')),
+    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign','provider')),
     target_ref TEXT NOT NULL,
     remote_base_url TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('running','completed','failed','skipped')),
@@ -1892,8 +1892,8 @@ export const MIGRATION_V36 = `
   CREATE TABLE IF NOT EXISTS owner_opportunity_action_executions (
     execution_id TEXT PRIMARY KEY,
     action_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve')),
-    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign')),
+    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve','remote_observation_request','remote_oracle_request')),
+    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign','provider')),
     target_ref TEXT NOT NULL,
     remote_base_url TEXT NOT NULL,
     status TEXT NOT NULL CHECK(status IN ('running','completed','failed','skipped')),
@@ -1906,6 +1906,72 @@ export const MIGRATION_V36 = `
     completed_at TEXT,
     failed_at TEXT
   );
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_action
+    ON owner_opportunity_action_executions(action_id, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_status
+    ON owner_opportunity_action_executions(status, created_at DESC);
+`;
+
+export const MIGRATION_V37 = `
+  ALTER TABLE owner_opportunity_action_executions
+    RENAME TO owner_opportunity_action_executions_v36;
+
+  CREATE TABLE owner_opportunity_action_executions (
+    execution_id TEXT PRIMARY KEY,
+    action_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve','remote_observation_request','remote_oracle_request')),
+    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign','provider')),
+    target_ref TEXT NOT NULL,
+    remote_base_url TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('running','completed','failed','skipped')),
+    request_payload_json TEXT NOT NULL DEFAULT '{}',
+    result_payload_json TEXT,
+    execution_ref TEXT,
+    error_message TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    failed_at TEXT
+  );
+
+  INSERT INTO owner_opportunity_action_executions (
+    execution_id,
+    action_id,
+    kind,
+    target_kind,
+    target_ref,
+    remote_base_url,
+    status,
+    request_payload_json,
+    result_payload_json,
+    execution_ref,
+    error_message,
+    created_at,
+    updated_at,
+    completed_at,
+    failed_at
+  )
+  SELECT
+    execution_id,
+    action_id,
+    kind,
+    target_kind,
+    target_ref,
+    remote_base_url,
+    status,
+    request_payload_json,
+    result_payload_json,
+    execution_ref,
+    error_message,
+    created_at,
+    updated_at,
+    completed_at,
+    failed_at
+  FROM owner_opportunity_action_executions_v36;
+
+  DROP TABLE owner_opportunity_action_executions_v36;
 
   CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_action
     ON owner_opportunity_action_executions(action_id, created_at DESC);

@@ -931,13 +931,13 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       !reportsConfig?.enabled ||
       !reportsConfig.alerts?.enabled ||
       !executionConfig?.enabled ||
-      !executionConfig.autoExecutePursue
+      (!executionConfig.autoExecutePursue && !executionConfig.autoExecuteDelegate)
     ) {
       return { shouldWake: false };
     }
 
     const inference = createOwnerReportInference(taskCtx);
-    if (!inference) {
+    if (!inference && executionConfig.autoExecutePursue) {
       taskCtx.db.setKV(
         "last_owner_opportunity_action_execution",
         JSON.stringify({
@@ -952,6 +952,17 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       );
       return { shouldWake: false };
     }
+    const effectiveInference =
+      inference ??
+      ({
+        async chat() {
+          throw new Error("inference unavailable");
+        },
+        setLowComputeMode() {},
+        getDefaultModel() {
+          return "noop";
+        },
+      } satisfies import("../types.js").InferenceClient);
 
     const { account } = await getWallet();
     const result = await executeQueuedOwnerOpportunityActions({
@@ -966,10 +977,11 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       },
       config: taskCtx.config,
       db: taskCtx.db,
-      inference,
+      inference: effectiveInference,
       limit: executionConfig.maxExecutionsPerRun,
       cooldownSeconds: executionConfig.executionCooldownSeconds,
       autoExecutePursue: executionConfig.autoExecutePursue,
+      autoExecuteDelegate: executionConfig.autoExecuteDelegate,
     });
     taskCtx.db.setKV(
       "last_owner_opportunity_action_execution",

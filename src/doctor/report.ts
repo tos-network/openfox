@@ -84,6 +84,7 @@ export interface HealthSnapshot {
   ownerQueuedActions: number;
   ownerActionExecutionEnabled: boolean;
   ownerActionExecutionAutoPursue: boolean;
+  ownerActionExecutionAutoDelegate: boolean;
   ownerRecentActionExecutions: number;
   ownerRunningActionExecutions: number;
   ownerReportsWebReady: boolean;
@@ -216,6 +217,7 @@ async function buildConfigSnapshot(
   ownerQueuedActions: number;
   ownerActionExecutionEnabled: boolean;
   ownerActionExecutionAutoPursue: boolean;
+  ownerActionExecutionAutoDelegate: boolean;
   ownerRecentActionExecutions: number;
   ownerRunningActionExecutions: number;
   ownerReportsWebReady: boolean;
@@ -439,6 +441,9 @@ async function buildConfigSnapshot(
     ownerActionExecutionAutoPursue:
       config.ownerReports?.enabled === true &&
       config.ownerReports.actionExecution?.autoExecutePursue === true,
+    ownerActionExecutionAutoDelegate:
+      config.ownerReports?.enabled === true &&
+      config.ownerReports.actionExecution?.autoExecuteDelegate === true,
     ownerRecentActionExecutions: config.ownerReports?.enabled
       ? db.listOwnerOpportunityActionExecutions(20).length
       : 0,
@@ -964,7 +969,7 @@ function collectFindings(
         summary:
           snapshot.ownerActionExecutionAutoPursue && !snapshot.inferenceConfigured
             ? "Owner action execution is enabled, but no inference provider is available."
-            : `Owner action execution is enabled (${snapshot.ownerRecentActionExecutions} recent execution${snapshot.ownerRecentActionExecutions === 1 ? "" : "s"}, ${snapshot.ownerRunningActionExecutions} running).`,
+            : `Owner action execution is enabled (${snapshot.ownerRecentActionExecutions} recent execution${snapshot.ownerRecentActionExecutions === 1 ? "" : "s"}, ${snapshot.ownerRunningActionExecutions} running${snapshot.ownerActionExecutionAutoDelegate ? ", delegate auto-execution on" : ""}).`,
         recommendation:
           snapshot.ownerActionExecutionAutoPursue && !snapshot.inferenceConfigured
             ? "Configure OpenAI, Anthropic, Ollama, or another supported inference backend."
@@ -1221,6 +1226,7 @@ export async function buildHealthSnapshot(
       ownerQueuedActions: 0,
       ownerActionExecutionEnabled: false,
       ownerActionExecutionAutoPursue: false,
+      ownerActionExecutionAutoDelegate: false,
       ownerRecentActionExecutions: 0,
       ownerRunningActionExecutions: 0,
       ownerReportsWebReady: false,

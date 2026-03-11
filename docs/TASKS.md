@@ -328,11 +328,30 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Turn queued owner actions into auditable completed/cancelled action
     records with bounded resolution metadata instead of leaving them as
     one-bit queue items.
-- [x] Task 69: Materialize approved owner opportunity actions into a bounded queue
+- [x] Task 70: Materialize approved owner opportunity actions into a bounded queue
   - Status: Complete
   - Goal: Turn approved `opportunity_action` requests into persistent,
     owner-visible queued actions that can be completed or cancelled through the
     same CLI, web, operator, heartbeat, and diagnostic surfaces.
+- [x] Task 71: Add owner delegate and provider-call execution
+  - Status: Complete
+  - Goal: Let OpenFox execute bounded queued `delegate` owner actions against
+    remote observation, oracle, and provider-style routes using the existing
+    requester clients, then persist execution history beside the owner-action
+    journal.
+- [ ] Task 72: Add public fleet control-plane bundles
+  - Status: Planned
+  - Goal: Turn the existing fleet, dashboard, and operator surfaces into
+    reusable control-plane bundles for public multi-node OpenFox deployments.
+- [ ] Task 73: Add ecosystem SDK builder packs v2
+  - Status: Planned
+  - Goal: Make `tosdk` and OpenFox provider surfaces easier for third-party
+    builders to consume without reading runtime internals.
+- [ ] Task 74: Add opportunity strategy execution loops
+  - Status: Planned
+  - Goal: Turn owner opportunity reporting from passive reporting into bounded
+    execution loops that can queue, execute, and journal follow-up work across
+    multiple opportunity classes.
 
 ## Task 53 Breakdown
 
@@ -973,3 +992,33 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add heartbeat-driven automatic owner action execution with bounded cooldown and per-run limits.
 - [x] Surface owner-action execution state through `openfox status`, `openfox health`, and `openfox doctor`.
 - [x] Add targeted tests for execution persistence, owner-web execution, and operator API execution flows.
+
+## Task 71 Breakdown
+
+- [x] Extend owner-action execution planning to support bounded `delegate` flows.
+- [x] Reuse existing observation/oracle/provider requester clients for delegate execution instead of inventing a second provider protocol.
+- [x] Persist delegate execution request/result/error state in owner-action execution records.
+- [x] Surface delegate execution state through CLI, web, operator API, status, health, and doctor.
+- [x] Add heartbeat-driven bounded automatic execution for eligible delegate actions.
+- [x] Add targeted tests for delegated provider execution persistence and retries.
+
+## Task 72 Breakdown
+
+- [ ] Add reusable public-fleet control-plane bundle consumers for manifest and dashboard exports.
+- [ ] Add stricter linting and validation for public operator manifests and role bundles.
+- [ ] Expose control-plane friendly JSON surfaces for fleet bundle consumption.
+- [ ] Publish one complete public-fleet operator bundle guide tied to the exported bundle format.
+
+## Task 73 Breakdown
+
+- [ ] Expand `tosdk/examples` into richer requester/provider builder packs.
+- [ ] Add validation tooling so example packs stay runnable.
+- [ ] Add ecosystem-facing snippets for signer, paymaster, storage, artifact, and marketplace integrations.
+- [ ] Update SDK/runtime guidance so third-party builders can choose between `tosdk` and OpenFox more directly.
+
+## Task 74 Breakdown
+
+- [ ] Connect owner opportunity reports and alerts to additional execution-capable opportunity classes.
+- [ ] Add bounded automatic follow-up loops for approved opportunity actions beyond the first queued execution.
+- [ ] Keep strategy execution state auditable and visible through existing status, health, doctor, and owner-report surfaces.
+- [ ] Add targeted tests for recommendation carry-forward and bounded follow-up execution loops.

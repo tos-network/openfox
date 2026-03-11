@@ -835,7 +835,9 @@ export type OwnerOpportunityActionExecutionStatus =
 
 export type OwnerOpportunityActionExecutionKind =
   | "remote_bounty_solve"
-  | "remote_campaign_solve";
+  | "remote_campaign_solve"
+  | "remote_observation_request"
+  | "remote_oracle_request";
 
 export type OwnerOpportunityActionResolutionKind =
   | "note"
@@ -875,7 +877,7 @@ export interface OwnerOpportunityActionExecutionRecord {
   executionId: string;
   actionId: string;
   kind: OwnerOpportunityActionExecutionKind;
-  targetKind: "bounty" | "campaign";
+  targetKind: "bounty" | "campaign" | "provider";
   targetRef: string;
   remoteBaseUrl: string;
   status: OwnerOpportunityActionExecutionStatus;
@@ -928,6 +930,7 @@ export interface OwnerOpportunityAlertsConfig {
 export interface OwnerOpportunityActionExecutionConfig {
   enabled: boolean;
   autoExecutePursue: boolean;
+  autoExecuteDelegate: boolean;
   maxExecutionsPerRun: number;
   executionCooldownSeconds: number;
 }
@@ -1836,6 +1839,7 @@ export const DEFAULT_OWNER_REPORTS_CONFIG: OwnerReportsConfig = {
   actionExecution: {
     enabled: false,
     autoExecutePursue: true,
+    autoExecuteDelegate: false,
     maxExecutionsPerRun: 2,
     executionCooldownSeconds: 300,
   },

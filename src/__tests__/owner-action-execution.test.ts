@@ -1,3 +1,4 @@
+import http from "node:http";
 import { afterEach, describe, expect, it } from "vitest";
 import { createBountyEngine } from "../bounty/engine.js";
 import { startBountyHttpServer } from "../bounty/http.js";
@@ -227,6 +228,108 @@ describe("owner action execution", () => {
       expect(result.items).toHaveLength(0);
       expect(db.listOwnerOpportunityActionExecutions(10, { actionId: action.actionId })).toHaveLength(1);
     } finally {
+      db.close();
+    }
+  });
+
+  it("executes a queued delegate action against a remote observation provider", async () => {
+    const db = createTestDb();
+    const identity = createTestIdentity();
+    let capturedBody: any = null;
+    const server = http.createServer((req, res) => {
+      if (req.method !== "POST") {
+        res.writeHead(405);
+        res.end();
+        return;
+      }
+      const chunks: Buffer[] = [];
+      req.on("data", (chunk) => chunks.push(Buffer.from(chunk)));
+      req.on("end", () => {
+        capturedBody = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            status: "ok",
+            job_id: "obs-job-1",
+            observed_at: Math.floor(Date.now() / 1000),
+            target_url: capturedBody.target_url,
+            http_status: 200,
+            content_type: "application/json",
+            body_text: "{\"ok\":true}",
+            body_sha256: "0xobs",
+            size_bytes: 13,
+          }),
+        );
+      });
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const baseUrl =
+      address && typeof address === "object"
+        ? `http://127.0.0.1:${address.port}/observe`
+        : "http://127.0.0.1/observe";
+
+    try {
+      db.upsertOwnerOpportunityAction({
+        actionId: "owner-action:delegate-observation",
+        alertId: "owner-alert:delegate-observation",
+        requestId: "approval:delegate-observation",
+        kind: "delegate",
+        title: "Delegate one observation request",
+        summary: "Issue one bounded paid observation request.",
+        capability: "observation.once",
+        baseUrl,
+        requestedBy: "owner-test",
+        approvedBy: "owner-test",
+        approvedAt: "2026-03-11T18:00:00.000Z",
+        decisionNote: "delegate automatically",
+        payload: {
+          baseUrl,
+          capability: "observation.once",
+          targetUrl: "https://example.com/test",
+          reason: "owner delegated observation",
+        },
+        status: "queued",
+        resolutionKind: null,
+        resolutionRef: null,
+        resolutionNote: null,
+        queuedAt: "2026-03-11T18:00:00.000Z",
+        createdAt: "2026-03-11T18:00:00.000Z",
+        updatedAt: "2026-03-11T18:00:00.000Z",
+        completedAt: null,
+        cancelledAt: null,
+      });
+
+      const result = await executeOwnerOpportunityAction({
+        identity,
+        config: createTestConfig({
+          walletAddress: identity.address,
+          ownerReports: {
+            ...DEFAULT_OWNER_REPORTS_CONFIG,
+            enabled: true,
+            actionExecution: {
+              ...DEFAULT_OWNER_REPORTS_CONFIG.actionExecution!,
+              enabled: true,
+              autoExecuteDelegate: true,
+            },
+          },
+        }),
+        db,
+        inference: new MockInferenceClient(),
+        actionId: "owner-action:delegate-observation",
+      });
+
+      expect(result.execution.status).toBe("completed");
+      expect(result.execution.kind).toBe("remote_observation_request");
+      expect(result.action.status).toBe("completed");
+      expect(result.action.resolutionKind).toBe("provider_call");
+      expect(result.action.resolutionRef).toBe("obs-job-1");
+      expect(capturedBody?.target_url).toBe("https://example.com/test");
+      expect(capturedBody?.capability).toBe("observation.once");
+    } finally {
+      await new Promise<void>((resolve, reject) =>
+        server.close((error) => (error ? reject(error) : resolve())),
+      );
       db.close();
     }
   });

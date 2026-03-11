@@ -1434,3 +1434,122 @@ Acceptance criteria:
 - owner and operator surfaces can both inspect execution history
 - heartbeat automation can execute queued pursue actions without human
   intervention when owner action execution is enabled
+
+### Phase 29: Owner Delegate and Provider-Call Execution
+
+Status: completed
+
+Goal:
+
+- let OpenFox execute bounded queued `delegate` owner actions against remote
+  observation, oracle, and provider-style routes using the existing requester
+  clients, then persist execution history beside the owner-action journal
+
+Delivered surface:
+
+- persistent owner-action execution records for `delegate` flows
+- `openfox report action-execute <action-id>` support for delegate actions
+- owner web and operator API support for delegated provider execution
+- heartbeat-driven automatic execution for bounded delegate actions
+- owner-action execution visibility for provider-call outcomes
+
+Implementation tasks:
+
+- extend owner-action execution planning to support delegate/provider-call
+  targets without inventing a second provider protocol
+- reuse existing observation/oracle/provider requester clients wherever
+  possible
+- persist delegated execution request/result/error state without replacing the
+  owner-action journal
+- surface delegated execution state through CLI, web, operator API, status,
+  health, and doctor
+- add bounded tests for remote provider execution persistence and retries
+
+Acceptance criteria:
+
+- queued delegate actions can execute one bounded remote provider request
+- execution results persist one canonical provider-call outcome
+- owner and operator surfaces can inspect delegated execution history
+
+### Phase 30: Public Fleet Control-Plane Bundles
+
+Status: planned
+
+Goal:
+
+- turn the existing fleet, dashboard, and operator surfaces into reusable
+  control-plane bundles for public multi-node OpenFox deployments
+
+Delivered surface:
+
+- fleet manifest bundles for public operators
+- reusable dashboard bundle consumers
+- stronger linting and health checks for public-role fleets
+- control-plane oriented deployment and maintenance guides
+
+Implementation tasks:
+
+- add reusable bundle consumers for fleet dashboard exports and manifest packs
+- add stricter validation for public deployment manifests and role bundles
+- expose control-plane ready JSON surfaces for fleet automation
+- publish one complete public-fleet operator bundle guide
+
+Acceptance criteria:
+
+- a public operator can package, lint, export, and consume one fleet bundle
+  without hand-editing ad-hoc JSON
+
+### Phase 31: Ecosystem SDK Builder Packs v2
+
+Status: planned
+
+Goal:
+
+- make `tosdk` and OpenFox provider surfaces easier for third-party builders to
+  consume without reading runtime internals
+
+Delivered surface:
+
+- richer requester/provider example packs
+- validated end-to-end SDK examples
+- reusable snippets for signer, paymaster, storage, artifact, and marketplace
+  integrations
+
+Implementation tasks:
+
+- expand `tosdk/examples` into end-to-end builder packs
+- add validation tooling so example packs stay runnable
+- publish clearer guidance for mixing `tosdk` and OpenFox runtime surfaces
+
+Acceptance criteria:
+
+- a third-party builder can copy one example pack, point it at a running
+  provider, and complete a real integration flow
+
+### Phase 32: Opportunity Strategy Execution Loops
+
+Status: planned
+
+Goal:
+
+- turn owner opportunity reporting from passive reporting into bounded execution
+  loops that can queue, execute, and journal follow-up work across multiple
+  opportunity classes
+
+Delivered surface:
+
+- richer owner action planning
+- bounded automatic execution loops for selected opportunity classes
+- stronger result journaling and recommendation carry-forward
+
+Implementation tasks:
+
+- connect owner reports and alerts to concrete execution-capable opportunity
+  classes
+- add bounded automatic follow-up loops for approved opportunity actions
+- keep execution state auditable and visible through existing operator surfaces
+
+Acceptance criteria:
+
+- owner reports can lead to queued and executed bounded follow-up work without
+  manual runtime rewrites

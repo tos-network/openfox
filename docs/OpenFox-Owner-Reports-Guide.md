@@ -253,6 +253,7 @@ CLI surface:
 
 ```bash
 openfox report actions --status queued --json
+openfox report action-execute <action-id>
 openfox report action-complete <action-id>
 openfox report action-cancel <action-id>
 ```
@@ -273,8 +274,14 @@ This keeps the owner-facing flow bounded:
 - the owner queues one bounded action request from an alert
 - the owner approves or rejects that request
 - approved requests materialize into queued owner actions
-- queued actions can then be completed or cancelled without rereading the raw
-  approval inbox
+- queued actions can then be executed, completed, or cancelled without
+  rereading the raw approval inbox
+
+Bounded remote execution currently supports:
+
+- `pursue` actions targeting remote bounty and campaign hosts
+- `delegate` actions targeting remote observation, oracle, and provider-style
+  endpoints
 
 When an action is completed or cancelled, OpenFox can also persist one bounded
 resolution payload:

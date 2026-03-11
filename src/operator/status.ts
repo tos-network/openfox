@@ -340,6 +340,8 @@ export function buildRuntimeStatusSnapshot(
             config.ownerReports.actionExecution?.enabled === true,
           actionExecutionAutoPursue:
             config.ownerReports.actionExecution?.autoExecutePursue === true,
+          actionExecutionAutoDelegate:
+            config.ownerReports.actionExecution?.autoExecuteDelegate === true,
           actionExecutionCooldownSeconds:
             config.ownerReports.actionExecution?.executionCooldownSeconds ?? 0,
           recentAlerts: ownerOpportunityAlerts.map((item) => ({
@@ -624,6 +626,7 @@ export function buildRuntimeStatusReport(snapshot: RuntimeStatusSnapshot): strin
         webEnabled: boolean;
         emailEnabled: boolean;
         queuedActions: number;
+        actionExecutionAutoDelegate: boolean;
         recentActionExecutions: unknown[];
         runningActionExecutions: number;
       }
@@ -653,7 +656,7 @@ Artifacts:  ${artifacts?.enabled ? `enabled (${artifacts.recentArtifacts.length}
 x402:       ${x402?.enabled ? `enabled (${x402.recentPayments.length} recent payment${x402.recentPayments.length === 1 ? "" : "s"}, ${x402.pendingCount} pending, ${x402.failedCount} failed)` : "disabled"}
 Signer:     ${signer?.enabled ? `enabled (${signer.recentQuotes.length} recent quote${signer.recentQuotes.length === 1 ? "" : "s"}, ${signer.recentExecutions.length} recent execution${signer.recentExecutions.length === 1 ? "" : "s"}, ${signer.pendingExecutions} pending)` : "disabled"}
 Paymaster:  ${paymaster?.enabled ? `enabled (${paymaster.recentQuotes.length} recent quote${paymaster.recentQuotes.length === 1 ? "" : "s"}, ${paymaster.recentAuthorizations.length} recent authorization${paymaster.recentAuthorizations.length === 1 ? "" : "s"}, ${paymaster.pendingAuthorizations} pending)` : "disabled"}
-Owner reports: ${ownerReports?.enabled ? `enabled (${ownerReports.recentReports.length} recent report${ownerReports.recentReports.length === 1 ? "" : "s"}, ${ownerReports.recentDeliveries.length} recent delivery${ownerReports.recentDeliveries.length === 1 ? "" : "s"}, ${ownerReports.pendingDeliveries} pending, actions=${ownerReports.queuedActions} queued, executions=${ownerReports.runningActionExecutions} running/${ownerReports.recentActionExecutions.length} recent, web=${ownerReports.webEnabled ? "on" : "off"}, email=${ownerReports.emailEnabled ? "on" : "off"})` : "disabled"}
+Owner reports: ${ownerReports?.enabled ? `enabled (${ownerReports.recentReports.length} recent report${ownerReports.recentReports.length === 1 ? "" : "s"}, ${ownerReports.recentDeliveries.length} recent delivery${ownerReports.recentDeliveries.length === 1 ? "" : "s"}, ${ownerReports.pendingDeliveries} pending, actions=${ownerReports.queuedActions} queued, executions=${ownerReports.runningActionExecutions} running/${ownerReports.recentActionExecutions.length} recent${ownerReports.actionExecutionAutoDelegate ? ", delegate auto=on" : ""}, web=${ownerReports.webEnabled ? "on" : "off"}, email=${ownerReports.emailEnabled ? "on" : "off"})` : "disabled"}
 Providers:  ${providerReputation ? `${providerReputation.totalProviders} tracked (${providerReputation.weakProviders} weak)` : "none"}
 Settlement: ${settlement?.enabled ? `enabled (${settlement.receiptCount} recent receipt${settlement.receiptCount === 1 ? "" : "s"}, ${settlement.callbacks.pendingCount} pending callback${settlement.callbacks.pendingCount === 1 ? "" : "s"})` : "disabled"}
 Market:     ${market?.enabled ? `enabled (${market.recentBindings.length} recent binding${market.recentBindings.length === 1 ? "" : "s"}, ${market.pendingCount} pending callback${market.pendingCount === 1 ? "" : "s"})` : "disabled"}
