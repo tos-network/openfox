@@ -192,6 +192,7 @@ import {
 import {
   buildFleetDashboardReport,
   buildFleetDashboardSnapshot,
+  exportFleetDashboardBundle,
   exportFleetDashboard,
 } from "./operator/dashboard.js";
 import {
@@ -1396,6 +1397,7 @@ OpenFox dashboard
 Usage:
   openfox dashboard show --manifest <path> [--json]
   openfox dashboard export --manifest <path> [--format <json|html>] [--output <path>]
+  openfox dashboard bundle --manifest <path> --output <dir> [--force] [--json]
 `);
     if (!manifestPath && !helpRequested) {
       throw new Error("A fleet manifest is required. Use --manifest <path>.");
@@ -1446,6 +1448,24 @@ Usage:
     }
     logger.info(`Dashboard exported to ${outputPath}`);
     logger.info(buildFleetDashboardReport(snapshot));
+    return;
+  }
+
+  if (command === "bundle") {
+    const outputPath = resolvePath(
+      readOption(args, "--output") || "./openfox-dashboard-bundle",
+    );
+    const result = await exportFleetDashboardBundle({
+      manifestPath,
+      outputPath,
+      force: args.includes("--force"),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+    logger.info(`Dashboard bundle exported to ${result.outputPath}`);
+    logger.info(buildFleetDashboardReport(result.snapshot));
     return;
   }
 

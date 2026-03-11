@@ -7,6 +7,7 @@ import {
   buildFleetDashboardHtml,
   buildFleetDashboardReport,
   buildFleetDashboardSnapshot,
+  exportFleetDashboardBundle,
   exportFleetDashboard,
 } from "../operator/dashboard.js";
 
@@ -128,5 +129,41 @@ describe("operator dashboard", () => {
       path.resolve(manifestPath),
     );
     expect(fs.readFileSync(htmlPath, "utf8")).toContain("OpenFox Fleet Dashboard");
+  });
+
+  it("exports a dashboard bundle with manifest copy and lint report", async () => {
+    const baseUrl = await startDashboardServer({
+      "/operator/status": { summary: "runtime ok" },
+      "/operator/health": { summary: "health ok" },
+      "/operator/service/status": { summary: "service ready" },
+      "/operator/gateway/status": { summary: "gateway ready" },
+      "/operator/storage/status": { summary: "storage ready" },
+      "/operator/storage/lease-health": { summary: "lease health ok" },
+      "/operator/artifacts/status": { summary: "artifacts ready" },
+      "/operator/signer/status": { summary: "signer ready" },
+      "/operator/paymaster/status": { summary: "paymaster ready" },
+      "/operator/providers/reputation": { summary: "providers ready" },
+    });
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [{ name: "beta", role: "gateway", baseUrl, authToken: "secret-token" }],
+      }),
+    );
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-dashboard-bundle-"));
+    tempDirs.push(outputDir);
+
+    const result = await exportFleetDashboardBundle({
+      manifestPath,
+      outputPath: outputDir,
+      force: true,
+    });
+
+    expect(result.outputPath).toBe(path.resolve(outputDir));
+    expect(fs.existsSync(result.manifestCopyPath)).toBe(true);
+    expect(fs.existsSync(result.jsonPath)).toBe(true);
+    expect(fs.existsSync(result.htmlPath)).toBe(true);
+    expect(fs.existsSync(result.lintPath)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(result.lintPath, "utf8")).errors).toBe(0);
   });
 });

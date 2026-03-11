@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import {
+  buildFleetLintSnapshot,
   buildFleetSnapshot,
   loadFleetManifest,
   type FleetEndpoint,
@@ -33,6 +34,15 @@ export interface FleetDashboardSnapshot {
   }>;
   failingEndpoints: FleetEndpoint[];
   snapshots: Record<FleetEndpoint, FleetSnapshot>;
+}
+
+export interface FleetDashboardBundleResult {
+  outputPath: string;
+  manifestCopyPath: string;
+  lintPath: string;
+  jsonPath: string;
+  htmlPath: string;
+  snapshot: FleetDashboardSnapshot;
 }
 
 function summarizeRoles(manifestPath: string): {
@@ -242,4 +252,44 @@ export async function exportFleetDashboard(params: {
       : JSON.stringify(snapshot, null, 2);
   fs.writeFileSync(outputPath, content, "utf8");
   return snapshot;
+}
+
+export async function exportFleetDashboardBundle(params: {
+  manifestPath: string;
+  outputPath: string;
+  force?: boolean;
+}): Promise<FleetDashboardBundleResult> {
+  const manifestPath = path.resolve(params.manifestPath);
+  const outputPath = path.resolve(params.outputPath);
+  if (fs.existsSync(outputPath)) {
+    if (!params.force) {
+      throw new Error(
+        `Output path already exists: ${outputPath}. Re-run with --force to overwrite.`,
+      );
+    }
+    fs.rmSync(outputPath, { recursive: true, force: true });
+  }
+  fs.mkdirSync(outputPath, { recursive: true });
+
+  const manifestCopyPath = path.join(outputPath, path.basename(manifestPath));
+  fs.copyFileSync(manifestPath, manifestCopyPath);
+
+  const snapshot = await buildFleetDashboardSnapshot({ manifestPath });
+  const lint = buildFleetLintSnapshot({ manifestPath });
+  const jsonPath = path.join(outputPath, "dashboard.json");
+  const htmlPath = path.join(outputPath, "dashboard.html");
+  const lintPath = path.join(outputPath, "fleet-lint.json");
+
+  fs.writeFileSync(jsonPath, JSON.stringify(snapshot, null, 2), "utf8");
+  fs.writeFileSync(htmlPath, buildFleetDashboardHtml(snapshot), "utf8");
+  fs.writeFileSync(lintPath, JSON.stringify(lint, null, 2), "utf8");
+
+  return {
+    outputPath,
+    manifestCopyPath,
+    lintPath,
+    jsonPath,
+    htmlPath,
+    snapshot,
+  };
 }

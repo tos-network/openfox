@@ -738,6 +738,29 @@ Acceptance criteria:
 - lint findings are available in human-readable and JSON form
 - the public fleet operator template works with the new lint flow
 
+### Phase 13: Public Fleet Dashboard Bundles
+
+Status: completed
+
+Goal:
+
+- turn fleet dashboard exports into one self-contained audit artifact that can
+  be stored, shared, or consumed by higher-level operator tooling
+
+Delivered surface:
+
+- `openfox dashboard bundle --manifest <path> --output <dir>`
+- copied fleet manifest in the bundle
+- dashboard JSON in the bundle
+- dashboard HTML in the bundle
+- fleet lint JSON in the bundle
+
+Acceptance criteria:
+
+- operators can produce one directory with all dashboard artifacts in a single command
+- the bundle includes both machine-readable and human-readable dashboard outputs
+- the bundle includes a lint report for preflight operator review
+
 The current core roadmap phases are complete.
 
 The next work should not reopen the completed core phases. It should focus on:

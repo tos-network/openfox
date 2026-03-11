@@ -13,6 +13,7 @@ openfox dashboard show --manifest ./fleet.yml
 openfox dashboard show --manifest ./fleet.yml --json
 openfox dashboard export --manifest ./fleet.yml --format json --output ./dashboard.json
 openfox dashboard export --manifest ./fleet.yml --format html --output ./dashboard.html
+openfox dashboard bundle --manifest ./fleet.yml --output ./dashboard-bundle
 ```
 
 ## What It Includes
@@ -53,6 +54,12 @@ Use `export --format html` when:
 - you want a shareable static operator report
 - you want a lightweight public or internal status page
 - you need a human-readable artifact for audits or operations reviews
+
+Use `bundle` when:
+
+- you want one directory that contains the manifest copy, dashboard JSON, dashboard HTML, and lint report
+- you need a shareable audit bundle for another operator or control plane
+- you want a repeatable export target for CI or scheduled fleet snapshots
 
 ## Scope
 

@@ -263,6 +263,11 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Catch placeholder URLs, duplicate node definitions, missing auth
     tokens, and non-HTTPS public endpoints before operators run public-fleet
     actions against a bad manifest.
+- [x] Task 56: Add dashboard bundle exports for public fleets
+  - Status: Complete
+  - Goal: Export one self-contained audit bundle with the manifest copy,
+    dashboard JSON, dashboard HTML, and lint report instead of requiring
+    operators to stitch those artifacts together manually.
 
 ## Task 53 Breakdown
 
@@ -286,6 +291,14 @@ building OpenFox into a TOS-native agent platform.
 - [x] Detect duplicate node names and duplicate base URLs.
 - [x] Warn on missing roles, missing auth tokens, and non-HTTPS public endpoints.
 - [x] Add tests and operator docs for manifest linting.
+
+## Task 56 Breakdown
+
+- [x] Add `openfox dashboard bundle --manifest <path> --output <dir>`.
+- [x] Include a manifest copy in the export.
+- [x] Include dashboard JSON and HTML in the export.
+- [x] Include a fleet lint JSON report in the export.
+- [x] Add tests and dashboard-guide updates for bundle export.
 
 ## Task 1 Breakdown
 
