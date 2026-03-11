@@ -1057,3 +1057,24 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add bundled skill-composed backend stages and machine-readable contracts for `newsfetch.capture`, `zktls.bundle`, `proofverify.verify`, and `storage-object.put/get`.
 - [x] Keep built-in execution available as a bounded fallback while making `skills_first` the default provider mode.
 - [x] Surface provider backend mode and stage chains through service status, health, and doctor output.
+
+## Task 80 Breakdown
+
+- [ ] Add fleet-level lease, audit, renewal, and replication reconciliation views for public-role deployments.
+- [ ] Add provider liveness, failure-domain, and degraded-route reporting to fleet dashboards and operator APIs.
+- [ ] Add bounded recovery flows for failed replication, degraded provider routes, and stuck callback queues.
+- [ ] Add multi-node validation suites covering restart, failover, and partial fleet degradation.
+
+## Task 81 Breakdown
+
+- [ ] Expand `tosdk/examples` into fuller builder starter packs for requester, provider, gateway, marketplace, evidence, signer, paymaster, storage, and artifact roles.
+- [ ] Add more reusable SDK surfaces for delegated execution, evidence, and operator-control consumers.
+- [ ] Publish versioned schema/reference exports for core provider and operator API contracts.
+- [ ] Add validation and drift detection for builder packs and exported references.
+
+## Task 82 Breakdown
+
+- [ ] Add new reusable work surfaces across bounty/task, provider-service, and owner-opportunity categories.
+- [ ] Package each new surface with bundled skills, templates, docs, and operator commands.
+- [ ] Reuse the existing marketplace, payment, settlement, artifact, and discovery foundations instead of introducing parallel engines.
+- [ ] Add end-to-end tests showing operators can launch and run each new surface with bounded configuration changes.

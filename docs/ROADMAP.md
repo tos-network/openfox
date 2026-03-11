@@ -1701,3 +1701,106 @@ Acceptance criteria:
 - `news.fetch`, `proof.verify`, and `storage.put/get` default to
   `skills_first`
 - service status and doctor output show which backend mode and stages are active
+
+### Phase 36: Public-Network Hardening
+
+Status: planned
+
+Goal:
+
+- harden public multi-node OpenFox deployments so storage, artifact, signer,
+  paymaster, and provider fleets stay healthy under real network conditions and
+  operator error
+
+Delivered surface:
+
+- stronger fleet-wide lease, audit, renewal, and replication control loops
+- provider liveness, SLA, and failure-domain reporting for public-role fleets
+- recovery-oriented operator surfaces for restarting, draining, and repairing
+  degraded public nodes
+- multi-node validation packs for load, partial failure, and restart scenarios
+
+Implementation tasks:
+
+- add fleet-level lease and replication reconciliation views across public-role
+  nodes
+- add provider health, failure-domain, and degraded-route reporting to fleet
+  dashboards and operator APIs
+- add bounded recovery flows for failed callbacks, failed replication, and
+  degraded provider routes
+- add multi-node validation suites covering restart, failover, and partial
+  fleet degradation
+
+Acceptance criteria:
+
+- a public multi-node OpenFox fleet can detect, report, and recover from common
+  provider/storage degradation without ad-hoc manual inspection
+
+### Phase 37: Ecosystem Builder Surface Expansion
+
+Status: planned
+
+Goal:
+
+- make `tosdk` and OpenFox provider surfaces easier for third-party builders to
+  consume without needing runtime-internal knowledge
+
+Delivered surface:
+
+- richer end-to-end builder packs for discovery, gateway, marketplace,
+  evidence, signer, paymaster, storage, and artifact flows
+- more complete reusable SDK clients and request/response helpers
+- versioned schema/reference material for provider and operator-facing APIs
+- stronger validation so public examples remain runnable and current
+
+Implementation tasks:
+
+- expand `tosdk/examples` into full builder starter packs for requester,
+  provider, and operator roles
+- expose more reusable SDK surfaces for delegated execution, evidence, and
+  operator-control consumers
+- publish versioned schema/reference exports for core provider contracts
+- add example validation and drift detection for builder packs and exported
+  references
+
+Acceptance criteria:
+
+- a third-party builder can choose one documented pack, point it at a running
+  OpenFox/TOS deployment, and complete a real integration flow without reading
+  runtime internals
+
+### Phase 38: New Work Surfaces and Product Loops
+
+Status: planned
+
+Goal:
+
+- grow new earning surfaces on top of the completed OpenFox platform instead of
+  reworking the runtime foundation
+
+Delivered surface:
+
+- new task and bounty families beyond the current baseline marketplace flows
+- more operator-ready opportunity loops and work-surface templates
+- stronger packaged skills for reusable host/solver/provider workflows
+- better coupling between discovery, marketplace, evidence, and owner-facing
+  action loops
+
+Implementation tasks:
+
+- add at least one new reusable work surface in each category:
+  - bounty/task
+  - provider service
+  - owner opportunity loop
+- package each new work surface with skills, templates, docs, and operator
+  commands
+- ensure new work surfaces reuse existing marketplace, settlement, payment, and
+  artifact foundations instead of introducing parallel engines
+- add end-to-end tests showing one operator can launch and run each new surface
+  with bounded configuration changes
+
+Acceptance criteria:
+
+- operators can launch new OpenFox work surfaces by composing existing runtime,
+  marketplace, payment, settlement, and skill primitives rather than adding new
+  one-off protocol paths
