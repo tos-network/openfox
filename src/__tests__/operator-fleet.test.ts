@@ -4,6 +4,8 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildFleetBundleReport,
+  buildFleetBundleSnapshot,
   buildFleetControlReport,
   buildFleetControlSnapshot,
   buildFleetReport,
@@ -16,6 +18,7 @@ import {
   buildFleetSnapshot,
   loadFleetManifest,
 } from "../operator/fleet.js";
+import { exportFleetDashboardBundle } from "../operator/dashboard.js";
 
 const servers: http.Server[] = [];
 const tempDirs: string[] = [];
@@ -441,5 +444,55 @@ describe("operator fleet", () => {
     expect(report).toContain("=== OPENFOX FLEET LINT ===");
     expect(report).toContain("placeholder_auth_token");
     expect(report).toContain("duplicate_base_url");
+  });
+
+  it("lint-detects invalid roles and missing public control-plane roles", () => {
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            name: "odd-1",
+            role: "weird-role",
+            baseUrl: "https://odd.example.net/operator",
+            authToken: "token-real",
+          },
+        ],
+      }),
+    );
+
+    const snapshot = buildFleetLintSnapshot({ manifestPath });
+    expect(snapshot.issues.some((issue) => issue.code === "invalid_role")).toBe(true);
+    expect(snapshot.issues.some((issue) => issue.code === "missing_gateway_role")).toBe(true);
+    expect(snapshot.issues.some((issue) => issue.code === "missing_host_role")).toBe(true);
+    expect(snapshot.issues.some((issue) => issue.code === "missing_provider_role")).toBe(true);
+  });
+
+  it("inspects exported fleet dashboard bundles", async () => {
+    const baseUrl = await startEndpointServer("/operator/status", {
+      summary: "runtime ok",
+    });
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [{ name: "gateway-1", role: "gateway", baseUrl, authToken: "token-real" }],
+      }),
+    );
+    const outputDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-fleet-bundle-"));
+    tempDirs.push(outputDir);
+
+    await exportFleetDashboardBundle({
+      manifestPath,
+      outputPath: outputDir,
+      force: true,
+    });
+
+    const snapshot = buildFleetBundleSnapshot({ bundlePath: outputDir });
+    expect(snapshot.exists).toBe(true);
+    expect(snapshot.manifest?.nodeCount).toBe(1);
+    expect(snapshot.manifest?.roles.gateway).toBe(1);
+    expect(snapshot.dashboard?.nodeCount).toBe(1);
+    expect(snapshot.lint?.errors).toBe(0);
+    expect(buildFleetBundleReport(snapshot)).toContain("OPENFOX FLEET BUNDLE");
   });
 });

@@ -1473,7 +1473,7 @@ Acceptance criteria:
 
 ### Phase 30: Public Fleet Control-Plane Bundles
 
-Status: planned
+Status: completed
 
 Goal:
 

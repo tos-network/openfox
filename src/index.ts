@@ -199,6 +199,8 @@ import {
   runOperatorAutopilot,
 } from "./operator/autopilot.js";
 import {
+  buildFleetBundleReport,
+  buildFleetBundleSnapshot,
   buildFleetControlReport,
   buildFleetControlSnapshot,
   buildFleetReport,
@@ -1567,16 +1569,18 @@ async function handleFleetCommand(args: string[]): Promise<void> {
   const command = args[0] || "status";
   const asJson = args.includes("--json");
   const manifestPath = readFlag(args, "--manifest");
+  const bundlePath = readFlag(args, "--bundle");
   const helpRequested =
     command === "--help" || command === "-h" || command === "help" || args.includes("--help") || args.includes("-h");
 
-  if (helpRequested || !manifestPath) {
+  if (helpRequested || (!manifestPath && command !== "bundle")) {
     logger.info(`
 OpenFox fleet
 
 Usage:
   openfox fleet status --manifest <path> [--json]
   openfox fleet lint --manifest <path> [--json]
+  openfox fleet bundle inspect --bundle <dir> [--json]
   openfox fleet health --manifest <path> [--json]
   openfox fleet doctor --manifest <path> [--json]
   openfox fleet service --manifest <path> [--json]
@@ -1596,11 +1600,13 @@ Usage:
   openfox fleet retry <payments|settlement|market|signer|paymaster> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--limit N] [--json]
   openfox fleet repair <storage|artifacts> --manifest <path> [--limit N] [--json]
 `);
-    if (!manifestPath && !helpRequested) {
+    if (!manifestPath && command !== "bundle" && !helpRequested) {
       throw new Error("A fleet manifest is required. Use --manifest <path>.");
     }
     return;
   }
+
+  const resolvedManifestPath = manifestPath ?? "";
 
   if (command === "repair") {
     const component = args[1];
@@ -1612,7 +1618,7 @@ Usage:
       throw new Error("Usage: openfox fleet repair <storage|artifacts> --manifest <path> [--limit N] [--json]");
     }
     const snapshot = await buildFleetRepairSnapshot({
-      manifestPath,
+      manifestPath: resolvedManifestPath,
       component: normalizedComponent,
       limit: readNumberOption(args, "--limit", 10),
     });
@@ -1621,6 +1627,23 @@ Usage:
       return;
     }
     logger.info(buildFleetRepairReport(snapshot));
+    return;
+  }
+
+  if (command === "bundle") {
+    const subcommand = args[1] || "inspect";
+    if (subcommand !== "inspect") {
+      throw new Error("Usage: openfox fleet bundle inspect --bundle <dir> [--json]");
+    }
+    if (!bundlePath) {
+      throw new Error("A fleet bundle path is required. Use --bundle <dir>.");
+    }
+    const snapshot = buildFleetBundleSnapshot({ bundlePath });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetBundleReport(snapshot));
     return;
   }
 
@@ -1636,7 +1659,7 @@ Usage:
       );
     }
     const snapshot = await buildFleetControlSnapshot({
-      manifestPath,
+      manifestPath: resolvedManifestPath,
       action: normalizedAction,
       nodeName: readFlag(args, "--node"),
       actor: readFlag(args, "--actor"),
@@ -1666,7 +1689,7 @@ Usage:
       );
     }
     const snapshot = await buildFleetQueueRetrySnapshot({
-      manifestPath,
+      manifestPath: resolvedManifestPath,
       queue: normalizedQueue,
       nodeName: readFlag(args, "--node"),
       actor: readFlag(args, "--actor"),
@@ -1682,7 +1705,7 @@ Usage:
   }
 
   if (command === "lint") {
-    const snapshot = buildFleetLintSnapshot({ manifestPath });
+    const snapshot = buildFleetLintSnapshot({ manifestPath: resolvedManifestPath });
     if (asJson) {
       logger.info(JSON.stringify(snapshot, null, 2));
       return;
@@ -1715,7 +1738,7 @@ Usage:
   }
 
   const snapshot = await buildFleetSnapshot({
-    manifestPath,
+    manifestPath: resolvedManifestPath,
     endpoint,
   });
   if (asJson) {

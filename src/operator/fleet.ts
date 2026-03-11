@@ -9,6 +9,20 @@ export interface FleetNodeManifest {
   authToken?: string;
 }
 
+const VALID_FLEET_ROLES = new Set([
+  "gateway",
+  "host",
+  "solver",
+  "scout",
+  "provider",
+  "payments",
+  "storage",
+  "artifacts",
+  "signer",
+  "paymaster",
+  "signer-paymaster",
+]);
+
 export interface FleetManifest {
   version: number;
   nodes: FleetNodeManifest[];
@@ -103,7 +117,11 @@ export interface FleetLintIssue {
     | "placeholder_auth_token"
     | "placeholder_base_url"
     | "non_https_base_url"
-    | "missing_role";
+    | "missing_role"
+    | "invalid_role"
+    | "missing_gateway_role"
+    | "missing_host_role"
+    | "missing_provider_role";
   message: string;
 }
 
@@ -113,6 +131,31 @@ export interface FleetLintSnapshot {
   errors: number;
   warnings: number;
   issues: FleetLintIssue[];
+}
+
+export interface FleetBundleSnapshot {
+  bundlePath: string;
+  exists: boolean;
+  manifestPath: string | null;
+  dashboardPath: string | null;
+  lintPath: string | null;
+  controlEventsPath: string | null;
+  autopilotPath: string | null;
+  approvalsPath: string | null;
+  manifest: {
+    version: number | null;
+    nodeCount: number;
+    roles: Record<string, number>;
+  } | null;
+  dashboard: {
+    generatedAt: string | null;
+    nodeCount: number;
+    failingEndpoints: string[];
+  } | null;
+  lint: {
+    errors: number;
+    warnings: number;
+  } | null;
 }
 
 function getEndpointPath(endpoint: FleetEndpoint): string {
@@ -594,6 +637,7 @@ export function buildFleetLintSnapshot(params: {
   const issues: FleetLintIssue[] = [];
   const seenNames = new Set<string>();
   const seenBaseUrls = new Set<string>();
+  const roles = new Set<string>();
 
   for (const node of manifest.nodes) {
     const role = node.role || null;
@@ -632,6 +676,16 @@ export function buildFleetLintSnapshot(params: {
         code: "missing_role",
         message: "node has no declared role",
       });
+    } else if (!VALID_FLEET_ROLES.has(node.role)) {
+      issues.push({
+        node: node.name,
+        role,
+        severity: "error",
+        code: "invalid_role",
+        message: `node role is not a supported public-fleet role: ${node.role}`,
+      });
+    } else {
+      roles.add(node.role);
     }
 
     if (!node.authToken) {
@@ -671,6 +725,42 @@ export function buildFleetLintSnapshot(params: {
     }
   }
 
+  if (!roles.has("gateway")) {
+    issues.push({
+      node: "<fleet>",
+      role: null,
+      severity: "warning",
+      code: "missing_gateway_role",
+      message: "fleet has no gateway role; public relay and ingress paths may be unavailable",
+    });
+  }
+
+  if (!roles.has("host")) {
+    issues.push({
+      node: "<fleet>",
+      role: null,
+      severity: "warning",
+      code: "missing_host_role",
+      message: "fleet has no host role; hosted task and bounty surfaces may be unavailable",
+    });
+  }
+
+  if (
+    !roles.has("storage") &&
+    !roles.has("artifacts") &&
+    !roles.has("signer") &&
+    !roles.has("paymaster") &&
+    !roles.has("signer-paymaster")
+  ) {
+    issues.push({
+      node: "<fleet>",
+      role: null,
+      severity: "warning",
+      code: "missing_provider_role",
+      message: "fleet has no provider role for storage, artifacts, signer, or paymaster services",
+    });
+  }
+
   return {
     manifestPath,
     total: manifest.nodes.length,
@@ -697,6 +787,107 @@ export function buildFleetLintReport(snapshot: FleetLintSnapshot): string {
     lines.push(
       `${issue.node}${issue.role ? ` [${issue.role}]` : ""}: ${issue.severity} ${issue.code} -> ${issue.message}`,
     );
+  }
+  return lines.join("\n");
+}
+
+function readOptionalJson<T>(filePath: string): T | null {
+  if (!fs.existsSync(filePath)) return null;
+  return JSON.parse(fs.readFileSync(filePath, "utf8")) as T;
+}
+
+export function buildFleetBundleSnapshot(params: {
+  bundlePath: string;
+}): FleetBundleSnapshot {
+  const bundlePath = path.resolve(params.bundlePath);
+  const exists = fs.existsSync(bundlePath);
+  const manifestCandidates = ["fleet.yml", "fleet.yaml", "fleet.json"];
+  const manifestPath =
+    exists
+      ? manifestCandidates
+          .map((candidate) => path.join(bundlePath, candidate))
+          .find((candidate) => fs.existsSync(candidate)) || null
+      : null;
+  const dashboardPath = exists ? path.join(bundlePath, "dashboard.json") : null;
+  const lintPath = exists ? path.join(bundlePath, "fleet-lint.json") : null;
+  const controlEventsPath = exists ? path.join(bundlePath, "control-events.json") : null;
+  const autopilotPath = exists ? path.join(bundlePath, "autopilot.json") : null;
+  const approvalsPath = exists ? path.join(bundlePath, "approvals.json") : null;
+
+  const manifest = manifestPath ? loadFleetManifest(manifestPath) : null;
+  const dashboard = dashboardPath ? readOptionalJson<{ generatedAt?: string; nodeCount?: number; failingEndpoints?: string[] }>(dashboardPath) : null;
+  const lint = lintPath ? readOptionalJson<{ errors?: number; warnings?: number }>(lintPath) : null;
+
+  const roleCounts: Record<string, number> = {};
+  for (const node of manifest?.nodes ?? []) {
+    const role = node.role || "unspecified";
+    roleCounts[role] = (roleCounts[role] || 0) + 1;
+  }
+
+  return {
+    bundlePath,
+    exists,
+    manifestPath,
+    dashboardPath: dashboardPath && fs.existsSync(dashboardPath) ? dashboardPath : null,
+    lintPath: lintPath && fs.existsSync(lintPath) ? lintPath : null,
+    controlEventsPath:
+      controlEventsPath && fs.existsSync(controlEventsPath) ? controlEventsPath : null,
+    autopilotPath: autopilotPath && fs.existsSync(autopilotPath) ? autopilotPath : null,
+    approvalsPath: approvalsPath && fs.existsSync(approvalsPath) ? approvalsPath : null,
+    manifest: manifest
+      ? {
+          version: manifest.version,
+          nodeCount: manifest.nodes.length,
+          roles: roleCounts,
+        }
+      : null,
+    dashboard: dashboard
+      ? {
+          generatedAt: dashboard.generatedAt || null,
+          nodeCount: Number.isFinite(dashboard.nodeCount) ? Number(dashboard.nodeCount) : 0,
+          failingEndpoints: Array.isArray(dashboard.failingEndpoints)
+            ? dashboard.failingEndpoints.filter((value): value is string => typeof value === "string")
+            : [],
+        }
+      : null,
+    lint: lint
+      ? {
+          errors: Number.isFinite(lint.errors) ? Number(lint.errors) : 0,
+          warnings: Number.isFinite(lint.warnings) ? Number(lint.warnings) : 0,
+        }
+      : null,
+  };
+}
+
+export function buildFleetBundleReport(snapshot: FleetBundleSnapshot): string {
+  const lines = [
+    "=== OPENFOX FLEET BUNDLE ===",
+    `Bundle:    ${snapshot.bundlePath}`,
+    `Exists:    ${snapshot.exists ? "yes" : "no"}`,
+  ];
+  if (!snapshot.exists) {
+    return lines.join("\n");
+  }
+  lines.push(`Manifest:  ${snapshot.manifestPath || "(missing)"}`);
+  lines.push(`Dashboard: ${snapshot.dashboardPath || "(missing)"}`);
+  lines.push(`Lint:      ${snapshot.lintPath || "(missing)"}`);
+  lines.push(`Controls:  ${snapshot.controlEventsPath ? "present" : "missing"}`);
+  lines.push(`Autopilot: ${snapshot.autopilotPath ? "present" : "missing"}`);
+  lines.push(`Approvals: ${snapshot.approvalsPath ? "present" : "missing"}`);
+  if (snapshot.manifest) {
+    lines.push(
+      `Roles:     ${Object.entries(snapshot.manifest.roles)
+        .map(([role, count]) => `${role}=${count}`)
+        .join(", ") || "(none)"}`,
+    );
+  }
+  if (snapshot.dashboard) {
+    lines.push(
+      `Failures:  ${snapshot.dashboard.failingEndpoints.length ? snapshot.dashboard.failingEndpoints.join(", ") : "none"}`,
+    );
+  }
+  if (snapshot.lint) {
+    lines.push(`Lint sum:  ${snapshot.lint.errors} error(s), ${snapshot.lint.warnings} warning(s)`);
   }
   return lines.join("\n");
 }

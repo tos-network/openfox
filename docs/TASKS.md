@@ -339,8 +339,8 @@ building OpenFox into a TOS-native agent platform.
     remote observation, oracle, and provider-style routes using the existing
     requester clients, then persist execution history beside the owner-action
     journal.
-- [ ] Task 72: Add public fleet control-plane bundles
-  - Status: Planned
+- [x] Task 72: Add public fleet control-plane bundles
+  - Status: Complete
   - Goal: Turn the existing fleet, dashboard, and operator surfaces into
     reusable control-plane bundles for public multi-node OpenFox deployments.
 - [ ] Task 73: Add ecosystem SDK builder packs v2
@@ -1004,10 +1004,10 @@ building OpenFox into a TOS-native agent platform.
 
 ## Task 72 Breakdown
 
-- [ ] Add reusable public-fleet control-plane bundle consumers for manifest and dashboard exports.
-- [ ] Add stricter linting and validation for public operator manifests and role bundles.
-- [ ] Expose control-plane friendly JSON surfaces for fleet bundle consumption.
-- [ ] Publish one complete public-fleet operator bundle guide tied to the exported bundle format.
+- [x] Add reusable public-fleet control-plane bundle consumers for manifest and dashboard exports.
+- [x] Add stricter linting and validation for public operator manifests and role bundles.
+- [x] Expose control-plane friendly JSON surfaces for fleet bundle consumption.
+- [x] Publish one complete public-fleet operator bundle guide tied to the exported bundle format.
 
 ## Task 73 Breakdown
 

@@ -161,6 +161,7 @@ It supports:
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
 - an authenticated operator API for multi-node status, health, doctor, service, gateway, wallet, finance, payments, settlement, market, storage, artifact, signer, and paymaster inspection
 - `openfox fleet status|health|doctor|wallet|finance|payments|settlement|market|storage|lease-health|artifacts|signer|paymaster|providers` for one-shot fleet-wide auditing across public OpenFox nodes
+- `openfox fleet bundle inspect --bundle <dir>` for consuming exported public-fleet control-plane bundles
 - `openfox providers reputation`, `openfox storage lease-health`, `openfox storage maintain`, `openfox artifacts maintain`, and `openfox fleet repair <storage|artifacts>` for remote due-work remediation plus provider/lease health reporting
 - bounded fleet control and queue recovery with:
   - `POST /operator/control/pause|resume|drain`
@@ -176,6 +177,7 @@ It supports:
   - low-risk automated retries, maintenance, and provider quarantine
 - `openfox dashboard show|export` for reusable JSON and HTML fleet dashboards with role margin, capability, counterparty, and delayed-queue finance sections
   plus bundle-ready `control-events.json`, `autopilot.json`, and `approvals.json` audit exports
+- `openfox dashboard bundle --manifest <path> --output <dir>` for exporting one reusable control-plane bundle with manifest, dashboard, lint, control, autopilot, and approvals artifacts
 - `openfox wallet report` and `openfox finance report` for single-node operator snapshots
 - `openfox report daily|weekly|list|get|deliveries|send` for owner-facing
   daily and weekly finance, opportunity, and recommendation reports
