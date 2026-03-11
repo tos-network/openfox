@@ -48,8 +48,11 @@ import {
   publishLocalAgentDiscoveryCard,
 } from "./agent-discovery/client.js";
 import { startAgentDiscoveryFaucetServer } from "./agent-discovery/faucet-server.js";
+import { startAgentDiscoveryNewsFetchServer } from "./agent-discovery/news-fetch-server.js";
 import { startAgentDiscoveryObservationServer } from "./agent-discovery/observation-server.js";
 import { startAgentDiscoveryOracleServer } from "./agent-discovery/oracle-server.js";
+import { startAgentDiscoveryProofVerifyServer } from "./agent-discovery/proof-verify-server.js";
+import { startAgentDiscoveryStorageServer } from "./agent-discovery/storage-server.js";
 import { normalizeAgentDiscoveryConfig } from "./agent-discovery/types.js";
 import { startAgentGatewayServer } from "./agent-gateway/server.js";
 import { startAgentGatewayProviderSessions } from "./agent-gateway/client.js";
@@ -4698,6 +4701,15 @@ async function run(): Promise<void> {
   let oracleServer:
     | Awaited<ReturnType<typeof startAgentDiscoveryOracleServer>>
     | undefined;
+  let newsFetchServer:
+    | Awaited<ReturnType<typeof startAgentDiscoveryNewsFetchServer>>
+    | undefined;
+  let proofVerifyServer:
+    | Awaited<ReturnType<typeof startAgentDiscoveryProofVerifyServer>>
+    | undefined;
+  let discoveryStorageServer:
+    | Awaited<ReturnType<typeof startAgentDiscoveryStorageServer>>
+    | undefined;
   let storageServer:
     | Awaited<ReturnType<typeof startStorageProviderServer>>
     | undefined;
@@ -4827,6 +4839,57 @@ async function run(): Promise<void> {
     } catch (error) {
       logger.warn(
         `Agent Discovery oracle server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.newsFetchServer?.enabled) {
+    try {
+      newsFetchServer = await startAgentDiscoveryNewsFetchServer({
+        identity,
+        config,
+        address,
+        db,
+        newsFetchConfig: config.agentDiscovery.newsFetchServer,
+      });
+      logger.info(`Agent Discovery news.fetch provider enabled at ${newsFetchServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery news.fetch server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.proofVerifyServer?.enabled) {
+    try {
+      proofVerifyServer = await startAgentDiscoveryProofVerifyServer({
+        identity,
+        config,
+        address,
+        db,
+        proofVerifyConfig: config.agentDiscovery.proofVerifyServer,
+      });
+      logger.info(`Agent Discovery proof.verify provider enabled at ${proofVerifyServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery proof.verify server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.storageServer?.enabled) {
+    try {
+      discoveryStorageServer = await startAgentDiscoveryStorageServer({
+        identity,
+        config,
+        address,
+        db,
+        storageConfig: config.agentDiscovery.storageServer,
+      });
+      logger.info(`Agent Discovery storage provider enabled at ${discoveryStorageServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery storage server failed to start: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }
@@ -4995,6 +5058,15 @@ async function run(): Promise<void> {
           oracleServer: config.agentDiscovery.oracleServer
             ? { ...config.agentDiscovery.oracleServer, enabled: false }
             : undefined,
+          newsFetchServer: config.agentDiscovery.newsFetchServer
+            ? { ...config.agentDiscovery.newsFetchServer, enabled: false }
+            : undefined,
+          proofVerifyServer: config.agentDiscovery.proofVerifyServer
+            ? { ...config.agentDiscovery.proofVerifyServer, enabled: false }
+            : undefined,
+          storageServer: config.agentDiscovery.storageServer
+            ? { ...config.agentDiscovery.storageServer, enabled: false }
+            : undefined,
         }
       : null);
 
@@ -5006,9 +5078,12 @@ async function run(): Promise<void> {
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
         oracleUrl: oracleServer?.url,
+        newsFetchUrl: newsFetchServer?.url,
+        proofVerifyUrl: proofVerifyServer?.url,
         signerUrl: signerProviderServer?.url,
         paymasterUrl: paymasterProviderServer?.url,
         storageUrl: storageServer?.url,
+        discoveryStorageUrl: discoveryStorageServer?.url,
         artifactUrl: artifactServer?.url,
       });
       current = buildPublishedAgentDiscoveryConfig({
@@ -5339,9 +5414,12 @@ async function run(): Promise<void> {
         faucetUrl: faucetServer?.url,
         observationUrl: observationServer?.url,
         oracleUrl: oracleServer?.url,
+        newsFetchUrl: newsFetchServer?.url,
+        proofVerifyUrl: proofVerifyServer?.url,
         signerUrl: signerProviderServer?.url,
         paymasterUrl: paymasterProviderServer?.url,
         storageUrl: storageServer?.url,
+        discoveryStorageUrl: discoveryStorageServer?.url,
         artifactUrl: artifactServer?.url,
       });
       if (!routes.length) {
@@ -5591,6 +5669,9 @@ async function run(): Promise<void> {
       faucetServer?.close(),
       observationServer?.close(),
       oracleServer?.close(),
+      newsFetchServer?.close(),
+      proofVerifyServer?.close(),
+      discoveryStorageServer?.close(),
     ]).finally(() => {
       db.close();
       process.exit(0);

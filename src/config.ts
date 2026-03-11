@@ -39,10 +39,13 @@ import {
   DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
   DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
+  DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES,
+  DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG,
   DEFAULT_AGENT_DISCOVERY_REPUTATION_UPDATE_CONFIG,
   DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+  DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG,
   DEFAULT_BOUNTY_CONFIG,
   DEFAULT_ARTIFACT_PIPELINE_CONFIG,
   DEFAULT_BOUNTY_POLICY,
@@ -330,6 +333,30 @@ export function loadConfig(): OpenFoxConfig | null {
             | undefined
         )?.oracle as JsonRecord | undefined) ?? {}),
       },
+      news: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.news,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.news as JsonRecord | undefined) ?? {}),
+      },
+      proof: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.proof,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.proof as JsonRecord | undefined) ?? {}),
+      },
+      storage: {
+        ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.storage,
+        ...(((
+          (raw?.agentDiscovery as JsonRecord | undefined)?.policyProfiles as
+            | JsonRecord
+            | undefined
+        )?.storage as JsonRecord | undefined) ?? {}),
+      },
       gateway: {
         ...DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES.gateway,
         ...(((
@@ -373,6 +400,21 @@ export function loadConfig(): OpenFoxConfig | null {
       ...DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG,
       ...(((raw?.agentDiscovery as JsonRecord | undefined)
         ?.oracleServer as JsonRecord | undefined) ?? {}),
+    },
+    newsFetchServer: {
+      ...DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)
+        ?.newsFetchServer as JsonRecord | undefined) ?? {}),
+    },
+    proofVerifyServer: {
+      ...DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)
+        ?.proofVerifyServer as JsonRecord | undefined) ?? {}),
+    },
+    storageServer: {
+      ...DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG,
+      ...(((raw?.agentDiscovery as JsonRecord | undefined)
+        ?.storageServer as JsonRecord | undefined) ?? {}),
     },
     gatewayServer: {
       ...DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,

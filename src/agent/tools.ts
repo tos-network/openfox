@@ -1646,6 +1646,380 @@ Rate Limit: ${provider.matchedCapability.rate_limit || "n/a"}`,
       },
     },
     {
+      name: "request_paid_news_fetch",
+      description:
+        "Find a news.fetch provider via Agent Discovery v1, pay via x402 if required, and request a draft zkTLS-oriented news bundle.",
+      category: "registry",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          sourceUrl: {
+            type: "string",
+            description: "HTTP or HTTPS news URL to fetch",
+          },
+          publisherHint: {
+            type: "string",
+            description: "Optional expected publisher name",
+          },
+          headlineHint: {
+            type: "string",
+            description: "Optional expected headline or article hint",
+          },
+          capability: {
+            type: "string",
+            description: "Capability to request (default: news.fetch)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the news fetch request",
+          },
+        },
+        required: ["sourceUrl"],
+      },
+      execute: async (args, ctx) => {
+        const { requestNewsFetch } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey: deriveAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const address =
+          ctx.config.walletAddress ||
+          deriveAddressFromPrivateKey(privateKey);
+
+        const result = await requestNewsFetch({
+          identity: ctx.identity,
+          config: ctx.config,
+          address,
+          sourceUrl: String(args.sourceUrl || ""),
+          publisherHint:
+            typeof args.publisherHint === "string" && args.publisherHint.trim()
+              ? args.publisherHint.trim()
+              : undefined,
+          headlineHint:
+            typeof args.headlineHint === "string" && args.headlineHint.trim()
+              ? args.headlineHint.trim()
+              : undefined,
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "news.fetch",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "paid news fetch",
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            newsFetch: result.response,
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
+      name: "request_paid_proof_verify",
+      description:
+        "Find a proof.verify provider via Agent Discovery v1, pay via x402 if required, and request a proof verification receipt.",
+      category: "registry",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          subjectUrl: {
+            type: "string",
+            description: "Optional subject URL tied to the proof bundle",
+          },
+          subjectSha256: {
+            type: "string",
+            description: "Optional subject hash tied to the proof bundle",
+          },
+          proofBundleUrl: {
+            type: "string",
+            description: "Optional proof bundle URL",
+          },
+          proofBundleSha256: {
+            type: "string",
+            description: "Optional proof bundle hash",
+          },
+          verifierProfile: {
+            type: "string",
+            description: "Optional verifier profile or circuit profile",
+          },
+          capability: {
+            type: "string",
+            description: "Capability to request (default: proof.verify)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the proof verification request",
+          },
+        },
+      },
+      execute: async (args, ctx) => {
+        const { requestProofVerify } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey: deriveAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const address =
+          ctx.config.walletAddress ||
+          deriveAddressFromPrivateKey(privateKey);
+
+        const result = await requestProofVerify({
+          identity: ctx.identity,
+          config: ctx.config,
+          address,
+          subjectUrl:
+            typeof args.subjectUrl === "string" && args.subjectUrl.trim()
+              ? args.subjectUrl.trim()
+              : undefined,
+          subjectSha256:
+            typeof args.subjectSha256 === "string" && args.subjectSha256.trim()
+              ? args.subjectSha256.trim()
+              : undefined,
+          proofBundleUrl:
+            typeof args.proofBundleUrl === "string" && args.proofBundleUrl.trim()
+              ? args.proofBundleUrl.trim()
+              : undefined,
+          proofBundleSha256:
+            typeof args.proofBundleSha256 === "string" &&
+            args.proofBundleSha256.trim()
+              ? args.proofBundleSha256.trim()
+              : undefined,
+          verifierProfile:
+            typeof args.verifierProfile === "string" &&
+            args.verifierProfile.trim()
+              ? args.verifierProfile.trim()
+              : undefined,
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "proof.verify",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "paid proof verification",
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            proofVerify: result.response,
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
+      name: "request_paid_storage_put",
+      description:
+        "Find a storage.put provider via Agent Discovery v1, pay via x402 if required, and store an immutable object.",
+      category: "registry",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          objectKey: {
+            type: "string",
+            description: "Optional logical object key",
+          },
+          contentType: {
+            type: "string",
+            description: "Content type for the object",
+          },
+          contentText: {
+            type: "string",
+            description: "UTF-8 object content",
+          },
+          contentBase64: {
+            type: "string",
+            description: "Base64 object content",
+          },
+          metadata: {
+            type: "object",
+            description: "Optional metadata JSON object",
+          },
+          capability: {
+            type: "string",
+            description: "Capability to request (default: storage.put)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the storage write",
+          },
+        },
+      },
+      execute: async (args, ctx) => {
+        const { requestStoragePut } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey: deriveAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const address =
+          ctx.config.walletAddress ||
+          deriveAddressFromPrivateKey(privateKey);
+
+        const result = await requestStoragePut({
+          identity: ctx.identity,
+          config: ctx.config,
+          address,
+          objectKey:
+            typeof args.objectKey === "string" && args.objectKey.trim()
+              ? args.objectKey.trim()
+              : undefined,
+          contentType:
+            typeof args.contentType === "string" && args.contentType.trim()
+              ? args.contentType.trim()
+              : undefined,
+          contentText:
+            typeof args.contentText === "string" ? args.contentText : undefined,
+          contentBase64:
+            typeof args.contentBase64 === "string"
+              ? args.contentBase64
+              : undefined,
+          metadata:
+            typeof args.metadata === "object" && args.metadata !== null
+              ? (args.metadata as Record<string, unknown>)
+              : undefined,
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "storage.put",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "paid storage put",
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            storagePut: result.response,
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
+      name: "request_paid_storage_get",
+      description:
+        "Find a storage.get provider via Agent Discovery v1, pay via x402 if required, and retrieve an immutable object.",
+      category: "registry",
+      riskLevel: "caution",
+      parameters: {
+        type: "object",
+        properties: {
+          objectId: {
+            type: "string",
+            description: "Stored object id",
+          },
+          contentSha256: {
+            type: "string",
+            description: "Stored object sha256",
+          },
+          inlineBase64: {
+            type: "boolean",
+            description: "Return base64 content inline (default: true)",
+          },
+          maxBytes: {
+            type: "number",
+            description: "Optional maximum object size to accept",
+          },
+          capability: {
+            type: "string",
+            description: "Capability to request (default: storage.get)",
+          },
+          reason: {
+            type: "string",
+            description: "Short explanation for the storage read",
+          },
+        },
+      },
+      execute: async (args, ctx) => {
+        const { requestStorageGet } =
+          await import("../agent-discovery/client.js");
+        const { deriveTOSAddressFromPrivateKey: deriveAddressFromPrivateKey } =
+          await import("../tos/address.js");
+        const { loadWalletPrivateKey } = await import("../identity/wallet.js");
+
+        const privateKey = loadWalletPrivateKey();
+        if (!privateKey) {
+          return "No local OpenFox wallet found.";
+        }
+        const address =
+          ctx.config.walletAddress ||
+          deriveAddressFromPrivateKey(privateKey);
+
+        const result = await requestStorageGet({
+          identity: ctx.identity,
+          config: ctx.config,
+          address,
+          objectId:
+            typeof args.objectId === "string" && args.objectId.trim()
+              ? args.objectId.trim()
+              : undefined,
+          contentSha256:
+            typeof args.contentSha256 === "string" && args.contentSha256.trim()
+              ? args.contentSha256.trim()
+              : undefined,
+          inlineBase64:
+            typeof args.inlineBase64 === "boolean"
+              ? args.inlineBase64
+              : undefined,
+          maxBytes:
+            typeof args.maxBytes === "number" && Number.isFinite(args.maxBytes)
+              ? args.maxBytes
+              : undefined,
+          capability:
+            typeof args.capability === "string" && args.capability.trim()
+              ? args.capability.trim()
+              : "storage.get",
+          reason:
+            typeof args.reason === "string" && args.reason.trim()
+              ? args.reason.trim()
+              : "paid storage get",
+          db: ctx.db,
+        });
+
+        return JSON.stringify(
+          {
+            providerNodeId: result.provider.search.nodeId,
+            endpoint: result.provider.endpoint.url,
+            storageGet: result.response,
+          },
+          null,
+          2,
+        );
+      },
+    },
+    {
       name: "check_reputation",
       description: "Check reputation feedback for an agent.",
       category: "registry",

@@ -171,6 +171,9 @@ function isProviderEnabled(config: OpenFoxConfig): boolean {
       config.agentDiscovery?.faucetServer?.enabled ||
       config.agentDiscovery?.observationServer?.enabled ||
       config.agentDiscovery?.oracleServer?.enabled ||
+      config.agentDiscovery?.newsFetchServer?.enabled ||
+      config.agentDiscovery?.proofVerifyServer?.enabled ||
+      config.agentDiscovery?.storageServer?.enabled ||
       config.signerProvider?.enabled ||
       config.paymasterProvider?.enabled ||
       config.storage?.enabled ||

@@ -53,6 +53,25 @@ export interface ServiceStatusSnapshot {
           capability: string;
         }
       | null;
+    newsFetch:
+      | {
+          url: string;
+          capability: string;
+        }
+      | null;
+    proofVerify:
+      | {
+          url: string;
+          capability: string;
+        }
+      | null;
+    discoveryStorage:
+      | {
+          url: string;
+          putCapability: string;
+          getCapability: string;
+        }
+      | null;
     signer:
       | {
           url: string;
@@ -178,6 +197,10 @@ function buildLocalHttpUrl(host: string, port: number, pathname: string): string
   return `http://${normalizedHost}:${port}${path}`;
 }
 
+function appendUrlPath(url: string, suffix: string): string {
+  return `${url.replace(/\/+$/, "")}/${suffix.replace(/^\/+/, "")}`;
+}
+
 function uniqueStrings(values: string[]): string[] {
   return [...new Set(values.filter(Boolean))];
 }
@@ -191,6 +214,9 @@ function detectServiceRoles(config: OpenFoxConfig): string[] {
     config.agentDiscovery?.faucetServer?.enabled ||
     config.agentDiscovery?.observationServer?.enabled ||
     config.agentDiscovery?.oracleServer?.enabled ||
+    config.agentDiscovery?.newsFetchServer?.enabled ||
+    config.agentDiscovery?.proofVerifyServer?.enabled ||
+    config.agentDiscovery?.storageServer?.enabled ||
     config.signerProvider?.enabled ||
     config.paymasterProvider?.enabled ||
     config.storage?.enabled ||
@@ -242,6 +268,48 @@ function inferProviderRoutes(config: OpenFoxConfig): Array<{
       capability: oracle.capability,
       mode: "paid",
       targetUrl: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
+    });
+  }
+  const newsFetch = config.agentDiscovery?.newsFetchServer;
+  if (newsFetch?.enabled && newsFetch.port > 0) {
+    routes.push({
+      path: "/news/fetch",
+      capability: newsFetch.capability,
+      mode: "paid",
+      targetUrl: buildLocalHttpUrl(newsFetch.bindHost, newsFetch.port, newsFetch.path),
+    });
+  }
+  const proofVerify = config.agentDiscovery?.proofVerifyServer;
+  if (proofVerify?.enabled && proofVerify.port > 0) {
+    routes.push({
+      path: "/proof/verify",
+      capability: proofVerify.capability,
+      mode: "paid",
+      targetUrl: buildLocalHttpUrl(
+        proofVerify.bindHost,
+        proofVerify.port,
+        proofVerify.path,
+      ),
+    });
+  }
+  const discoveryStorage = config.agentDiscovery?.storageServer;
+  if (discoveryStorage?.enabled && discoveryStorage.port > 0) {
+    const targetUrl = buildLocalHttpUrl(
+      discoveryStorage.bindHost,
+      discoveryStorage.port,
+      discoveryStorage.path,
+    );
+    routes.push({
+      path: "/discovery-storage/put",
+      capability: discoveryStorage.putCapability,
+      mode: "paid",
+      targetUrl: appendUrlPath(targetUrl, "put"),
+    });
+    routes.push({
+      path: "/discovery-storage/get",
+      capability: discoveryStorage.getCapability,
+      mode: "paid",
+      targetUrl: appendUrlPath(targetUrl, "get"),
     });
   }
   const signer = config.signerProvider;
@@ -439,6 +507,21 @@ export function buildServiceStatusReport(
       `  - oracle: ${snapshot.providerSurfaces.oracle.url}  capability=${snapshot.providerSurfaces.oracle.capability}`,
     );
   }
+  if (snapshot.providerSurfaces.newsFetch) {
+    lines.push(
+      `  - news.fetch: ${snapshot.providerSurfaces.newsFetch.url}  capability=${snapshot.providerSurfaces.newsFetch.capability}`,
+    );
+  }
+  if (snapshot.providerSurfaces.proofVerify) {
+    lines.push(
+      `  - proof.verify: ${snapshot.providerSurfaces.proofVerify.url}  capability=${snapshot.providerSurfaces.proofVerify.capability}`,
+    );
+  }
+  if (snapshot.providerSurfaces.discoveryStorage) {
+    lines.push(
+      `  - discovery storage: ${snapshot.providerSurfaces.discoveryStorage.url}  put=${snapshot.providerSurfaces.discoveryStorage.putCapability}  get=${snapshot.providerSurfaces.discoveryStorage.getCapability}`,
+    );
+  }
   if (snapshot.providerSurfaces.signer) {
     lines.push(
       `  - signer: ${snapshot.providerSurfaces.signer.url}  capability_prefix=${snapshot.providerSurfaces.signer.capabilityPrefix}  wallet=${snapshot.providerSurfaces.signer.walletAddress}  trust_tier=${snapshot.providerSurfaces.signer.trustTier}`,
@@ -468,6 +551,9 @@ export function buildServiceStatusReport(
     !snapshot.providerSurfaces.faucet &&
     !snapshot.providerSurfaces.observation &&
     !snapshot.providerSurfaces.oracle &&
+    !snapshot.providerSurfaces.newsFetch &&
+    !snapshot.providerSurfaces.proofVerify &&
+    !snapshot.providerSurfaces.discoveryStorage &&
     !snapshot.providerSurfaces.signer &&
     !snapshot.providerSurfaces.paymaster &&
     !snapshot.providerSurfaces.storage &&
@@ -527,6 +613,9 @@ export function buildServiceStatusSnapshot(
   const faucet = config.agentDiscovery?.faucetServer;
   const observation = config.agentDiscovery?.observationServer;
   const oracle = config.agentDiscovery?.oracleServer;
+  const newsFetch = config.agentDiscovery?.newsFetchServer;
+  const proofVerify = config.agentDiscovery?.proofVerifyServer;
+  const discoveryStorage = config.agentDiscovery?.storageServer;
   const signer = config.signerProvider;
   const paymaster = config.paymasterProvider;
   const storage = config.storage;
@@ -570,6 +659,36 @@ export function buildServiceStatusSnapshot(
           ? {
               url: buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path),
               capability: oracle.capability,
+            }
+          : null,
+      newsFetch:
+        newsFetch?.enabled && newsFetch.port > 0
+          ? {
+              url: buildLocalHttpUrl(newsFetch.bindHost, newsFetch.port, newsFetch.path),
+              capability: newsFetch.capability,
+            }
+          : null,
+      proofVerify:
+        proofVerify?.enabled && proofVerify.port > 0
+          ? {
+              url: buildLocalHttpUrl(
+                proofVerify.bindHost,
+                proofVerify.port,
+                proofVerify.path,
+              ),
+              capability: proofVerify.capability,
+            }
+          : null,
+      discoveryStorage:
+        discoveryStorage?.enabled && discoveryStorage.port > 0
+          ? {
+              url: buildLocalHttpUrl(
+                discoveryStorage.bindHost,
+                discoveryStorage.port,
+                discoveryStorage.path,
+              ),
+              putCapability: discoveryStorage.putCapability,
+              getCapability: discoveryStorage.getCapability,
             }
           : null,
       signer:
@@ -882,6 +1001,29 @@ export async function buildServiceHealthSnapshot(
   const oracle = config.agentDiscovery?.oracleServer;
   if (oracle?.enabled && oracle.port > 0) {
     const base = buildLocalHttpUrl(oracle.bindHost, oracle.port, oracle.path);
+    checks.push(await probeHttpJson(`${base}/healthz`));
+  }
+  const newsFetch = config.agentDiscovery?.newsFetchServer;
+  if (newsFetch?.enabled && newsFetch.port > 0) {
+    const base = buildLocalHttpUrl(newsFetch.bindHost, newsFetch.port, newsFetch.path);
+    checks.push(await probeHttpJson(`${base}/healthz`));
+  }
+  const proofVerify = config.agentDiscovery?.proofVerifyServer;
+  if (proofVerify?.enabled && proofVerify.port > 0) {
+    const base = buildLocalHttpUrl(
+      proofVerify.bindHost,
+      proofVerify.port,
+      proofVerify.path,
+    );
+    checks.push(await probeHttpJson(`${base}/healthz`));
+  }
+  const discoveryStorage = config.agentDiscovery?.storageServer;
+  if (discoveryStorage?.enabled && discoveryStorage.port > 0) {
+    const base = buildLocalHttpUrl(
+      discoveryStorage.bindHost,
+      discoveryStorage.port,
+      discoveryStorage.path,
+    );
     checks.push(await probeHttpJson(`${base}/healthz`));
   }
 

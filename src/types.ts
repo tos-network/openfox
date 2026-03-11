@@ -107,6 +107,39 @@ export interface AgentDiscoveryOracleServerConfig {
   maxOptions: number;
 }
 
+export interface AgentDiscoveryNewsFetchServerConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  path: string;
+  capability: string;
+  priceWei: string;
+  maxSourceUrlChars: number;
+}
+
+export interface AgentDiscoveryProofVerifyServerConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  path: string;
+  capability: string;
+  priceWei: string;
+  maxPayloadChars: number;
+}
+
+export interface AgentDiscoveryStorageServerConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  path: string;
+  putCapability: string;
+  getCapability: string;
+  putPriceWei: string;
+  getPriceWei: string;
+  maxObjectBytes: number;
+  storageDir: string;
+}
+
 export interface AgentGatewayBootnodeConfig {
   agentId: string;
   url: string;
@@ -216,6 +249,9 @@ export interface AgentDiscoveryPolicyProfiles {
   sponsor: AgentDiscoverySelectionPolicy;
   observation: AgentDiscoverySelectionPolicy;
   oracle: AgentDiscoverySelectionPolicy;
+  news: AgentDiscoverySelectionPolicy;
+  proof: AgentDiscoverySelectionPolicy;
+  storage: AgentDiscoverySelectionPolicy;
   gateway: AgentDiscoverySelectionPolicy;
 }
 
@@ -233,6 +269,9 @@ export interface AgentDiscoveryConfig {
   faucetServer?: AgentDiscoveryFaucetServerConfig;
   observationServer?: AgentDiscoveryObservationServerConfig;
   oracleServer?: AgentDiscoveryOracleServerConfig;
+  newsFetchServer?: AgentDiscoveryNewsFetchServerConfig;
+  proofVerifyServer?: AgentDiscoveryProofVerifyServerConfig;
+  storageServer?: AgentDiscoveryStorageServerConfig;
   gatewayServer?: AgentGatewayServerConfig;
   gatewayClient?: AgentGatewayClientConfig;
 }
@@ -274,6 +313,42 @@ export const DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG: AgentDiscoveryOracleS
     maxQuestionChars: 1024,
     maxContextChars: 8192,
     maxOptions: 16,
+  };
+
+export const DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG: AgentDiscoveryNewsFetchServerConfig =
+  {
+    enabled: false,
+    bindHost: "127.0.0.1",
+    port: 4881,
+    path: "/agent-discovery/news-fetch",
+    capability: "news.fetch",
+    priceWei: "3000000000000000",
+    maxSourceUrlChars: 2048,
+  };
+
+export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryProofVerifyServerConfig =
+  {
+    enabled: false,
+    bindHost: "127.0.0.1",
+    port: 4882,
+    path: "/agent-discovery/proof-verify",
+    capability: "proof.verify",
+    priceWei: "2000000000000000",
+    maxPayloadChars: 16384,
+  };
+
+export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorageServerConfig =
+  {
+    enabled: false,
+    bindHost: "127.0.0.1",
+    port: 4883,
+    path: "/agent-discovery/storage",
+    putCapability: "storage.put",
+    getCapability: "storage.get",
+    putPriceWei: "1000000000000000",
+    getPriceWei: "500000000000000",
+    maxObjectBytes: 262144,
+    storageDir: "~/.openfox/storage-provider",
   };
 
 export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {
@@ -360,6 +435,23 @@ export const DEFAULT_AGENT_DISCOVERY_POLICY_PROFILES: AgentDiscoveryPolicyProfil
       minimumReputation: "1",
       onchainCapabilityMode: "require_onchain",
     },
+    news: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      minimumReputation: "1",
+      onchainCapabilityMode: "prefer_onchain",
+    },
+    proof: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      minimumReputation: "1",
+      onchainCapabilityMode: "require_onchain",
+    },
+    storage: {
+      ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
+      minimumStakeWei: "1",
+      onchainCapabilityMode: "prefer_onchain",
+    },
     gateway: {
       ...DEFAULT_AGENT_DISCOVERY_SELECTION_POLICY,
       minimumStakeWei: "1",
@@ -391,6 +483,9 @@ export const DEFAULT_AGENT_DISCOVERY_CONFIG: AgentDiscoveryConfig = {
   faucetServer: DEFAULT_AGENT_DISCOVERY_FAUCET_SERVER_CONFIG,
   observationServer: DEFAULT_AGENT_DISCOVERY_OBSERVATION_SERVER_CONFIG,
   oracleServer: DEFAULT_AGENT_DISCOVERY_ORACLE_SERVER_CONFIG,
+  newsFetchServer: DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG,
+  proofVerifyServer: DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG,
+  storageServer: DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG,
   gatewayServer: DEFAULT_AGENT_GATEWAY_SERVER_CONFIG,
   gatewayClient: DEFAULT_AGENT_GATEWAY_CLIENT_CONFIG,
 };

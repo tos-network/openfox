@@ -11,6 +11,10 @@ function endpointKindFromUrl(url: string): "http" | "https" | "ws" {
   return "http";
 }
 
+function appendUrlPath(url: string, suffix: string): string {
+  return `${url.replace(/\/+$/, "")}/${suffix.replace(/^\/+/, "")}`;
+}
+
 function uniqueByName<T>(
   entries: T[],
   keyFn: (entry: T) => string,
@@ -31,9 +35,12 @@ export function buildGatewayProviderRoutes(params: {
   faucetUrl?: string;
   observationUrl?: string;
   oracleUrl?: string;
+  newsFetchUrl?: string;
+  proofVerifyUrl?: string;
   signerUrl?: string;
   paymasterUrl?: string;
   storageUrl?: string;
+  discoveryStorageUrl?: string;
   artifactUrl?: string;
 }): AgentGatewayProviderRoute[] {
   const routes: AgentGatewayProviderRoute[] = [
@@ -76,6 +83,32 @@ export function buildGatewayProviderRoutes(params: {
       capability: oracle.capability,
       mode: "paid",
       targetUrl: params.oracleUrl,
+    });
+  }
+  const newsFetch = params.config.agentDiscovery?.newsFetchServer;
+  if (
+    newsFetch?.enabled &&
+    params.newsFetchUrl &&
+    !routes.some((entry) => entry.capability === newsFetch.capability)
+  ) {
+    routes.push({
+      path: "/news/fetch",
+      capability: newsFetch.capability,
+      mode: "paid",
+      targetUrl: params.newsFetchUrl,
+    });
+  }
+  const proofVerify = params.config.agentDiscovery?.proofVerifyServer;
+  if (
+    proofVerify?.enabled &&
+    params.proofVerifyUrl &&
+    !routes.some((entry) => entry.capability === proofVerify.capability)
+  ) {
+    routes.push({
+      path: "/proof/verify",
+      capability: proofVerify.capability,
+      mode: "paid",
+      targetUrl: params.proofVerifyUrl,
     });
   }
   const signer = params.config.signerProvider;
@@ -166,6 +199,33 @@ export function buildGatewayProviderRoutes(params: {
       mode: "paid",
       targetUrl: params.storageUrl,
     });
+  }
+  const discoveryStorage = params.config.agentDiscovery?.storageServer;
+  if (discoveryStorage?.enabled && params.discoveryStorageUrl) {
+    if (
+      !routes.some(
+        (entry) => entry.capability === discoveryStorage.putCapability,
+      )
+    ) {
+      routes.push({
+        path: "/discovery-storage/put",
+        capability: discoveryStorage.putCapability,
+        mode: "paid",
+        targetUrl: appendUrlPath(params.discoveryStorageUrl, "put"),
+      });
+    }
+    if (
+      !routes.some(
+        (entry) => entry.capability === discoveryStorage.getCapability,
+      )
+    ) {
+      routes.push({
+        path: "/discovery-storage/get",
+        capability: discoveryStorage.getCapability,
+        mode: "paid",
+        targetUrl: appendUrlPath(params.discoveryStorageUrl, "get"),
+      });
+    }
   }
   const artifacts = params.config.artifacts;
   if (
@@ -286,6 +346,30 @@ export function buildPublishedAgentDiscoveryConfig(params: {
     observationServer: params.baseConfig.observationServer
       ? {
           ...params.baseConfig.observationServer,
+          enabled: false,
+        }
+      : undefined,
+    oracleServer: params.baseConfig.oracleServer
+      ? {
+          ...params.baseConfig.oracleServer,
+          enabled: false,
+        }
+      : undefined,
+    newsFetchServer: params.baseConfig.newsFetchServer
+      ? {
+          ...params.baseConfig.newsFetchServer,
+          enabled: false,
+        }
+      : undefined,
+    proofVerifyServer: params.baseConfig.proofVerifyServer
+      ? {
+          ...params.baseConfig.proofVerifyServer,
+          enabled: false,
+        }
+      : undefined,
+    storageServer: params.baseConfig.storageServer
+      ? {
+          ...params.baseConfig.storageServer,
           enabled: false,
         }
       : undefined,

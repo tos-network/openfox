@@ -31,10 +31,18 @@ import {
   type AgentDiscoverySearchResult,
   type FaucetInvocationRequest,
   type FaucetInvocationResponse,
+  type NewsFetchInvocationRequest,
+  type NewsFetchInvocationResponse,
   type ObservationInvocationRequest,
   type ObservationInvocationResponse,
   type OracleResolutionRequest,
   type OracleResolutionResponse,
+  type ProofVerifyInvocationRequest,
+  type ProofVerifyInvocationResponse,
+  type StorageGetInvocationRequest,
+  type StorageGetInvocationResponse,
+  type StoragePutInvocationRequest,
+  type StoragePutInvocationResponse,
   type VerifiedAgentProvider,
 } from "./types.js";
 
@@ -136,6 +144,39 @@ function deriveConnectionModes(agentDiscovery: AgentDiscoveryConfig): string[] {
   return [...modes];
 }
 
+function endpointMatchesCapability(url: string, capability?: string): boolean {
+  if (!capability) return false;
+  const normalized = url.toLowerCase();
+  if (capability === "sponsor.topup.testnet") {
+    return normalized.includes("/faucet");
+  }
+  if (capability.startsWith("observation.")) {
+    return normalized.includes("/observe") || normalized.includes("/observation");
+  }
+  if (capability.startsWith("oracle.")) {
+    return normalized.includes("/oracle");
+  }
+  if (capability === "news.fetch") {
+    return normalized.includes("/news/fetch") || normalized.includes("/news-fetch");
+  }
+  if (capability === "proof.verify") {
+    return normalized.includes("/proof/verify") || normalized.includes("/proof-verify");
+  }
+  if (capability === "storage.put") {
+    return (
+      normalized.includes("/agent-discovery/storage/put") ||
+      normalized.includes("/discovery-storage/put")
+    );
+  }
+  if (capability === "storage.get") {
+    return (
+      normalized.includes("/agent-discovery/storage/get") ||
+      normalized.includes("/discovery-storage/get")
+    );
+  }
+  return false;
+}
+
 function getInvokableEndpoint(
   card: AgentDiscoveryCard,
   capability?: string,
@@ -149,6 +190,13 @@ function getInvokableEndpoint(
       card.endpoints.find((endpoint) => endpoint.kind === "ws") ??
       null
     );
+  }
+  const hintedEndpoint =
+    httpEndpoints.find((endpoint) => endpoint.kind === "https" && endpointMatchesCapability(endpoint.url, capability)) ??
+    httpEndpoints.find((endpoint) => endpoint.kind === "http" && endpointMatchesCapability(endpoint.url, capability)) ??
+    card.endpoints.find((endpoint) => endpoint.kind === "ws" && endpointMatchesCapability(endpoint.url, capability));
+  if (hintedEndpoint) {
+    return hintedEndpoint;
   }
   if (capability?.endsWith(".quote")) {
     return (
@@ -214,10 +262,13 @@ function buildRequestExpiry(ttlSeconds = 300): number {
 
 function capabilityFamily(
   capability: string,
-): "sponsor" | "observation" | "oracle" | "gateway" | null {
+): "sponsor" | "observation" | "oracle" | "news" | "proof" | "storage" | "gateway" | null {
   if (capability.startsWith("sponsor.")) return "sponsor";
   if (capability.startsWith("observation.")) return "observation";
   if (capability.startsWith("oracle.")) return "oracle";
+  if (capability.startsWith("news.")) return "news";
+  if (capability.startsWith("proof.")) return "proof";
+  if (capability.startsWith("storage.")) return "storage";
   if (capability.startsWith("gateway.")) return "gateway";
   return null;
 }
@@ -1102,6 +1153,458 @@ export async function requestOracleResolution(params: {
   }
   params.db?.setKV(
     "agent_discovery:last_oracle_event",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      providerNodeId: provider.search.nodeId,
+      capability,
+      request,
+      response,
+    }),
+  );
+  recordProviderFeedback({
+    db: params.db,
+    config: params.config,
+    provider,
+    capability,
+    outcome: "success",
+    requestNonce: request.request_nonce,
+  });
+  return { provider, request, response };
+}
+
+export async function requestNewsFetch(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  address: string;
+  sourceUrl: string;
+  publisherHint?: string;
+  headlineHint?: string;
+  capability?: string;
+  reason?: string;
+  limit?: number;
+  db?: OpenFoxDatabase;
+  selectionPolicy?: Partial<AgentDiscoverySelectionPolicy>;
+}): Promise<{
+  provider: VerifiedAgentProvider;
+  request: NewsFetchInvocationRequest;
+  response: NewsFetchInvocationResponse;
+}> {
+  const capability = params.capability ?? "news.fetch";
+  const providers = await discoverCapabilityProviders({
+    config: params.config,
+    capability,
+    limit: params.limit ?? 10,
+    selectionPolicy: params.selectionPolicy,
+    db: params.db,
+  });
+  const ranked = sortProviders(
+    providers,
+    0n,
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
+  );
+  if (!ranked.length) {
+    throw new Error(`No provider found for capability ${capability}`);
+  }
+  const provider =
+    ranked.find((entry) => entry.matchedCapability.mode === "paid") ??
+    ranked[0];
+  const request: NewsFetchInvocationRequest = {
+    capability,
+    requester: {
+      agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+      identity: {
+        kind: "tos",
+        value: params.address.toLowerCase(),
+      },
+    },
+    request_nonce: randomBytes(16).toString("hex"),
+    request_expires_at: buildRequestExpiry(),
+    source_url: params.sourceUrl,
+    ...(params.publisherHint ? { publisher_hint: params.publisherHint } : {}),
+    ...(params.headlineHint ? { headline_hint: params.headlineHint } : {}),
+    reason: params.reason || "paid news fetch",
+  };
+
+  let response: NewsFetchInvocationResponse;
+  try {
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as NewsFetchInvocationResponse)
+        : (result.response as NewsFetchInvocationResponse);
+    if (
+      !response ||
+      (response.status !== "ok" &&
+        response.status !== "integration_required")
+    ) {
+      throw new Error("Provider returned an invalid news.fetch response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      config: params.config,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+      requestNonce: request.request_nonce,
+    });
+    throw error;
+  }
+  params.db?.setKV(
+    "agent_discovery:last_news_fetch_event",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      providerNodeId: provider.search.nodeId,
+      capability,
+      request,
+      response,
+    }),
+  );
+  recordProviderFeedback({
+    db: params.db,
+    config: params.config,
+    provider,
+    capability,
+    outcome: "success",
+    requestNonce: request.request_nonce,
+  });
+  return { provider, request, response };
+}
+
+export async function requestProofVerify(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  address: string;
+  subjectUrl?: string;
+  subjectSha256?: string;
+  proofBundleUrl?: string;
+  proofBundleSha256?: string;
+  verifierProfile?: string;
+  capability?: string;
+  reason?: string;
+  limit?: number;
+  db?: OpenFoxDatabase;
+  selectionPolicy?: Partial<AgentDiscoverySelectionPolicy>;
+}): Promise<{
+  provider: VerifiedAgentProvider;
+  request: ProofVerifyInvocationRequest;
+  response: ProofVerifyInvocationResponse;
+}> {
+  const capability = params.capability ?? "proof.verify";
+  const providers = await discoverCapabilityProviders({
+    config: params.config,
+    capability,
+    limit: params.limit ?? 10,
+    selectionPolicy: params.selectionPolicy,
+    db: params.db,
+  });
+  const ranked = sortProviders(
+    providers,
+    0n,
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
+  );
+  if (!ranked.length) {
+    throw new Error(`No provider found for capability ${capability}`);
+  }
+  const provider =
+    ranked.find((entry) => entry.matchedCapability.mode === "paid") ??
+    ranked[0];
+  const request: ProofVerifyInvocationRequest = {
+    capability,
+    requester: {
+      agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+      identity: {
+        kind: "tos",
+        value: params.address.toLowerCase(),
+      },
+    },
+    request_nonce: randomBytes(16).toString("hex"),
+    request_expires_at: buildRequestExpiry(),
+    ...(params.subjectUrl ? { subject_url: params.subjectUrl } : {}),
+    ...(params.subjectSha256 ? { subject_sha256: params.subjectSha256 } : {}),
+    ...(params.proofBundleUrl ? { proof_bundle_url: params.proofBundleUrl } : {}),
+    ...(params.proofBundleSha256
+      ? { proof_bundle_sha256: params.proofBundleSha256 }
+      : {}),
+    ...(params.verifierProfile ? { verifier_profile: params.verifierProfile } : {}),
+    reason: params.reason || "paid proof verification",
+  };
+
+  let response: ProofVerifyInvocationResponse;
+  try {
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as ProofVerifyInvocationResponse)
+        : (result.response as ProofVerifyInvocationResponse);
+    if (
+      !response ||
+      (response.status !== "ok" &&
+        response.status !== "integration_required")
+    ) {
+      throw new Error("Provider returned an invalid proof.verify response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      config: params.config,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+      requestNonce: request.request_nonce,
+    });
+    throw error;
+  }
+  params.db?.setKV(
+    "agent_discovery:last_proof_verify_event",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      providerNodeId: provider.search.nodeId,
+      capability,
+      request,
+      response,
+    }),
+  );
+  recordProviderFeedback({
+    db: params.db,
+    config: params.config,
+    provider,
+    capability,
+    outcome: "success",
+    requestNonce: request.request_nonce,
+  });
+  return { provider, request, response };
+}
+
+export async function requestStoragePut(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  address: string;
+  objectKey?: string;
+  contentType?: string;
+  contentText?: string;
+  contentBase64?: string;
+  metadata?: Record<string, unknown>;
+  capability?: string;
+  reason?: string;
+  limit?: number;
+  db?: OpenFoxDatabase;
+  selectionPolicy?: Partial<AgentDiscoverySelectionPolicy>;
+}): Promise<{
+  provider: VerifiedAgentProvider;
+  request: StoragePutInvocationRequest;
+  response: StoragePutInvocationResponse;
+}> {
+  const capability = params.capability ?? "storage.put";
+  const providers = await discoverCapabilityProviders({
+    config: params.config,
+    capability,
+    limit: params.limit ?? 10,
+    selectionPolicy: params.selectionPolicy,
+    db: params.db,
+  });
+  const ranked = sortProviders(
+    providers,
+    0n,
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
+  );
+  if (!ranked.length) {
+    throw new Error(`No provider found for capability ${capability}`);
+  }
+  const provider =
+    ranked.find((entry) => entry.matchedCapability.mode === "paid") ??
+    ranked[0];
+  const request: StoragePutInvocationRequest = {
+    capability,
+    requester: {
+      agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+      identity: {
+        kind: "tos",
+        value: params.address.toLowerCase(),
+      },
+    },
+    request_nonce: randomBytes(16).toString("hex"),
+    request_expires_at: buildRequestExpiry(),
+    ...(params.objectKey ? { object_key: params.objectKey } : {}),
+    ...(params.contentType ? { content_type: params.contentType } : {}),
+    ...(params.contentText !== undefined ? { content_text: params.contentText } : {}),
+    ...(params.contentBase64 !== undefined
+      ? { content_base64: params.contentBase64 }
+      : {}),
+    ...(params.metadata ? { metadata: params.metadata } : {}),
+    reason: params.reason || "paid storage put",
+  };
+
+  let response: StoragePutInvocationResponse;
+  try {
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as StoragePutInvocationResponse)
+        : (result.response as StoragePutInvocationResponse);
+    if (!response || response.status !== "ok") {
+      throw new Error("Provider returned an invalid storage.put response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      config: params.config,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+      requestNonce: request.request_nonce,
+    });
+    throw error;
+  }
+  params.db?.setKV(
+    "agent_discovery:last_storage_put_event",
+    JSON.stringify({
+      at: new Date().toISOString(),
+      providerNodeId: provider.search.nodeId,
+      capability,
+      request,
+      response,
+    }),
+  );
+  recordProviderFeedback({
+    db: params.db,
+    config: params.config,
+    provider,
+    capability,
+    outcome: "success",
+    requestNonce: request.request_nonce,
+  });
+  return { provider, request, response };
+}
+
+export async function requestStorageGet(params: {
+  identity: OpenFoxIdentity;
+  config: OpenFoxConfig;
+  address: string;
+  objectId?: string;
+  contentSha256?: string;
+  inlineBase64?: boolean;
+  maxBytes?: number;
+  capability?: string;
+  reason?: string;
+  limit?: number;
+  db?: OpenFoxDatabase;
+  selectionPolicy?: Partial<AgentDiscoverySelectionPolicy>;
+}): Promise<{
+  provider: VerifiedAgentProvider;
+  request: StorageGetInvocationRequest;
+  response: StorageGetInvocationResponse;
+}> {
+  const capability = params.capability ?? "storage.get";
+  const providers = await discoverCapabilityProviders({
+    config: params.config,
+    capability,
+    limit: params.limit ?? 10,
+    selectionPolicy: params.selectionPolicy,
+    db: params.db,
+  });
+  const ranked = sortProviders(
+    providers,
+    0n,
+    resolveSelectionPolicy(params.config, capability, params.selectionPolicy),
+    params.db,
+    capability,
+  );
+  if (!ranked.length) {
+    throw new Error(`No provider found for capability ${capability}`);
+  }
+  const provider =
+    ranked.find((entry) => entry.matchedCapability.mode === "paid") ??
+    ranked[0];
+  const request: StorageGetInvocationRequest = {
+    capability,
+    requester: {
+      agent_id: params.config.agentId || params.identity.address.toLowerCase(),
+      identity: {
+        kind: "tos",
+        value: params.address.toLowerCase(),
+      },
+    },
+    request_nonce: randomBytes(16).toString("hex"),
+    request_expires_at: buildRequestExpiry(),
+    ...(params.objectId ? { object_id: params.objectId } : {}),
+    ...(params.contentSha256 ? { content_sha256: params.contentSha256 } : {}),
+    ...(params.inlineBase64 !== undefined
+      ? { inline_base64: params.inlineBase64 }
+      : {}),
+    ...(params.maxBytes !== undefined ? { max_bytes: params.maxBytes } : {}),
+    reason: params.reason || "paid storage get",
+  };
+
+  let response: StorageGetInvocationResponse;
+  try {
+    const result = await invokeProviderCapability({
+      provider,
+      identity: params.identity,
+      config: params.config,
+      requestBody: JSON.stringify(request),
+    });
+    if (!result.success) {
+      throw new Error(
+        result.error || `Provider request failed with status ${result.status}`,
+      );
+    }
+    response =
+      typeof result.response === "string"
+        ? (JSON.parse(result.response) as StorageGetInvocationResponse)
+        : (result.response as StorageGetInvocationResponse);
+    if (!response || response.status !== "ok") {
+      throw new Error("Provider returned an invalid storage.get response");
+    }
+  } catch (error) {
+    recordProviderFeedback({
+      db: params.db,
+      config: params.config,
+      provider,
+      capability,
+      outcome: classifyInvocationError(error),
+      requestNonce: request.request_nonce,
+    });
+    throw error;
+  }
+  params.db?.setKV(
+    "agent_discovery:last_storage_get_event",
     JSON.stringify({
       at: new Date().toISOString(),
       providerNodeId: provider.search.nodeId,

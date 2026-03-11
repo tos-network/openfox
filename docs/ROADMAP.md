@@ -266,6 +266,20 @@ Delivered surface so far:
 - `GET /oracle/result/:id` for persisted result lookup
 - payment-bound oracle receipts with `result_id`, `result_url`, and `payment_tx_hash`
 
+Protocol extension now drafted on top of the paid-service surface:
+
+- `news.fetch` request/response schema and provider skeleton are now drafted for zkTLS-oriented news capture jobs
+- `proof.verify` request/response schema and provider skeleton are now drafted for SNARK or receipt verification jobs
+- `storage.put` and `storage.get` request/response schema are now drafted, and OpenFox includes a minimal immutable local object storage provider for them
+- the intended workflow is `news.fetch -> proof.verify x N -> M-of-N tally -> storage.put`, orchestrated by a coordinator agent rather than a single provider
+
+What is still missing before this becomes a real production lane:
+
+- a real zkTLS capture backend behind `news.fetch`
+- a real SNARK verifier backend behind `proof.verify`
+- quorum policy, validator reward splitting, and tally settlement at the workflow layer
+- replicated or externalized storage markets beyond the local immutable object provider
+
 ### Phase 3: On-Chain Task and Settlement Integration
 
 Status: completed
@@ -642,6 +656,11 @@ Suggested priority order:
   - added authenticated remote maintenance for storage and artifact nodes
   - added `openfox storage maintain` and `openfox artifacts maintain`
   - added `openfox fleet repair <storage|artifacts>` for batch fleet remediation
+- next:
+  - wire a real zkTLS backend behind `news.fetch`
+  - wire a real verifier backend behind `proof.verify`
+  - define coordinator-side `M-of-N` tally and multi-recipient payout rules
+  - define storage retention, retrieval, and replication policy for `storage.put` and `storage.get`
 
 ### P2: Do Later
 

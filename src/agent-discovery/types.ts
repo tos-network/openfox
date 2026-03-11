@@ -4,10 +4,13 @@ import type {
   AgentDiscoveryConfig,
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
+  AgentDiscoveryNewsFetchServerConfig,
   AgentDiscoveryObservationServerConfig,
   AgentDiscoveryOracleServerConfig,
   AgentDiscoveryPolicyProfiles,
+  AgentDiscoveryProofVerifyServerConfig,
   AgentDiscoverySelectionPolicy,
+  AgentDiscoveryStorageServerConfig,
 } from "../types.js";
 
 export type {
@@ -15,10 +18,13 @@ export type {
   AgentDiscoveryCapabilityConfig,
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
+  AgentDiscoveryNewsFetchServerConfig,
   AgentDiscoveryObservationServerConfig,
   AgentDiscoveryOracleServerConfig,
   AgentDiscoveryPolicyProfiles,
+  AgentDiscoveryProofVerifyServerConfig,
   AgentDiscoverySelectionPolicy,
+  AgentDiscoveryStorageServerConfig,
 };
 
 export interface AgentDiscoveryIdentityRef {
@@ -229,6 +235,135 @@ export interface OracleResolutionResponse {
   options?: string[];
 }
 
+export interface NewsFetchInvocationRequest {
+  capability: string;
+  requester: {
+    agent_id: string;
+    identity: AgentDiscoveryIdentityRef;
+  };
+  request_nonce: string;
+  request_expires_at: number;
+  source_url: string;
+  publisher_hint?: string;
+  headline_hint?: string;
+  reason: string;
+}
+
+export interface NewsFetchInvocationResponse {
+  status: "ok" | "integration_required";
+  job_id?: string;
+  result_url?: string;
+  payment_tx_hash?: string;
+  idempotent?: boolean;
+  fetched_at: number;
+  source_url: string;
+  canonical_url?: string;
+  publisher?: string;
+  headline?: string;
+  article_sha256?: string;
+  article_text?: string;
+  zktls_bundle_format?: string;
+  zktls_bundle_sha256?: string;
+  zktls_bundle_url?: string;
+  integration_message?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export type ProofVerifyVerdict = "valid" | "invalid" | "inconclusive";
+
+export interface ProofVerifyInvocationRequest {
+  capability: string;
+  requester: {
+    agent_id: string;
+    identity: AgentDiscoveryIdentityRef;
+  };
+  request_nonce: string;
+  request_expires_at: number;
+  subject_url?: string;
+  subject_sha256?: string;
+  proof_bundle_url?: string;
+  proof_bundle_sha256?: string;
+  verifier_profile?: string;
+  reason: string;
+}
+
+export interface ProofVerifyInvocationResponse {
+  status: "ok" | "integration_required";
+  result_id?: string;
+  result_url?: string;
+  payment_tx_hash?: string;
+  idempotent?: boolean;
+  verified_at: number;
+  verdict: ProofVerifyVerdict;
+  subject_url?: string;
+  subject_sha256?: string;
+  proof_bundle_sha256?: string;
+  verifier_profile?: string;
+  verifier_receipt_sha256?: string;
+  integration_message?: string;
+  summary?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StoragePutInvocationRequest {
+  capability: string;
+  requester: {
+    agent_id: string;
+    identity: AgentDiscoveryIdentityRef;
+  };
+  request_nonce: string;
+  request_expires_at: number;
+  object_key?: string;
+  content_type?: string;
+  content_text?: string;
+  content_base64?: string;
+  metadata?: Record<string, unknown>;
+  reason: string;
+}
+
+export interface StoragePutInvocationResponse {
+  status: "ok";
+  object_id?: string;
+  result_url?: string;
+  payment_tx_hash?: string;
+  idempotent?: boolean;
+  stored_at: number;
+  object_key?: string;
+  content_type: string;
+  content_sha256: string;
+  size_bytes: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface StorageGetInvocationRequest {
+  capability: string;
+  requester: {
+    agent_id: string;
+    identity: AgentDiscoveryIdentityRef;
+  };
+  request_nonce: string;
+  request_expires_at: number;
+  object_id?: string;
+  content_sha256?: string;
+  inline_base64?: boolean;
+  max_bytes?: number;
+  reason: string;
+}
+
+export interface StorageGetInvocationResponse {
+  status: "ok";
+  payment_tx_hash?: string;
+  idempotent?: boolean;
+  fetched_at: number;
+  object_id: string;
+  content_type: string;
+  content_sha256: string;
+  size_bytes: number;
+  content_text?: string;
+  content_base64?: string;
+  metadata?: Record<string, unknown>;
+}
+
 export function capabilityFromConfig(
   capability: AgentDiscoveryCapabilityConfig,
 ): AgentDiscoveryCapability {
@@ -318,6 +453,81 @@ export function normalizeAgentDiscoveryConfig(
       });
     }
   }
+  const newsFetchServer = config.newsFetchServer;
+  if (includeHostedServerEndpoints && newsFetchServer?.enabled) {
+    const newsFetchUrl = buildNewsFetchServerUrl(newsFetchServer);
+    if (!endpoints.some((entry) => entry.url === newsFetchUrl)) {
+      endpoints.push({
+        kind: "http",
+        url: newsFetchUrl,
+        role: "requester_invocation",
+      });
+    }
+    if (!capabilities.some((entry) => entry.name === newsFetchServer.capability)) {
+      capabilities.push({
+        name: newsFetchServer.capability,
+        mode: "paid",
+        price_model: "x402-exact",
+        description: "Draft paid news.fetch capability with zkTLS-oriented schema",
+      });
+    }
+  }
+  const proofVerifyServer = config.proofVerifyServer;
+  if (includeHostedServerEndpoints && proofVerifyServer?.enabled) {
+    const proofVerifyUrl = buildProofVerifyServerUrl(proofVerifyServer);
+    if (!endpoints.some((entry) => entry.url === proofVerifyUrl)) {
+      endpoints.push({
+        kind: "http",
+        url: proofVerifyUrl,
+        role: "requester_invocation",
+      });
+    }
+    if (
+      !capabilities.some((entry) => entry.name === proofVerifyServer.capability)
+    ) {
+      capabilities.push({
+        name: proofVerifyServer.capability,
+        mode: "paid",
+        price_model: "x402-exact",
+        description: "Draft paid proof.verify capability for proof receipts",
+      });
+    }
+  }
+  const storageServer = config.storageServer;
+  if (includeHostedServerEndpoints && storageServer?.enabled) {
+    const storagePutUrl = buildStoragePutServerUrl(storageServer);
+    const storageGetUrl = buildStorageGetServerUrl(storageServer);
+    if (!endpoints.some((entry) => entry.url === storagePutUrl)) {
+      endpoints.push({
+        kind: "http",
+        url: storagePutUrl,
+        role: "requester_invocation",
+      });
+    }
+    if (!endpoints.some((entry) => entry.url === storageGetUrl)) {
+      endpoints.push({
+        kind: "http",
+        url: storageGetUrl,
+        role: "requester_invocation",
+      });
+    }
+    if (!capabilities.some((entry) => entry.name === storageServer.putCapability)) {
+      capabilities.push({
+        name: storageServer.putCapability,
+        mode: "paid",
+        price_model: "x402-exact",
+        description: "Draft paid storage.put capability for immutable object writes",
+      });
+    }
+    if (!capabilities.some((entry) => entry.name === storageServer.getCapability)) {
+      capabilities.push({
+        name: storageServer.getCapability,
+        mode: "paid",
+        price_model: "x402-exact",
+        description: "Draft paid storage.get capability for immutable object reads",
+      });
+    }
+  }
   if (!endpoints.length || !capabilities.length) {
     return null;
   }
@@ -365,4 +575,46 @@ export function buildOracleServerUrl(
     : config.bindHost;
   const path = config.path.startsWith("/") ? config.path : `/${config.path}`;
   return `http://${host}:${config.port}${path}`;
+}
+
+export function buildNewsFetchServerUrl(
+  config: AgentDiscoveryNewsFetchServerConfig,
+): string {
+  const host = config.bindHost.includes(":")
+    ? `[${config.bindHost}]`
+    : config.bindHost;
+  const path = config.path.startsWith("/") ? config.path : `/${config.path}`;
+  return `http://${host}:${config.port}${path}`;
+}
+
+export function buildProofVerifyServerUrl(
+  config: AgentDiscoveryProofVerifyServerConfig,
+): string {
+  const host = config.bindHost.includes(":")
+    ? `[${config.bindHost}]`
+    : config.bindHost;
+  const path = config.path.startsWith("/") ? config.path : `/${config.path}`;
+  return `http://${host}:${config.port}${path}`;
+}
+
+export function buildStorageServerUrl(
+  config: AgentDiscoveryStorageServerConfig,
+): string {
+  const host = config.bindHost.includes(":")
+    ? `[${config.bindHost}]`
+    : config.bindHost;
+  const path = config.path.startsWith("/") ? config.path : `/${config.path}`;
+  return `http://${host}:${config.port}${path}`;
+}
+
+export function buildStoragePutServerUrl(
+  config: AgentDiscoveryStorageServerConfig,
+): string {
+  return `${buildStorageServerUrl(config)}/put`;
+}
+
+export function buildStorageGetServerUrl(
+  config: AgentDiscoveryStorageServerConfig,
+): string {
+  return `${buildStorageServerUrl(config)}/get`;
 }
