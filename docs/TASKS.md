@@ -1043,3 +1043,10 @@ building OpenFox into a TOS-native agent platform.
 - [x] Surface expiry timestamps in stored object receipts and metadata lookups.
 - [x] Prune expired discovery storage objects on read when configured.
 - [x] Add targeted tests for expiry rejection and prune behavior.
+
+## Task 78 Breakdown
+
+- [x] Add a coordinator-side `M-of-N` evidence workflow that composes `news.fetch`, `proof.verify`, and `storage.put`.
+- [x] Persist evidence workflow runs, source-level verification outcomes, and multi-recipient payment records in durable local state.
+- [x] Add `openfox evidence run|list|get` so operators can execute and inspect bounded evidence workflows directly.
+- [x] Add targeted end-to-end tests for `news.fetch -> proof.verify x N -> storage.put` with real paid provider surfaces.

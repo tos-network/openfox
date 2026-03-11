@@ -178,6 +178,22 @@ function extractReferencedSubjectHash(value: unknown): string | undefined {
   return undefined;
 }
 
+function extractReferencedBundleHash(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["zktls_bundle_sha256", "proof_bundle_sha256", "bundle_sha256"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && /^0x[0-9a-f]{64}$/i.test(candidate)) {
+      return candidate.toLowerCase();
+    }
+  }
+  const metadata = record.metadata;
+  if (metadata && typeof metadata === "object") {
+    return extractReferencedBundleHash(metadata);
+  }
+  return undefined;
+}
+
 async function verifyRequestBackend(
   request: ProofVerifyInvocationRequest,
   config: AgentDiscoveryProofVerifyServerConfig,
@@ -235,18 +251,20 @@ async function verifyRequestBackend(
       parsed = undefined;
     }
     const referencedSubjectHash = extractReferencedSubjectHash(parsed);
+    const referencedBundleHash = extractReferencedBundleHash(parsed);
     metadata.bundle = {
       canonical_url: bundle.canonicalUrl,
       status: bundle.status,
       content_type: bundle.contentType,
       sha256: bundle.bodySha256,
+      declared_bundle_sha256: referencedBundleHash || null,
       referenced_subject_sha256: referencedSubjectHash || null,
     };
     if (request.proof_bundle_sha256) {
       checks.push({
         label: "proof_bundle_sha256",
-        ok: bundle.bodySha256.toLowerCase() === request.proof_bundle_sha256.toLowerCase(),
-        actual: bundle.bodySha256,
+        ok: (referencedBundleHash || bundle.bodySha256).toLowerCase() === request.proof_bundle_sha256.toLowerCase(),
+        actual: referencedBundleHash || bundle.bodySha256,
         expected: request.proof_bundle_sha256,
       });
     }

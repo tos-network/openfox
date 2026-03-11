@@ -1622,3 +1622,40 @@ Acceptance criteria:
 - `news.fetch` returns a real capture receipt instead of a skeleton response
 - `proof.verify` returns `valid|invalid|inconclusive` based on real checks
 - expired discovery storage objects are rejected and pruned on read
+
+### Phase 34: Coordinator-side M-of-N Evidence Workflow
+
+Status: completed
+
+Goal:
+
+- turn the bounded `news.fetch`, `proof.verify`, and `storage.put` provider
+  surfaces into one operator-visible workflow that can gather evidence from
+  multiple sources, tally `M-of-N` verification results, and store one
+  immutable aggregate bundle
+
+Delivered surface:
+
+- `openfox evidence run` for one-shot workflow execution against paid provider
+  surfaces
+- `openfox evidence list|get` for durable workflow inspection
+- persistent workflow records with:
+  - source-level fetch receipts
+  - source-level verification verdicts
+  - multi-recipient payment tx hashes
+  - stored aggregate object ids and result URLs
+- bounded storage aggregation after quorum is satisfied
+
+Implementation tasks:
+
+- add a coordinator module that composes `news.fetch -> proof.verify x N -> storage.put`
+- persist workflow run records in local durable state without introducing a new
+  SQL schema family
+- add a CLI surface so operators can run and inspect evidence workflows
+- add an end-to-end test against the real paid provider servers
+
+Acceptance criteria:
+
+- one operator command can execute a bounded multi-source evidence workflow
+- the workflow stores per-source verification outcomes and payment tx hashes
+- successful quorum produces one stored aggregate bundle and durable result URL
