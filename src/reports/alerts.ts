@@ -1,5 +1,6 @@
 import { keccak256, toHex } from "tosdk";
 import { ulid } from "ulid";
+import { createOperatorApprovalRequest } from "../operator/autopilot.js";
 import {
   collectOpportunityItems,
   rankOpportunityItems,
@@ -9,6 +10,7 @@ import { getCurrentStrategyProfile } from "../opportunity/strategy.js";
 import type {
   OpenFoxConfig,
   OpenFoxDatabase,
+  OwnerOpportunityActionKind,
   OwnerOpportunityAlertRecord,
 } from "../types.js";
 
@@ -74,6 +76,63 @@ export interface OwnerOpportunityAlertGenerationResult {
   created: number;
   skipped: number;
   items: OwnerOpportunityAlertRecord[];
+}
+
+export function queueOwnerOpportunityAlertAction(params: {
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  alertId: string;
+  actionKind: OwnerOpportunityActionKind;
+  requestedBy?: string;
+  reason?: string;
+  ttlSeconds?: number;
+}): {
+  alert: OwnerOpportunityAlertRecord;
+  request: ReturnType<typeof createOperatorApprovalRequest>;
+} {
+  const alert = params.db.getOwnerOpportunityAlert(params.alertId);
+  if (!alert) {
+    throw new Error(`Owner opportunity alert not found: ${params.alertId}`);
+  }
+  if (alert.actionRequestId) {
+    const existing = params.db.getOperatorApprovalRequest(alert.actionRequestId);
+    if (existing) {
+      return { alert, request: existing };
+    }
+  }
+  const request = createOperatorApprovalRequest({
+    db: params.db,
+    config: params.config,
+    kind: "opportunity_action",
+    scope: `owner-alert:${alert.alertId}:${params.actionKind}`,
+    requestedBy: params.requestedBy?.trim() || "owner-alert",
+    reason:
+      params.reason?.trim() ||
+      `${params.actionKind} opportunity alert: ${alert.title}`,
+    payload: {
+      alertId: alert.alertId,
+      opportunityHash: alert.opportunityHash,
+      actionKind: params.actionKind,
+      title: alert.title,
+      summary: alert.summary,
+      suggestedAction: alert.suggestedAction,
+      capability: alert.capability ?? null,
+      baseUrl: alert.baseUrl ?? null,
+      payload: alert.payload,
+    },
+    ttlSeconds: params.ttlSeconds,
+  });
+  const linked =
+    params.db.linkOwnerOpportunityAlertActionRequest(
+      alert.alertId,
+      params.actionKind,
+      request.requestId,
+    ) ?? alert;
+  if (linked.status === "unread") {
+    params.db.updateOwnerOpportunityAlertStatus(alert.alertId, "read");
+  }
+  const updated = params.db.getOwnerOpportunityAlert(alert.alertId) ?? linked;
+  return { alert: updated, request };
 }
 
 export async function generateOwnerOpportunityAlerts(params: {
@@ -158,6 +217,9 @@ export async function generateOwnerOpportunityAlerts(params: {
         ...item,
       },
       status: "unread",
+      actionKind: null,
+      actionRequestId: null,
+      actionRequestedAt: null,
       createdAt: nowIso,
       updatedAt: nowIso,
       readAt: null,

@@ -604,7 +604,8 @@ export async function startOperatorApiServer(
           body.kind === "treasury_policy_change" ||
           body.kind === "spend_cap_change" ||
           body.kind === "signer_policy_change" ||
-          body.kind === "paymaster_policy_change"
+          body.kind === "paymaster_policy_change" ||
+          body.kind === "opportunity_action"
             ? body.kind
             : null;
         if (!kind || typeof body.scope !== "string" || !body.scope.trim()) {

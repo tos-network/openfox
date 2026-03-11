@@ -673,6 +673,7 @@ export type OwnerReportDeliveryStatus =
   | "delivered"
   | "failed";
 export type OwnerOpportunityAlertStatus = "unread" | "read" | "dismissed";
+export type OwnerOpportunityActionKind = "review" | "pursue" | "delegate";
 export type OwnerFinanceAttributionKind =
   | "x402_revenue"
   | "x402_cost"
@@ -812,6 +813,9 @@ export interface OwnerOpportunityAlertRecord {
   strategyReasons: string[];
   payload: Record<string, unknown>;
   status: OwnerOpportunityAlertStatus;
+  actionKind?: OwnerOpportunityActionKind | null;
+  actionRequestId?: string | null;
+  actionRequestedAt?: string | null;
   createdAt: string;
   updatedAt: string;
   readAt?: string | null;
@@ -905,7 +909,8 @@ export type OperatorApprovalKind =
   | "treasury_policy_change"
   | "spend_cap_change"
   | "signer_policy_change"
-  | "paymaster_policy_change";
+  | "paymaster_policy_change"
+  | "opportunity_action";
 
 export type OperatorApprovalStatus =
   | "pending"
@@ -2768,6 +2773,12 @@ export interface OpenFoxDatabase {
     alertId: string,
     status: OwnerOpportunityAlertStatus,
     decidedAt?: string,
+  ): OwnerOpportunityAlertRecord | undefined;
+  linkOwnerOpportunityAlertActionRequest(
+    alertId: string,
+    actionKind: OwnerOpportunityActionKind,
+    requestId: string,
+    requestedAt?: string,
   ): OwnerOpportunityAlertRecord | undefined;
 
   // Signer provider

@@ -1266,3 +1266,37 @@ Acceptance criteria:
 - repeated scout runs do not produce duplicate alert spam inside the dedupe window
 - owners can mark alerts as read or dismissed from CLI and web
 - operator dashboards can fetch owner alerts through the authenticated operator API
+
+### Phase 25: Owner Action Requests from Opportunity Alerts
+
+Status: completed
+
+Goal:
+
+- let the owner turn a bounded opportunity alert into a bounded approval
+  request without leaving the owner-facing CLI or web surface
+
+Delivered surface:
+
+- `openfox report alert-request-action <alert-id>`
+- owner-web `POST /owner/alerts/:alertId/request-action`
+- linked owner-alert action metadata:
+  - `actionKind`
+  - `actionRequestId`
+  - `actionRequestedAt`
+- approval-kind `opportunity_action`
+- read-after-queue behavior so acted-on alerts leave the unread queue
+
+Implementation tasks:
+
+- add one bounded alert-to-approval conversion path
+- reuse the existing operator approval store instead of adding a second queue
+- link queued approval requests back to the originating owner alert
+- expose the linked action request state in owner alert records
+- add tests for CLI/web queueing and alert/request linkage
+
+Acceptance criteria:
+
+- the owner can queue one bounded action from an alert through CLI or web
+- the queued action appears as a normal approval request in the existing approval inbox
+- the originating alert records which action was queued and which approval request was created

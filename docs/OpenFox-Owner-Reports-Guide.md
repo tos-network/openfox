@@ -104,6 +104,7 @@ openfox report alerts --status unread --json
 openfox report alerts-generate --json
 openfox report alert-read <alert-id>
 openfox report alert-dismiss <alert-id>
+openfox report alert-request-action <alert-id> --action review
 openfox report deliveries --channel web --json
 openfox report approvals --status pending --json
 openfox report approve <request-id>
@@ -235,6 +236,7 @@ Owner-web routes:
 - `GET /owner/alerts`
 - `POST /owner/alerts/:alertId/read`
 - `POST /owner/alerts/:alertId/dismiss`
+- `POST /owner/alerts/:alertId/request-action`
 
 Operator API route:
 
@@ -247,6 +249,26 @@ Each alert includes:
 - suggested action
 - stable opportunity hash
 - alert status: `unread`, `read`, or `dismissed`
+- optional queued action metadata:
+  - `actionKind`
+  - `actionRequestId`
+  - `actionRequestedAt`
+
+When the owner decides that an alert deserves follow-up, OpenFox can queue a
+bounded approval request from that alert:
+
+```bash
+openfox report alert-request-action <alert-id> --action review
+```
+
+Supported action kinds:
+
+- `review`
+- `pursue`
+- `delegate`
+
+This reuses the same approval inbox as the operator autopilot and owner mobile
+approval surface. It does not create a separate action queue system.
 
 When enabled, OpenFox runs the built-in heartbeat task:
 

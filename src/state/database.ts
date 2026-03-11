@@ -54,6 +54,7 @@ import type {
   OwnerReportChannel,
   OwnerReportDeliveryRecord,
   OwnerReportDeliveryStatus,
+  OwnerOpportunityActionKind,
   OwnerOpportunityAlertRecord,
   OwnerOpportunityAlertStatus,
   OwnerReportPeriodKind,
@@ -121,6 +122,7 @@ import {
   MIGRATION_V29,
   MIGRATION_V30,
   MIGRATION_V31,
+  MIGRATION_V33,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -1571,8 +1573,9 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
         title, summary, suggested_action, capability, base_url, reward_wei,
         estimated_cost_wei, margin_wei, margin_bps, strategy_score,
         strategy_matched, strategy_reasons_json, payload_json, status,
+        action_kind, action_request_id, action_requested_at,
         read_at, dismissed_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(alert_id) DO UPDATE SET
         opportunity_hash = excluded.opportunity_hash,
         kind = excluded.kind,
@@ -1592,6 +1595,9 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
         strategy_reasons_json = excluded.strategy_reasons_json,
         payload_json = excluded.payload_json,
         status = excluded.status,
+        action_kind = excluded.action_kind,
+        action_request_id = excluded.action_request_id,
+        action_requested_at = excluded.action_requested_at,
         read_at = excluded.read_at,
         dismissed_at = excluded.dismissed_at,
         updated_at = excluded.updated_at`,
@@ -1615,6 +1621,9 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
       JSON.stringify(record.strategyReasons ?? []),
       JSON.stringify(record.payload ?? {}),
       record.status,
+      record.actionKind ?? null,
+      record.actionRequestId ?? null,
+      record.actionRequestedAt ?? null,
       record.readAt ?? null,
       record.dismissedAt ?? null,
       record.createdAt,
@@ -1690,6 +1699,23 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
       nowIso,
       alertId,
     );
+    return getOwnerOpportunityAlert(alertId);
+  };
+
+  const linkOwnerOpportunityAlertActionRequest = (
+    alertId: string,
+    actionKind: OwnerOpportunityActionKind,
+    requestId: string,
+    requestedAt?: string,
+  ): OwnerOpportunityAlertRecord | undefined => {
+    const existing = getOwnerOpportunityAlert(alertId);
+    if (!existing) return undefined;
+    const nowIso = requestedAt || new Date().toISOString();
+    db.prepare(
+      `UPDATE owner_opportunity_alerts
+       SET action_kind = ?, action_request_id = ?, action_requested_at = ?, updated_at = ?
+       WHERE alert_id = ?`,
+    ).run(actionKind, requestId, nowIso, nowIso, alertId);
     return getOwnerOpportunityAlert(alertId);
   };
 
@@ -2926,6 +2952,7 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     getLatestOwnerOpportunityAlertByOpportunityHash,
     listOwnerOpportunityAlerts,
     updateOwnerOpportunityAlertStatus,
+    linkOwnerOpportunityAlertActionRequest,
     upsertSignerQuote,
     getSignerQuote,
     listSignerQuotes,
@@ -3242,6 +3269,29 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 31,
       apply: () => db.exec(MIGRATION_V31),
+    },
+    {
+      version: 32,
+      apply: () => {
+        const columns = (
+          db.prepare("PRAGMA table_info(owner_opportunity_alerts)").all() as Array<{
+            name: string;
+          }>
+        ).map((row) => row.name);
+        if (!columns.includes("action_kind")) {
+          db.exec("ALTER TABLE owner_opportunity_alerts ADD COLUMN action_kind TEXT");
+        }
+        if (!columns.includes("action_request_id")) {
+          db.exec("ALTER TABLE owner_opportunity_alerts ADD COLUMN action_request_id TEXT");
+        }
+        if (!columns.includes("action_requested_at")) {
+          db.exec("ALTER TABLE owner_opportunity_alerts ADD COLUMN action_requested_at TEXT");
+        }
+      },
+    },
+    {
+      version: 33,
+      apply: () => db.exec(MIGRATION_V33),
     },
   ];
 
@@ -4622,6 +4672,9 @@ function deserializeOwnerOpportunityAlertRecord(
       : [],
     payload: row.payload_json ? JSON.parse(row.payload_json) : {},
     status: row.status,
+    actionKind: row.action_kind ?? null,
+    actionRequestId: row.action_request_id ?? null,
+    actionRequestedAt: row.action_requested_at ?? null,
     readAt: row.read_at ?? null,
     dismissedAt: row.dismissed_at ?? null,
     createdAt: row.created_at,

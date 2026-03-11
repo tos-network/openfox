@@ -181,6 +181,8 @@ It supports:
   daily and weekly finance, opportunity, and recommendation reports
 - `openfox report alerts|alerts-generate|alert-read|alert-dismiss` for a
   bounded owner-facing opportunity alert queue and action surface
+- `openfox report alert-request-action` to turn one owner alert into one
+  bounded approval request
 - a built-in owner report web surface for mobile-friendly review of the latest
   daily and weekly reports, owner opportunity alerts, and persisted web/email
   delivery logs
@@ -755,6 +757,7 @@ openfox report alerts --status unread --json
 openfox report alerts-generate --json
 openfox report alert-read <alert-id>
 openfox report alert-dismiss <alert-id>
+openfox report alert-request-action <alert-id> --action review
 openfox report approvals --status pending --json
 openfox report approve <request-id>
 openfox report reject <request-id>

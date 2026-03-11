@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 31;
+export const SCHEMA_VERSION = 33;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -171,7 +171,7 @@ export const CREATE_TABLES = `
 
   CREATE TABLE IF NOT EXISTS operator_approval_requests (
     request_id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('treasury_policy_change','spend_cap_change','signer_policy_change','paymaster_policy_change')),
+    kind TEXT NOT NULL CHECK(kind IN ('treasury_policy_change','spend_cap_change','signer_policy_change','paymaster_policy_change','opportunity_action')),
     scope TEXT NOT NULL,
     requested_by TEXT NOT NULL,
     reason TEXT,
@@ -467,6 +467,9 @@ export const CREATE_TABLES = `
     strategy_reasons_json TEXT NOT NULL DEFAULT '[]',
     payload_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL CHECK(status IN ('unread','read','dismissed')),
+    action_kind TEXT,
+    action_request_id TEXT,
+    action_requested_at TEXT,
     read_at TEXT,
     dismissed_at TEXT,
     created_at TEXT NOT NULL,
@@ -1723,6 +1726,9 @@ export const MIGRATION_V31 = `
     strategy_reasons_json TEXT NOT NULL DEFAULT '[]',
     payload_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL CHECK(status IN ('unread','read','dismissed')),
+    action_kind TEXT,
+    action_request_id TEXT,
+    action_requested_at TEXT,
     read_at TEXT,
     dismissed_at TEXT,
     created_at TEXT NOT NULL,
@@ -1734,6 +1740,51 @@ export const MIGRATION_V31 = `
 
   CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_hash
     ON owner_opportunity_alerts(opportunity_hash, created_at DESC);
+`;
+
+export const MIGRATION_V32 = `
+  ALTER TABLE owner_opportunity_alerts ADD COLUMN action_kind TEXT;
+  ALTER TABLE owner_opportunity_alerts ADD COLUMN action_request_id TEXT;
+  ALTER TABLE owner_opportunity_alerts ADD COLUMN action_requested_at TEXT;
+`;
+
+export const MIGRATION_V33 = `
+  ALTER TABLE operator_approval_requests RENAME TO operator_approval_requests_legacy;
+
+  CREATE TABLE operator_approval_requests (
+    request_id TEXT PRIMARY KEY,
+    kind TEXT NOT NULL CHECK(kind IN ('treasury_policy_change','spend_cap_change','signer_policy_change','paymaster_policy_change','opportunity_action')),
+    scope TEXT NOT NULL,
+    requested_by TEXT NOT NULL,
+    reason TEXT,
+    payload_json TEXT,
+    status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','expired')),
+    expires_at TEXT,
+    created_at TEXT NOT NULL,
+    decided_at TEXT,
+    decided_by TEXT,
+    decision_note TEXT
+  );
+
+  INSERT INTO operator_approval_requests (
+    request_id, kind, scope, requested_by, reason, payload_json, status,
+    expires_at, created_at, decided_at, decided_by, decision_note
+  )
+  SELECT
+    request_id, kind, scope, requested_by, reason, payload_json, status,
+    expires_at, created_at, decided_at, decided_by, decision_note
+  FROM operator_approval_requests_legacy;
+
+  DROP TABLE operator_approval_requests_legacy;
+
+  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_created
+    ON operator_approval_requests(created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_status
+    ON operator_approval_requests(status, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_kind
+    ON operator_approval_requests(kind, created_at DESC);
 `;
 
 export const MIGRATION_V3 = `

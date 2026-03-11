@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_OWNER_REPORTS_CONFIG, type OpportunityItem } from "../types.js";
 import { upsertStrategyProfile } from "../opportunity/strategy.js";
-import { generateOwnerOpportunityAlerts } from "../reports/alerts.js";
+import {
+  generateOwnerOpportunityAlerts,
+  queueOwnerOpportunityAlertAction,
+} from "../reports/alerts.js";
 import { createTestConfig, createTestDb } from "./mocks.js";
 
 describe("owner opportunity alerts", () => {
@@ -81,6 +84,68 @@ describe("owner opportunity alerts", () => {
       expect(second.created).toBe(0);
       expect(second.skipped).toBe(1);
       expect(db.listOwnerOpportunityAlerts(10).length).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("queues a bounded approval request from an owner opportunity alert", async () => {
+    const db = createTestDb();
+    try {
+      const config = createTestConfig({
+        ownerReports: {
+          ...DEFAULT_OWNER_REPORTS_CONFIG,
+          enabled: true,
+          alerts: {
+            ...DEFAULT_OWNER_REPORTS_CONFIG.alerts,
+            enabled: true,
+          },
+        },
+      });
+
+      db.upsertOwnerOpportunityAlert({
+        alertId: "alert-1",
+        opportunityHash:
+          "0x1111111111111111111111111111111111111111111111111111111111111111",
+        kind: "bounty",
+        providerClass: "task_market",
+        trustTier: "org_trusted",
+        title: "Translate a bounded task",
+        summary: "reward=100 margin=90 score=1500 trust=org_trusted",
+        suggestedAction: "Review and submit a bounded response.",
+        capability: "task.submit",
+        baseUrl: "https://host.example.com",
+        rewardWei: "100",
+        estimatedCostWei: "10",
+        marginWei: "90",
+        marginBps: 9000,
+        strategyScore: 1500,
+        strategyMatched: true,
+        strategyReasons: [],
+        payload: { bountyId: "bounty-1" },
+        status: "unread",
+        actionKind: null,
+        actionRequestId: null,
+        actionRequestedAt: null,
+        createdAt: "2026-03-11T18:00:00.000Z",
+        updatedAt: "2026-03-11T18:00:00.000Z",
+        readAt: null,
+        dismissedAt: null,
+      });
+
+      const result = queueOwnerOpportunityAlertAction({
+        config,
+        db,
+        alertId: "alert-1",
+        actionKind: "review",
+        requestedBy: "test",
+      });
+
+      expect(result.request.kind).toBe("opportunity_action");
+      expect(result.request.scope).toBe("owner-alert:alert-1:review");
+      expect(result.alert.actionRequestId).toBe(result.request.requestId);
+      expect(result.alert.actionKind).toBe("review");
+      expect(result.alert.status).toBe("read");
     } finally {
       db.close();
     }

@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 import { createLogger } from "../observability/logger.js";
 import { decideOperatorApprovalRequest } from "../operator/autopilot.js";
+import { queueOwnerOpportunityAlertAction } from "./alerts.js";
 import { renderOwnerReportHtml } from "./render.js";
 
 const logger = createLogger("reports.server");
@@ -161,6 +162,7 @@ function renderOwnerAlertsHtml(params: {
     .map((alert) => {
       const readAction = `${params.pathPrefix}/alerts/${encodeURIComponent(alert.alertId)}/read${tokenQuery}`;
       const dismissAction = `${params.pathPrefix}/alerts/${encodeURIComponent(alert.alertId)}/dismiss${tokenQuery}`;
+      const requestAction = `${params.pathPrefix}/alerts/${encodeURIComponent(alert.alertId)}/request-action${tokenQuery}`;
       const metadata = [
         `<p><strong>Status:</strong> ${alert.status}</p>`,
         `<p><strong>Kind:</strong> ${alert.kind}</p>`,
@@ -172,15 +174,22 @@ function renderOwnerAlertsHtml(params: {
           : `<p><strong>Strategy score:</strong> ${alert.strategyScore}</p>`,
         alert.capability ? `<p><strong>Capability:</strong> ${alert.capability}</p>` : "",
         alert.baseUrl ? `<p><strong>Base URL:</strong> ${alert.baseUrl}</p>` : "",
+        alert.actionRequestId
+          ? `<p><strong>Queued action:</strong> ${alert.actionKind || "review"} via approval ${alert.actionRequestId}</p>`
+          : "",
       ].join("");
       const actions =
-        alert.status === "unread"
+        !alert.actionRequestId
           ? `
         <form method="post" action="${readAction}" style="display:inline-block;margin-right:8px;">
           <button type="submit">Mark read</button>
         </form>
         <form method="post" action="${dismissAction}" style="display:inline-block;">
           <button type="submit">Dismiss</button>
+        </form>
+        <form method="post" action="${requestAction}" style="display:inline-block;margin-left:8px;">
+          <input type="hidden" name="action" value="review" />
+          <button type="submit">Queue review</button>
         </form>`
           : `<p><strong>Decision:</strong> ${alert.status}</p>`;
       return `
@@ -287,25 +296,57 @@ export async function startOwnerReportServer(params: {
 
         if (
           req.method === "POST" &&
-          /^\/?.*\/alerts\/[^/]+\/(read|dismiss)$/.test(url.pathname)
+          /^\/?.*\/alerts\/[^/]+\/(read|dismiss|request-action)$/.test(url.pathname)
         ) {
-          const match = url.pathname.match(/\/alerts\/([^/]+)\/(read|dismiss)$/);
+          const match = url.pathname.match(/\/alerts\/([^/]+)\/(read|dismiss|request-action)$/);
           const alertId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
           const action = match?.[2];
           if (!alertId || !action) {
             json(res, 404, { error: "alert action not found" });
             return;
           }
-          const record = params.db.updateOwnerOpportunityAlertStatus(
-            alertId,
-            action === "read" ? "read" : "dismissed",
-          );
+          let record: OwnerOpportunityAlertRecord | undefined;
+          let payload: OwnerOpportunityAlertRecord | {
+            alert: OwnerOpportunityAlertRecord;
+            request: OperatorApprovalRequestRecord;
+          } | null = null;
+          if (action === "request-action") {
+            const body = await readBody(req);
+            const alert = params.db.getOwnerOpportunityAlert(alertId);
+            if (!alert) {
+              json(res, 404, { error: "alert not found" });
+              return;
+            }
+            const queued = queueOwnerOpportunityAlertAction({
+              config: params.config,
+              db: params.db,
+              alertId: alert.alertId,
+              actionKind:
+                body.action === "review" ||
+                body.action === "pursue" ||
+                body.action === "delegate"
+                  ? body.action
+                  : "review",
+              requestedBy: "owner-web",
+              reason: body.reason,
+            });
+            payload = queued;
+            record = queued.alert;
+          } else {
+            record = params.db.updateOwnerOpportunityAlertStatus(
+              alertId,
+              action === "read" ? "read" : "dismissed",
+            );
+          }
           if (!record) {
             json(res, 404, { error: "alert not found" });
             return;
           }
+          if (action !== "request-action") {
+            payload = record;
+          }
           if (url.searchParams.get("format") === "json") {
-            json(res, 200, record);
+            json(res, 200, payload);
             return;
           }
           redirect(res, `${pathPrefix}/alerts${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}`);

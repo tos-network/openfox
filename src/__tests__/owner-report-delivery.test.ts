@@ -282,6 +282,27 @@ describe("owner report delivery", () => {
       };
       expect(readPayload.alertId).toBe(alert.alertId);
       expect(readPayload.status).toBe("read");
+
+      const queueAction = await fetch(
+        `${server!.url}/alerts/${encodeURIComponent(alert.alertId)}/request-action?format=json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer owner-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ action: "review" }),
+        },
+      );
+      expect(queueAction.status).toBe(200);
+      const queuedPayload = (await queueAction.json()) as {
+        alert: { alertId: string; actionRequestId?: string | null; actionKind?: string | null };
+        request: { requestId: string; kind: string };
+      };
+      expect(queuedPayload.alert.alertId).toBe(alert.alertId);
+      expect(queuedPayload.request.kind).toBe("opportunity_action");
+      expect(queuedPayload.alert.actionRequestId).toBe(queuedPayload.request.requestId);
+      expect(queuedPayload.alert.actionKind).toBe("review");
     } finally {
       await server?.close?.();
       db.close();

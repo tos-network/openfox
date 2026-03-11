@@ -233,6 +233,7 @@ import {
 } from "./reports/generation.js";
 import {
   generateOwnerOpportunityAlerts,
+  queueOwnerOpportunityAlertAction,
 } from "./reports/alerts.js";
 import {
   renderOwnerReportText,
@@ -1510,7 +1511,8 @@ Usage:
           kind === "treasury_policy_change" ||
           kind === "spend_cap_change" ||
           kind === "signer_policy_change" ||
-          kind === "paymaster_policy_change"
+          kind === "paymaster_policy_change" ||
+          kind === "opportunity_action"
         )
       ) {
         logger.error("Usage: openfox autopilot request --kind <kind> --scope <scope> [--reason <text>] [--ttl-seconds <n>] [--json]");
@@ -1952,6 +1954,7 @@ Usage:
   openfox report alerts-generate [--json]
   openfox report alert-read <alert-id> [--json]
   openfox report alert-dismiss <alert-id> [--json]
+  openfox report alert-request-action <alert-id> [--action <review|pursue|delegate>] [--json]
   openfox report approvals [--status <pending|approved|rejected|expired>] [--limit <n>] [--json]
   openfox report approve <request-id> [--note <text>] [--json]
   openfox report reject <request-id> [--note <text>] [--json]
@@ -2130,6 +2133,36 @@ Usage:
       }
       logger.info(
         `${command === "alert-read" ? "Marked read" : "Dismissed"} ${record.alertId}`,
+      );
+      return;
+    }
+
+    if (command === "alert-request-action") {
+      const alertId = args[1]?.trim();
+      if (!alertId) {
+        throw new Error(
+          "Usage: openfox report alert-request-action <alert-id> [--action <review|pursue|delegate>] [--json]",
+        );
+      }
+      const actionRaw = readOption(args, "--action");
+      const action =
+        actionRaw === "review" || actionRaw === "pursue" || actionRaw === "delegate"
+          ? actionRaw
+          : "review";
+      const result = queueOwnerOpportunityAlertAction({
+        config,
+        db,
+        alertId,
+        actionKind: action,
+        requestedBy: "owner-cli",
+        reason: readOption(args, "--reason"),
+      });
+      if (asJson) {
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      logger.info(
+        `Queued ${action} action for ${result.alert.alertId} as approval request ${result.request.requestId}`,
       );
       return;
     }
