@@ -56,6 +56,7 @@ import type {
   OwnerReportDeliveryStatus,
   OwnerOpportunityActionKind,
   OwnerOpportunityActionRecord,
+  OwnerOpportunityActionResolutionKind,
   OwnerOpportunityActionStatus,
   OwnerOpportunityAlertRecord,
   OwnerOpportunityAlertStatus,
@@ -126,6 +127,7 @@ import {
   MIGRATION_V31,
   MIGRATION_V33,
   MIGRATION_V34,
+  MIGRATION_V35,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -1729,9 +1731,10 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
       `INSERT INTO owner_opportunity_actions (
         action_id, alert_id, request_id, kind, title, summary, capability,
         base_url, requested_by, approved_by, approved_at, decision_note,
-        payload_json, status, queued_at, created_at, updated_at,
+        payload_json, status, resolution_kind, resolution_ref, resolution_note,
+        queued_at, created_at, updated_at,
         completed_at, cancelled_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(action_id) DO UPDATE SET
         alert_id = excluded.alert_id,
         request_id = excluded.request_id,
@@ -1746,6 +1749,9 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
         decision_note = excluded.decision_note,
         payload_json = excluded.payload_json,
         status = excluded.status,
+        resolution_kind = excluded.resolution_kind,
+        resolution_ref = excluded.resolution_ref,
+        resolution_note = excluded.resolution_note,
         queued_at = excluded.queued_at,
         updated_at = excluded.updated_at,
         completed_at = excluded.completed_at,
@@ -1765,6 +1771,9 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
       record.decisionNote ?? null,
       JSON.stringify(record.payload ?? {}),
       record.status,
+      record.resolutionKind ?? null,
+      record.resolutionRef ?? null,
+      record.resolutionNote ?? null,
       record.queuedAt,
       record.createdAt,
       record.updatedAt,
@@ -1821,16 +1830,25 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     actionId: string,
     status: OwnerOpportunityActionStatus,
     decidedAt?: string,
+    resolution?: {
+      kind?: OwnerOpportunityActionResolutionKind | null;
+      ref?: string | null;
+      note?: string | null;
+    },
   ): OwnerOpportunityActionRecord | undefined => {
     const existing = getOwnerOpportunityAction(actionId);
     if (!existing) return undefined;
     const nowIso = decidedAt || new Date().toISOString();
     db.prepare(
       `UPDATE owner_opportunity_actions
-       SET status = ?, completed_at = ?, cancelled_at = ?, updated_at = ?
+       SET status = ?, resolution_kind = ?, resolution_ref = ?, resolution_note = ?,
+           completed_at = ?, cancelled_at = ?, updated_at = ?
        WHERE action_id = ?`,
     ).run(
       status,
+      resolution?.kind ?? existing.resolutionKind ?? null,
+      resolution?.ref ?? existing.resolutionRef ?? null,
+      resolution?.note ?? existing.resolutionNote ?? null,
       status === "completed" ? nowIso : existing.completedAt ?? null,
       status === "cancelled" ? nowIso : existing.cancelledAt ?? null,
       nowIso,
@@ -3422,6 +3440,27 @@ function applyMigrations(db: DatabaseType): void {
       version: 34,
       apply: () => db.exec(MIGRATION_V34),
     },
+    {
+      version: 35,
+      apply: () => {
+        const columns = (
+          db.prepare("PRAGMA table_info(owner_opportunity_actions)").all() as Array<{
+            name: string;
+          }>
+        ).map((row) => row.name);
+        if (!columns.includes("resolution_kind")) {
+          db.exec(
+            "ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_kind TEXT CHECK(resolution_kind IN ('note','bounty','campaign','provider_call','artifact','report','other'))",
+          );
+        }
+        if (!columns.includes("resolution_ref")) {
+          db.exec("ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_ref TEXT");
+        }
+        if (!columns.includes("resolution_note")) {
+          db.exec("ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_note TEXT");
+        }
+      },
+    },
   ];
 
   for (const m of migrations) {
@@ -4829,6 +4868,9 @@ function deserializeOwnerOpportunityActionRecord(
     decisionNote: row.decision_note ?? null,
     payload: row.payload_json ? JSON.parse(row.payload_json) : {},
     status: row.status,
+    resolutionKind: row.resolution_kind ?? null,
+    resolutionRef: row.resolution_ref ?? null,
+    resolutionNote: row.resolution_note ?? null,
     queuedAt: row.queued_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

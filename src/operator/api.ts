@@ -443,6 +443,45 @@ export async function startOperatorApiServer(
         return;
       }
 
+      if (
+        req.method === "POST" &&
+        /^\/?.*\/owner\/actions\/[^/]+\/(complete|cancel)$/.test(url.pathname)
+      ) {
+        const match = url.pathname.match(/\/owner\/actions\/([^/]+)\/(complete|cancel)$/);
+        const actionId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
+        const decision = match?.[2];
+        if (!actionId || !decision) {
+          json(res, 404, { error: "owner action route not found" });
+          return;
+        }
+        const body = await readJsonBody(req);
+        const record = params.db.updateOwnerOpportunityActionStatus(
+          actionId,
+          decision === "complete" ? "completed" : "cancelled",
+          undefined,
+          {
+            kind:
+              body.resultKind === "note" ||
+              body.resultKind === "bounty" ||
+              body.resultKind === "campaign" ||
+              body.resultKind === "provider_call" ||
+              body.resultKind === "artifact" ||
+              body.resultKind === "report" ||
+              body.resultKind === "other"
+                ? body.resultKind
+                : undefined,
+            ref: typeof body.resultRef === "string" ? body.resultRef : undefined,
+            note: typeof body.note === "string" ? body.note : undefined,
+          },
+        );
+        if (!record) {
+          json(res, 404, { error: "owner action not found" });
+          return;
+        }
+        json(res, 200, record);
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === paymentsPath) {
         json(
           res,

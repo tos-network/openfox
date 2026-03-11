@@ -449,9 +449,25 @@ export async function startOwnerReportServer(params: {
             json(res, 404, { error: "action route not found" });
             return;
           }
+          const body = await readBody(req);
           const record = params.db.updateOwnerOpportunityActionStatus(
             actionId,
             action === "complete" ? "completed" : "cancelled",
+            undefined,
+            {
+              kind:
+                body.resultKind === "note" ||
+                body.resultKind === "bounty" ||
+                body.resultKind === "campaign" ||
+                body.resultKind === "provider_call" ||
+                body.resultKind === "artifact" ||
+                body.resultKind === "report" ||
+                body.resultKind === "other"
+                  ? body.resultKind
+                  : undefined,
+              ref: typeof body.resultRef === "string" ? body.resultRef : undefined,
+              note: typeof body.note === "string" ? body.note : undefined,
+            },
           );
           if (!record) {
             json(res, 404, { error: "action not found" });

@@ -272,7 +272,13 @@ describe("owner report delivery", () => {
           method: "POST",
           headers: {
             Authorization: "Bearer owner-secret",
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            resultKind: "report",
+            resultRef: "report://owner/daily/latest",
+            note: "captured in owner daily report",
+          }),
         },
       );
       expect(markRead.status).toBe(200);
@@ -390,16 +396,26 @@ describe("owner report delivery", () => {
           method: "POST",
           headers: {
             Authorization: "Bearer owner-secret",
+            "Content-Type": "application/json",
           },
+          body: JSON.stringify({
+            resultKind: "report",
+            resultRef: "report://owner/daily/latest",
+            note: "captured in owner daily report",
+          }),
         },
       );
       expect(complete.status).toBe(200);
       const completePayload = (await complete.json()) as {
         actionId: string;
         status: string;
+        resolutionKind: string | null;
+        resolutionRef: string | null;
       };
       expect(completePayload.actionId).toBe(approvePayload.action.actionId);
       expect(completePayload.status).toBe("completed");
+      expect(completePayload.resolutionKind).toBe("report");
+      expect(completePayload.resolutionRef).toBe("report://owner/daily/latest");
     } finally {
       await server?.close?.();
       db.close();

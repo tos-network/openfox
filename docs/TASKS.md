@@ -323,6 +323,11 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Let owners turn one bounded opportunity alert into one bounded
     approval request without introducing a second approval system.
+- [x] Task 69: Add an owner opportunity action journal
+  - Status: Complete
+  - Goal: Turn queued owner actions into auditable completed/cancelled action
+    records with bounded resolution metadata instead of leaving them as
+    one-bit queue items.
 - [x] Task 69: Materialize approved owner opportunity actions into a bounded queue
   - Status: Complete
   - Goal: Turn approved `opportunity_action` requests into persistent,
@@ -479,6 +484,17 @@ building OpenFox into a TOS-native agent platform.
 - [x] Link queued approval requests back to the originating alert record.
 - [x] Mark unread alerts as read once an action request is queued.
 - [x] Add targeted tests for queueing one action request from CLI/web-facing flows.
+
+## Task 69 Breakdown
+
+- [x] Add bounded resolution metadata to owner opportunity action records.
+- [x] Let `openfox report action-complete` and `action-cancel` record result
+  kind, result reference, and note metadata.
+- [x] Add owner-web completion/cancellation payloads for result metadata.
+- [x] Add operator API owner-action completion/cancellation routes.
+- [x] Surface owner-action resolution references through status snapshots.
+- [x] Add targeted tests for CLI/web/operator completion flows and recorded
+  resolution metadata.
 
 ## Task 69 Breakdown
 

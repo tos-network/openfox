@@ -1959,8 +1959,8 @@ Usage:
   openfox report alert-dismiss <alert-id> [--json]
   openfox report alert-request-action <alert-id> [--action <review|pursue|delegate>] [--json]
   openfox report actions [--status <queued|completed|cancelled>] [--kind <review|pursue|delegate>] [--limit <n>] [--json]
-  openfox report action-complete <action-id> [--json]
-  openfox report action-cancel <action-id> [--json]
+  openfox report action-complete <action-id> [--result-kind <note|bounty|campaign|provider_call|artifact|report|other>] [--result-ref <ref>] [--note <text>] [--json]
+  openfox report action-cancel <action-id> [--result-kind <note|bounty|campaign|provider_call|artifact|report|other>] [--result-ref <ref>] [--note <text>] [--json]
   openfox report approvals [--status <pending|approved|rejected|expired>] [--limit <n>] [--json]
   openfox report approve <request-id> [--note <text>] [--json]
   openfox report reject <request-id> [--note <text>] [--json]
@@ -2212,9 +2212,25 @@ Usage:
           `Usage: openfox report ${command} <action-id> [--json]`,
         );
       }
+      const resultKindRaw = readOption(args, "--result-kind");
       const record = db.updateOwnerOpportunityActionStatus(
         actionId,
         command === "action-complete" ? "completed" : "cancelled",
+        undefined,
+        {
+          kind:
+            resultKindRaw === "note" ||
+            resultKindRaw === "bounty" ||
+            resultKindRaw === "campaign" ||
+            resultKindRaw === "provider_call" ||
+            resultKindRaw === "artifact" ||
+            resultKindRaw === "report" ||
+            resultKindRaw === "other"
+              ? resultKindRaw
+              : undefined,
+          ref: readOption(args, "--result-ref"),
+          note: readOption(args, "--note"),
+        },
       );
       if (!record) {
         throw new Error(`Owner opportunity action not found: ${actionId}`);

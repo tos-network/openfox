@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 34;
+export const SCHEMA_VERSION = 35;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -497,6 +497,9 @@ export const CREATE_TABLES = `
     decision_note TEXT,
     payload_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL CHECK(status IN ('queued','completed','cancelled')),
+    resolution_kind TEXT CHECK(resolution_kind IN ('note','bounty','campaign','provider_call','artifact','report','other')),
+    resolution_ref TEXT,
+    resolution_note TEXT,
     queued_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -1834,6 +1837,9 @@ export const MIGRATION_V34 = `
     decision_note TEXT,
     payload_json TEXT NOT NULL DEFAULT '{}',
     status TEXT NOT NULL CHECK(status IN ('queued','completed','cancelled')),
+    resolution_kind TEXT CHECK(resolution_kind IN ('note','bounty','campaign','provider_call','artifact','report','other')),
+    resolution_ref TEXT,
+    resolution_note TEXT,
     queued_at TEXT NOT NULL,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
@@ -1849,6 +1855,13 @@ export const MIGRATION_V34 = `
 
   CREATE INDEX IF NOT EXISTS idx_owner_opportunity_actions_status
     ON owner_opportunity_actions(status, created_at DESC);
+`;
+
+export const MIGRATION_V35 = `
+  ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_kind TEXT
+    CHECK(resolution_kind IN ('note','bounty','campaign','provider_call','artifact','report','other'));
+  ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_ref TEXT;
+  ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_note TEXT;
 `;
 
 export const MIGRATION_V3 = `

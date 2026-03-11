@@ -224,6 +224,18 @@ describe("owner opportunity alerts", () => {
       expect(db.getOwnerOpportunityActionByRequestId(approved.requestId)?.actionId).toBe(
         action.actionId,
       );
+      const completed = db.updateOwnerOpportunityActionStatus(
+        action.actionId,
+        "completed",
+        undefined,
+        {
+          kind: "provider_call",
+          ref: "provider://oracle-1/jobs/123",
+          note: "completed through provider handoff",
+        },
+      );
+      expect(completed?.resolutionKind).toBe("provider_call");
+      expect(completed?.resolutionRef).toBe("provider://oracle-1/jobs/123");
     } finally {
       db.close();
     }

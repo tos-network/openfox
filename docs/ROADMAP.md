@@ -1346,3 +1346,43 @@ Acceptance criteria:
 - the owner can complete or cancel a queued action from CLI and web
 - operator dashboards can fetch queued and historical owner actions through the
   authenticated operator API
+
+### Phase 27: Owner Opportunity Action Journal
+
+Status: completed
+
+Goal:
+
+- turn queued owner actions into bounded action-journal entries that record
+  what result or follow-up actually happened after the action was completed or
+  cancelled
+
+Delivered surface:
+
+- resolution metadata on owner opportunity action records:
+  - `resolutionKind`
+  - `resolutionRef`
+  - `resolutionNote`
+- `openfox report action-complete <action-id> --result-kind ... --result-ref ... --note ...`
+- `openfox report action-cancel <action-id> --result-kind ... --result-ref ... --note ...`
+- owner web completion and cancellation payloads for result metadata
+- operator API owner-action completion and cancellation routes
+- owner-action resolution visibility in runtime status snapshots
+
+Implementation tasks:
+
+- extend owner-action records with bounded result metadata
+- allow CLI completion and cancellation to carry result kind/reference/note
+- allow owner-web completion and cancellation to carry the same result metadata
+- add operator API mutations for action completion/cancellation so dashboards
+  and control planes can close the loop
+- surface action-resolution references through status and diagnostics
+- add targeted tests for persistence and owner/operator completion flows
+
+Acceptance criteria:
+
+- completed or cancelled owner actions can record one bounded result kind,
+  reference, and note
+- owner web and CLI completion flows preserve the same result metadata
+- operator dashboards can read and mutate owner action records without bypassing
+  the owner-action journal

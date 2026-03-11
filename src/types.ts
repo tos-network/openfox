@@ -827,6 +827,15 @@ export type OwnerOpportunityActionStatus =
   | "completed"
   | "cancelled";
 
+export type OwnerOpportunityActionResolutionKind =
+  | "note"
+  | "bounty"
+  | "campaign"
+  | "provider_call"
+  | "artifact"
+  | "report"
+  | "other";
+
 export interface OwnerOpportunityActionRecord {
   actionId: string;
   alertId: string;
@@ -842,6 +851,9 @@ export interface OwnerOpportunityActionRecord {
   decisionNote?: string | null;
   payload: Record<string, unknown>;
   status: OwnerOpportunityActionStatus;
+  resolutionKind?: OwnerOpportunityActionResolutionKind | null;
+  resolutionRef?: string | null;
+  resolutionNote?: string | null;
   queuedAt: string;
   createdAt: string;
   updatedAt: string;
@@ -2825,6 +2837,11 @@ export interface OpenFoxDatabase {
     actionId: string,
     status: OwnerOpportunityActionStatus,
     decidedAt?: string,
+    resolution?: {
+      kind?: OwnerOpportunityActionResolutionKind | null;
+      ref?: string | null;
+      note?: string | null;
+    },
   ): OwnerOpportunityActionRecord | undefined;
 
   // Signer provider

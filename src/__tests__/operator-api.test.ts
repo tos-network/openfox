@@ -989,6 +989,28 @@ describe("operator api", () => {
     };
     expect(ownerActionsJson.items[0]?.actionId).toBe(approveJson.action.actionId);
 
+    const complete = await fetch(
+      `${server.url}/owner/actions/${encodeURIComponent(approveJson.action.actionId)}/complete`,
+      {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          resultKind: "bounty",
+          resultRef: "bounty://host/queued-1",
+          note: "queued into downstream bounty flow",
+        }),
+      },
+    );
+    expect(complete.status).toBe(200);
+    const completeJson = (await complete.json()) as {
+      status: string;
+      resolutionKind: string;
+      resolutionRef: string;
+    };
+    expect(completeJson.status).toBe("completed");
+    expect(completeJson.resolutionKind).toBe("bounty");
+    expect(completeJson.resolutionRef).toBe("bounty://host/queued-1");
+
     const run = await fetch(`${server.url}/autopilot/run`, {
       method: "POST",
       headers,

@@ -346,6 +346,8 @@ export function buildRuntimeStatusSnapshot(
             status: item.status,
             kind: item.kind,
             title: item.title,
+            resolutionKind: item.resolutionKind,
+            resolutionRef: item.resolutionRef,
             queuedAt: item.queuedAt,
           })),
           queuedActions: queuedOwnerOpportunityActions,

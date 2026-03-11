@@ -184,7 +184,7 @@ It supports:
 - `openfox report alert-request-action` to turn one owner alert into one
   bounded approval request
 - `openfox report actions|action-complete|action-cancel` for the owner-facing
-  post-approval action queue
+  post-approval action queue and action journal
 - a built-in owner report web surface for mobile-friendly review of the latest
   daily and weekly reports, owner opportunity alerts, and persisted web/email
   delivery logs

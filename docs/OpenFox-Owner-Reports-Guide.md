@@ -106,8 +106,8 @@ openfox report alert-read <alert-id>
 openfox report alert-dismiss <alert-id>
 openfox report alert-request-action <alert-id> --action review
 openfox report actions --status queued --json
-openfox report action-complete <action-id>
-openfox report action-cancel <action-id>
+openfox report action-complete <action-id> --result-kind report --result-ref report://owner/daily/latest --note "captured in report"
+openfox report action-cancel <action-id> --note "not worth pursuing right now"
 openfox report deliveries --channel web --json
 openfox report approvals --status pending --json
 openfox report approve <request-id>
@@ -275,6 +275,19 @@ This keeps the owner-facing flow bounded:
 - approved requests materialize into queued owner actions
 - queued actions can then be completed or cancelled without rereading the raw
   approval inbox
+
+When an action is completed or cancelled, OpenFox can also persist one bounded
+resolution payload:
+
+- `resultKind`
+- `resultRef`
+- `note`
+
+Examples:
+
+- `resultKind=report`, `resultRef=report://owner/daily/latest`
+- `resultKind=bounty`, `resultRef=bounty://host/queued-1`
+- `resultKind=provider_call`, `resultRef=https://provider.example/jobs/123`
 
 Operator API route:
 
