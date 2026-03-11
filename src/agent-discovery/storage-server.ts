@@ -60,6 +60,8 @@ interface StoredStorageObject {
   sizeBytes: number;
   metadata?: Record<string, unknown>;
   storedAt: string;
+  ttlSeconds: number;
+  expiresAt: string;
   filePath: string;
 }
 
@@ -133,6 +135,11 @@ function storeObject(db: OpenFoxDatabase, object: StoredStorageObject): void {
   db.setKV(storageMetaKey(object.objectId), JSON.stringify(object));
 }
 
+function deleteStoredObject(db: OpenFoxDatabase, object: StoredStorageObject): void {
+  db.deleteKV(storageMetaKey(object.objectId));
+  fs.rmSync(object.filePath, { force: true });
+}
+
 function detectContentType(request: StoragePutInvocationRequest): string {
   if (request.content_type?.trim()) return request.content_type.trim();
   if (request.content_text !== undefined) return "text/plain; charset=utf-8";
@@ -171,6 +178,14 @@ function validatePutRequest(
   }
   validateRequestExpiry(request.request_expires_at);
   normalizeNonce(request.request_nonce);
+  if (
+    request.ttl_seconds !== undefined &&
+    (!Number.isInteger(request.ttl_seconds) ||
+      request.ttl_seconds <= 0 ||
+      request.ttl_seconds > config.maxTtlSeconds)
+  ) {
+    throw new Error(`ttl_seconds must be a positive integer <= ${config.maxTtlSeconds}`);
+  }
   return request.requester.identity.value.toLowerCase();
 }
 
@@ -251,6 +266,8 @@ export async function startAgentDiscoveryStorageServer(
           getCapability: storageConfig.getCapability,
           putPriceWei: storageConfig.putPriceWei,
           getPriceWei: storageConfig.getPriceWei,
+          defaultTtlSeconds: storageConfig.defaultTtlSeconds,
+          maxTtlSeconds: storageConfig.maxTtlSeconds,
           address,
           storageDir: rootDir,
         });
@@ -267,6 +284,13 @@ export async function startAgentDiscoveryStorageServer(
           json(res, 404, { error: "object not found" });
           return;
         }
+        if (Date.parse(object.expiresAt) <= Date.now()) {
+          if (storageConfig.pruneExpiredOnRead) {
+            deleteStoredObject(db, object);
+          }
+          json(res, 410, { error: "object expired" });
+          return;
+        }
         json(res, 200, {
           object_id: object.objectId,
           result_url: buildStorageObjectPath(object.objectId),
@@ -276,6 +300,8 @@ export async function startAgentDiscoveryStorageServer(
           size_bytes: object.sizeBytes,
           metadata: object.metadata || {},
           stored_at: object.storedAt,
+          ttl_seconds: object.ttlSeconds,
+          expires_at: Math.floor(Date.parse(object.expiresAt) / 1000),
         });
         return;
       }
@@ -332,6 +358,8 @@ export async function startAgentDiscoveryStorageServer(
               result_url: buildStorageObjectPath(existingObject.objectId),
               idempotent: true,
               stored_at: Math.floor(new Date(existingObject.storedAt).getTime() / 1000),
+              ttl_seconds: existingObject.ttlSeconds,
+              expires_at: Math.floor(Date.parse(existingObject.expiresAt) / 1000),
               object_key: existingObject.objectKey,
               content_type: existingObject.contentType,
               content_sha256: existingObject.contentSha256,
@@ -379,6 +407,8 @@ export async function startAgentDiscoveryStorageServer(
             fs.writeFileSync(filePath, buffer);
           }
           const storedAt = new Date().toISOString();
+          const ttlSeconds = body.ttl_seconds ?? storageConfig.defaultTtlSeconds;
+          const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
           const object: StoredStorageObject = {
             objectId,
             objectKey: body.object_key?.trim() || undefined,
@@ -387,6 +417,8 @@ export async function startAgentDiscoveryStorageServer(
             sizeBytes: buffer.byteLength,
             metadata: body.metadata,
             storedAt,
+            ttlSeconds,
+            expiresAt,
             filePath,
           };
           storeObject(db, object);
@@ -397,6 +429,8 @@ export async function startAgentDiscoveryStorageServer(
             result_url: buildStorageObjectPath(objectId),
             payment_tx_hash: paid.txHash,
             stored_at: Math.floor(Date.now() / 1000),
+            ttl_seconds: ttlSeconds,
+            expires_at: Math.floor(Date.parse(expiresAt) / 1000),
             object_key: object.objectKey,
             content_type: contentType,
             content_sha256: object.contentSha256,
@@ -419,6 +453,27 @@ export async function startAgentDiscoveryStorageServer(
           const existingGet = db.getKV(requestKey);
           if (existingGet) {
             json(res, 200, JSON.parse(existingGet) as StorageGetInvocationResponse);
+            return;
+          }
+
+          const objectId = parseObjectId(body.object_id || body.content_sha256 || "");
+          const object = loadStoredObject(db, objectId);
+          if (!object) {
+            json(res, 404, { status: "rejected", reason: "object not found" });
+            return;
+          }
+          if (Date.parse(object.expiresAt) <= Date.now()) {
+            if (storageConfig.pruneExpiredOnRead) {
+              deleteStoredObject(db, object);
+            }
+            json(res, 410, { status: "rejected", reason: "object expired" });
+            return;
+          }
+          if (body.max_bytes !== undefined && object.sizeBytes > body.max_bytes) {
+            json(res, 400, {
+              status: "rejected",
+              reason: `object exceeds requested max_bytes (${body.max_bytes})`,
+            });
             return;
           }
 
@@ -450,26 +505,13 @@ export async function startAgentDiscoveryStorageServer(
             nonce: body.request_nonce,
             expiresAt: body.request_expires_at,
           });
-
-          const objectId = parseObjectId(body.object_id || body.content_sha256 || "");
-          const object = loadStoredObject(db, objectId);
-          if (!object) {
-            json(res, 404, { status: "rejected", reason: "object not found" });
-            return;
-          }
-          if (body.max_bytes !== undefined && object.sizeBytes > body.max_bytes) {
-            json(res, 400, {
-              status: "rejected",
-              reason: `object exceeds requested max_bytes (${body.max_bytes})`,
-            });
-            return;
-          }
           const buffer = fs.readFileSync(object.filePath);
           const response: StorageGetInvocationResponse = {
             status: "ok",
             payment_tx_hash: paid.txHash,
             fetched_at: Math.floor(Date.now() / 1000),
             object_id: object.objectId,
+            expires_at: Math.floor(Date.parse(object.expiresAt) / 1000),
             content_type: object.contentType,
             content_sha256: object.contentSha256,
             size_bytes: object.sizeBytes,

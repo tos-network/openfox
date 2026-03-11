@@ -317,6 +317,7 @@ export interface StoragePutInvocationRequest {
   content_type?: string;
   content_text?: string;
   content_base64?: string;
+  ttl_seconds?: number;
   metadata?: Record<string, unknown>;
   reason: string;
 }
@@ -328,6 +329,8 @@ export interface StoragePutInvocationResponse {
   payment_tx_hash?: string;
   idempotent?: boolean;
   stored_at: number;
+  ttl_seconds?: number;
+  expires_at?: number;
   object_key?: string;
   content_type: string;
   content_sha256: string;
@@ -356,6 +359,7 @@ export interface StorageGetInvocationResponse {
   idempotent?: boolean;
   fetched_at: number;
   object_id: string;
+  expires_at?: number;
   content_type: string;
   content_sha256: string;
   size_bytes: number;
@@ -468,7 +472,7 @@ export function normalizeAgentDiscoveryConfig(
         name: newsFetchServer.capability,
         mode: "paid",
         price_model: "x402-exact",
-        description: "Draft paid news.fetch capability with zkTLS-oriented schema",
+        description: "Paid news.fetch capability with bounded HTTP capture receipts",
       });
     }
   }
@@ -489,7 +493,7 @@ export function normalizeAgentDiscoveryConfig(
         name: proofVerifyServer.capability,
         mode: "paid",
         price_model: "x402-exact",
-        description: "Draft paid proof.verify capability for proof receipts",
+        description: "Paid proof.verify capability for bounded receipt and hash verification",
       });
     }
   }
@@ -516,7 +520,7 @@ export function normalizeAgentDiscoveryConfig(
         name: storageServer.putCapability,
         mode: "paid",
         price_model: "x402-exact",
-        description: "Draft paid storage.put capability for immutable object writes",
+        description: "Paid storage.put capability for immutable object writes with TTL",
       });
     }
     if (!capabilities.some((entry) => entry.name === storageServer.getCapability)) {
@@ -524,7 +528,7 @@ export function normalizeAgentDiscoveryConfig(
         name: storageServer.getCapability,
         mode: "paid",
         price_model: "x402-exact",
-        description: "Draft paid storage.get capability for immutable object reads",
+        description: "Paid storage.get capability for immutable object reads with TTL enforcement",
       });
     }
   }

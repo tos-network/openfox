@@ -115,6 +115,10 @@ export interface AgentDiscoveryNewsFetchServerConfig {
   capability: string;
   priceWei: string;
   maxSourceUrlChars: number;
+  requestTimeoutMs: number;
+  maxResponseBytes: number;
+  allowPrivateTargets: boolean;
+  maxArticleChars: number;
 }
 
 export interface AgentDiscoveryProofVerifyServerConfig {
@@ -125,6 +129,9 @@ export interface AgentDiscoveryProofVerifyServerConfig {
   capability: string;
   priceWei: string;
   maxPayloadChars: number;
+  requestTimeoutMs: number;
+  maxFetchBytes: number;
+  allowPrivateTargets: boolean;
 }
 
 export interface AgentDiscoveryStorageServerConfig {
@@ -138,6 +145,9 @@ export interface AgentDiscoveryStorageServerConfig {
   getPriceWei: string;
   maxObjectBytes: number;
   storageDir: string;
+  defaultTtlSeconds: number;
+  maxTtlSeconds: number;
+  pruneExpiredOnRead: boolean;
 }
 
 export interface AgentGatewayBootnodeConfig {
@@ -324,6 +334,10 @@ export const DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG: AgentDiscoveryNew
     capability: "news.fetch",
     priceWei: "3000000000000000",
     maxSourceUrlChars: 2048,
+    requestTimeoutMs: 10_000,
+    maxResponseBytes: 262144,
+    allowPrivateTargets: false,
+    maxArticleChars: 12000,
   };
 
 export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryProofVerifyServerConfig =
@@ -335,6 +349,9 @@ export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryP
     capability: "proof.verify",
     priceWei: "2000000000000000",
     maxPayloadChars: 16384,
+    requestTimeoutMs: 10_000,
+    maxFetchBytes: 262144,
+    allowPrivateTargets: false,
   };
 
 export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorageServerConfig =
@@ -349,6 +366,9 @@ export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorag
     getPriceWei: "500000000000000",
     maxObjectBytes: 262144,
     storageDir: "~/.openfox/storage-provider",
+    defaultTtlSeconds: 86_400,
+    maxTtlSeconds: 2_592_000,
+    pruneExpiredOnRead: true,
   };
 
 export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {

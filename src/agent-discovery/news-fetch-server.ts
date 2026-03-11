@@ -32,6 +32,7 @@ import {
   recordRequestNonce,
   validateRequestExpiry,
 } from "./security.js";
+import { fetchBoundedUrl, validateHttpTargetUrl } from "./http-fetch.js";
 
 const logger = createLogger("agent-discovery.news-fetch");
 
@@ -137,14 +138,112 @@ function validateRequest(
   if (!request.source_url || request.source_url.length > config.maxSourceUrlChars) {
     throw new Error(`source_url exceeds maxSourceUrlChars (${config.maxSourceUrlChars})`);
   }
-  const sourceUrl = new URL(request.source_url);
-  if (sourceUrl.protocol !== "http:" && sourceUrl.protocol !== "https:") {
-    throw new Error("source_url must use http or https");
-  }
+  const sourceUrl = validateHttpTargetUrl(request.source_url, {
+    allowPrivateTargets: config.allowPrivateTargets,
+  });
   return {
     requesterIdentity: request.requester.identity.value.toLowerCase(),
     sourceUrl,
   };
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, " ").trim();
+}
+
+function stripHtml(value: string): string {
+  return normalizeWhitespace(
+    value
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/&nbsp;/gi, " ")
+      .replace(/&amp;/gi, "&")
+      .replace(/&lt;/gi, "<")
+      .replace(/&gt;/gi, ">"),
+  );
+}
+
+function extractHeadline(contentType: string, body: Buffer): string | undefined {
+  const text = body.toString("utf8");
+  if (contentType.includes("application/json")) {
+    try {
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      for (const key of ["headline", "title", "name"]) {
+        const value = parsed[key];
+        if (typeof value === "string" && value.trim()) {
+          return normalizeWhitespace(value);
+        }
+      }
+    } catch {
+      return undefined;
+    }
+    return undefined;
+  }
+  if (contentType.includes("html")) {
+    const title = text.match(/<title[^>]*>([\s\S]*?)<\/title>/i)?.[1];
+    if (title) return normalizeWhitespace(stripHtml(title));
+  }
+  const firstLine = normalizeWhitespace(text.split(/\r?\n/)[0] || "");
+  return firstLine || undefined;
+}
+
+function extractArticleText(
+  contentType: string,
+  body: Buffer,
+  maxArticleChars: number,
+): string | undefined {
+  const raw = body.toString("utf8");
+  let value = raw;
+  if (contentType.includes("application/json")) {
+    try {
+      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      for (const key of ["article", "content", "body", "text", "summary"]) {
+        const candidate = parsed[key];
+        if (typeof candidate === "string" && candidate.trim()) {
+          value = candidate;
+          break;
+        }
+      }
+    } catch {
+      value = raw;
+    }
+  } else if (contentType.includes("html")) {
+    value = stripHtml(raw);
+  }
+  const normalized = normalizeWhitespace(value);
+  if (!normalized) return undefined;
+  return normalized.slice(0, maxArticleChars);
+}
+
+function buildCaptureBundle(params: {
+  request: NewsFetchInvocationRequest;
+  fetchedAt: number;
+  canonicalUrl: string;
+  articleSha256: `0x${string}`;
+  articleText?: string;
+  headline?: string;
+  publisher?: string;
+  contentType: string;
+  httpStatus: number;
+}): { bundleSha256: `0x${string}`; bundle: Record<string, unknown> } {
+  const bundle = {
+    version: 1,
+    backend: "bounded_http_capture_v0",
+    fetched_at: params.fetchedAt,
+    source_url: params.request.source_url,
+    canonical_url: params.canonicalUrl,
+    publisher_hint: params.request.publisher_hint || null,
+    headline_hint: params.request.headline_hint || null,
+    http_status: params.httpStatus,
+    content_type: params.contentType,
+    article_sha256: params.articleSha256,
+    headline: params.headline || null,
+    publisher: params.publisher || null,
+    article_preview: params.articleText || null,
+  };
+  const bundleSha256 = `0x${createHash("sha256").update(JSON.stringify(bundle)).digest("hex")}` as const;
+  return { bundleSha256, bundle };
 }
 
 async function requirePayment(params: {
@@ -286,19 +385,51 @@ export async function startAgentDiscoveryNewsFetchServer(
       });
 
       const jobId = buildNewsFetchJobId(body);
+      const fetchedAt = Math.floor(Date.now() / 1000);
+      const fetched = await fetchBoundedUrl(sourceUrl, {
+        timeoutMs: newsFetchConfig.requestTimeoutMs,
+        maxResponseBytes: newsFetchConfig.maxResponseBytes,
+      });
+      const articleText = extractArticleText(
+        fetched.contentType,
+        fetched.body,
+        newsFetchConfig.maxArticleChars,
+      );
+      const headline =
+        body.headline_hint?.trim() || extractHeadline(fetched.contentType, fetched.body);
+      const publisher = body.publisher_hint?.trim() || sourceUrl.hostname;
+      const { bundleSha256, bundle } = buildCaptureBundle({
+        request: body,
+        fetchedAt,
+        canonicalUrl: fetched.canonicalUrl,
+        articleSha256: fetched.bodySha256,
+        articleText,
+        headline,
+        publisher,
+        contentType: fetched.contentType,
+        httpStatus: fetched.status,
+      });
       const response: NewsFetchInvocationResponse = {
-        status: "integration_required",
+        status: "ok",
         job_id: jobId,
         result_url: buildNewsFetchResultPath(jobId),
         payment_tx_hash: paid.txHash,
-        fetched_at: Math.floor(Date.now() / 1000),
+        fetched_at: fetchedAt,
         source_url: sourceUrl.toString(),
-        integration_message:
-          "news.fetch skeleton is enabled, but no zkTLS capture backend is wired yet.",
-        zktls_bundle_format: "draft",
+        canonical_url: fetched.canonicalUrl,
+        publisher,
+        headline,
+        article_sha256: fetched.bodySha256,
+        article_text: articleText,
+        zktls_bundle_format: "bounded_http_capture_v0",
+        zktls_bundle_sha256: bundleSha256,
         metadata: {
           publisher_hint: body.publisher_hint || null,
           headline_hint: body.headline_hint || null,
+          http_status: fetched.status,
+          content_type: fetched.contentType,
+          capture_backend: "bounded_http_capture_v0",
+          bundle,
         },
       };
       storeNewsFetchJob(db, {

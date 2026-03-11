@@ -32,6 +32,7 @@ import {
   recordRequestNonce,
   validateRequestExpiry,
 } from "./security.js";
+import { fetchBoundedUrl, validateHttpTargetUrl } from "./http-fetch.js";
 
 const logger = createLogger("agent-discovery.proof-verify");
 
@@ -149,18 +150,138 @@ function validateRequest(
     throw new Error(`request exceeds maxPayloadChars (${config.maxPayloadChars})`);
   }
   if (request.subject_url) {
-    const subjectUrl = new URL(request.subject_url);
-    if (subjectUrl.protocol !== "http:" && subjectUrl.protocol !== "https:") {
-      throw new Error("subject_url must use http or https");
-    }
+    validateHttpTargetUrl(request.subject_url, {
+      allowPrivateTargets: config.allowPrivateTargets,
+    });
   }
   if (request.proof_bundle_url) {
-    const bundleUrl = new URL(request.proof_bundle_url);
-    if (bundleUrl.protocol !== "http:" && bundleUrl.protocol !== "https:") {
-      throw new Error("proof_bundle_url must use http or https");
-    }
+    validateHttpTargetUrl(request.proof_bundle_url, {
+      allowPrivateTargets: config.allowPrivateTargets,
+    });
   }
   return request.requester.identity.value.toLowerCase();
+}
+
+function extractReferencedSubjectHash(value: unknown): string | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ["article_sha256", "subject_sha256", "content_sha256", "body_sha256"]) {
+    const candidate = record[key];
+    if (typeof candidate === "string" && /^0x[0-9a-f]{64}$/i.test(candidate)) {
+      return candidate.toLowerCase();
+    }
+  }
+  const metadata = record.metadata;
+  if (metadata && typeof metadata === "object") {
+    return extractReferencedSubjectHash(metadata);
+  }
+  return undefined;
+}
+
+async function verifyRequestBackend(
+  request: ProofVerifyInvocationRequest,
+  config: AgentDiscoveryProofVerifyServerConfig,
+): Promise<{
+  verdict: ProofVerifyInvocationResponse["verdict"];
+  summary: string;
+  metadata: Record<string, unknown>;
+  verifierReceiptSha256: `0x${string}`;
+}> {
+  const checks: Array<{ label: string; ok: boolean; actual?: string; expected?: string }> = [];
+  const metadata: Record<string, unknown> = {
+    verifier_backend: "bounded_receipt_verifier_v0",
+  };
+
+  if (request.subject_url) {
+    const subjectUrl = validateHttpTargetUrl(request.subject_url, {
+      allowPrivateTargets: config.allowPrivateTargets,
+    });
+    const subject = await fetchBoundedUrl(subjectUrl, {
+      timeoutMs: config.requestTimeoutMs,
+      maxResponseBytes: config.maxFetchBytes,
+    });
+    metadata.subject = {
+      canonical_url: subject.canonicalUrl,
+      status: subject.status,
+      content_type: subject.contentType,
+      sha256: subject.bodySha256,
+    };
+    if (request.subject_sha256) {
+      checks.push({
+        label: "subject_sha256",
+        ok: subject.bodySha256.toLowerCase() === request.subject_sha256.toLowerCase(),
+        actual: subject.bodySha256,
+        expected: request.subject_sha256,
+      });
+    }
+  } else if (request.subject_sha256) {
+    metadata.subject = {
+      declared_sha256: request.subject_sha256,
+    };
+  }
+
+  if (request.proof_bundle_url) {
+    const bundleUrl = validateHttpTargetUrl(request.proof_bundle_url, {
+      allowPrivateTargets: config.allowPrivateTargets,
+    });
+    const bundle = await fetchBoundedUrl(bundleUrl, {
+      timeoutMs: config.requestTimeoutMs,
+      maxResponseBytes: config.maxFetchBytes,
+    });
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(bundle.body.toString("utf8"));
+    } catch {
+      parsed = undefined;
+    }
+    const referencedSubjectHash = extractReferencedSubjectHash(parsed);
+    metadata.bundle = {
+      canonical_url: bundle.canonicalUrl,
+      status: bundle.status,
+      content_type: bundle.contentType,
+      sha256: bundle.bodySha256,
+      referenced_subject_sha256: referencedSubjectHash || null,
+    };
+    if (request.proof_bundle_sha256) {
+      checks.push({
+        label: "proof_bundle_sha256",
+        ok: bundle.bodySha256.toLowerCase() === request.proof_bundle_sha256.toLowerCase(),
+        actual: bundle.bodySha256,
+        expected: request.proof_bundle_sha256,
+      });
+    }
+    if (request.subject_sha256 && referencedSubjectHash) {
+      checks.push({
+        label: "bundle_subject_sha256",
+        ok: referencedSubjectHash.toLowerCase() === request.subject_sha256.toLowerCase(),
+        actual: referencedSubjectHash,
+        expected: request.subject_sha256,
+      });
+    }
+  } else if (request.proof_bundle_sha256) {
+    metadata.bundle = {
+      declared_sha256: request.proof_bundle_sha256,
+    };
+  }
+
+  let verdict: ProofVerifyInvocationResponse["verdict"] = "inconclusive";
+  if (checks.length > 0) {
+    verdict = checks.every((entry) => entry.ok) ? "valid" : "invalid";
+  }
+  const summary =
+    verdict === "valid"
+      ? `Verified ${checks.length} proof check${checks.length === 1 ? "" : "s"} successfully.`
+      : verdict === "invalid"
+        ? `Verification failed for ${checks.filter((entry) => !entry.ok).length} check${checks.filter((entry) => !entry.ok).length === 1 ? "" : "s"}.`
+        : "No comparable hashes were available, so the result is inconclusive.";
+  metadata.checks = checks;
+  const verifierReceiptSha256 = `0x${createHash("sha256").update(JSON.stringify({
+    request,
+    verdict,
+    checks,
+    metadata,
+  })).digest("hex")}` as const;
+  return { verdict, summary, metadata, verifierReceiptSha256 };
 }
 
 async function requirePayment(params: {
@@ -295,22 +416,24 @@ export async function startAgentDiscoveryProofVerifyServer(
       });
 
       const resultId = buildProofVerifyResultId(body);
+      const verifiedAt = Math.floor(Date.now() / 1000);
+      const verification = await verifyRequestBackend(body, proofVerifyConfig);
       const response: ProofVerifyInvocationResponse = {
-        status: "integration_required",
+        status: "ok",
         result_id: resultId,
         result_url: buildProofVerifyResultPath(resultId),
         payment_tx_hash: paid.txHash,
-        verified_at: Math.floor(Date.now() / 1000),
-        verdict: "inconclusive",
+        verified_at: verifiedAt,
+        verdict: verification.verdict,
         ...(body.subject_url ? { subject_url: body.subject_url } : {}),
         ...(body.subject_sha256 ? { subject_sha256: body.subject_sha256 } : {}),
         ...(body.proof_bundle_sha256
           ? { proof_bundle_sha256: body.proof_bundle_sha256 }
           : {}),
         ...(body.verifier_profile ? { verifier_profile: body.verifier_profile } : {}),
-        integration_message:
-          "proof.verify skeleton is enabled, but no SNARK verifier backend is wired yet.",
-        summary: "Protocol skeleton accepted the request and persisted a draft receipt.",
+        verifier_receipt_sha256: verification.verifierReceiptSha256,
+        summary: verification.summary,
+        metadata: verification.metadata,
       };
       storeProofVerifyResult(db, {
         resultId,
