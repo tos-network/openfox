@@ -323,6 +323,11 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Let owners turn one bounded opportunity alert into one bounded
     approval request without introducing a second approval system.
+- [x] Task 69: Materialize approved owner opportunity actions into a bounded queue
+  - Status: Complete
+  - Goal: Turn approved `opportunity_action` requests into persistent,
+    owner-visible queued actions that can be completed or cancelled through the
+    same CLI, web, operator, heartbeat, and diagnostic surfaces.
 
 ## Task 53 Breakdown
 
@@ -474,6 +479,24 @@ building OpenFox into a TOS-native agent platform.
 - [x] Link queued approval requests back to the originating alert record.
 - [x] Mark unread alerts as read once an action request is queued.
 - [x] Add targeted tests for queueing one action request from CLI/web-facing flows.
+
+## Task 69 Breakdown
+
+- [x] Add persistent owner opportunity action records and indexes.
+- [x] Materialize approved `opportunity_action` approval requests into queued
+  owner actions with one record per request.
+- [x] Add `openfox report actions`.
+- [x] Add `openfox report action-complete <action-id>`.
+- [x] Add `openfox report action-cancel <action-id>`.
+- [x] Add owner-web `GET /owner/actions`.
+- [x] Add owner-web `POST /owner/actions/:actionId/complete`.
+- [x] Add owner-web `POST /owner/actions/:actionId/cancel`.
+- [x] Add operator API `GET /operator/owner/actions`.
+- [x] Add heartbeat-driven synchronization from approved requests into queued
+  owner actions.
+- [x] Surface queued owner actions through `status`, `health`, and `doctor`.
+- [x] Add targeted tests for materialization, owner-web actions, operator API,
+  and diagnostics.
 
 ## Task 1 Breakdown
 

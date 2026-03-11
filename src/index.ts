@@ -236,6 +236,9 @@ import {
   queueOwnerOpportunityAlertAction,
 } from "./reports/alerts.js";
 import {
+  materializeApprovedOwnerOpportunityAction,
+} from "./reports/actions.js";
+import {
   renderOwnerReportText,
 } from "./reports/render.js";
 import {
@@ -1955,6 +1958,9 @@ Usage:
   openfox report alert-read <alert-id> [--json]
   openfox report alert-dismiss <alert-id> [--json]
   openfox report alert-request-action <alert-id> [--action <review|pursue|delegate>] [--json]
+  openfox report actions [--status <queued|completed|cancelled>] [--kind <review|pursue|delegate>] [--limit <n>] [--json]
+  openfox report action-complete <action-id> [--json]
+  openfox report action-cancel <action-id> [--json]
   openfox report approvals [--status <pending|approved|rejected|expired>] [--limit <n>] [--json]
   openfox report approve <request-id> [--note <text>] [--json]
   openfox report reject <request-id> [--note <text>] [--json]
@@ -2098,6 +2104,38 @@ Usage:
       return;
     }
 
+    if (command === "actions") {
+      const statusRaw = readOption(args, "--status");
+      const status =
+        statusRaw === "queued" ||
+        statusRaw === "completed" ||
+        statusRaw === "cancelled"
+          ? statusRaw
+          : undefined;
+      const kindRaw = readOption(args, "--kind");
+      const kind =
+        kindRaw === "review" || kindRaw === "pursue" || kindRaw === "delegate"
+          ? kindRaw
+          : undefined;
+      const limit = readNumberOption(args, "--limit", 20);
+      const items = db.listOwnerOpportunityActions(limit, { status, kind });
+      if (asJson) {
+        logger.info(JSON.stringify({ items }, null, 2));
+        return;
+      }
+      if (!items.length) {
+        logger.info("No owner opportunity actions found.");
+        return;
+      }
+      logger.info("=== OPENFOX OWNER OPPORTUNITY ACTIONS ===");
+      for (const item of items) {
+        logger.info(
+          `${item.actionId}  [${item.status}]  ${item.kind}  ${item.title}`,
+        );
+      }
+      return;
+    }
+
     if (command === "alerts-generate") {
       const result = await generateOwnerOpportunityAlerts({
         config,
@@ -2167,6 +2205,30 @@ Usage:
       return;
     }
 
+    if (command === "action-complete" || command === "action-cancel") {
+      const actionId = args[1]?.trim();
+      if (!actionId) {
+        throw new Error(
+          `Usage: openfox report ${command} <action-id> [--json]`,
+        );
+      }
+      const record = db.updateOwnerOpportunityActionStatus(
+        actionId,
+        command === "action-complete" ? "completed" : "cancelled",
+      );
+      if (!record) {
+        throw new Error(`Owner opportunity action not found: ${actionId}`);
+      }
+      if (asJson) {
+        logger.info(JSON.stringify(record, null, 2));
+        return;
+      }
+      logger.info(
+        `${command === "action-complete" ? "Completed" : "Cancelled"} ${record.actionId}`,
+      );
+      return;
+    }
+
     if (command === "approve" || command === "reject") {
       const requestId = args[1]?.trim();
       if (!requestId) {
@@ -2181,12 +2243,19 @@ Usage:
         decidedBy: "owner-cli",
         decisionNote: readOption(args, "--note"),
       });
+      const action =
+        command === "approve" && record.kind === "opportunity_action"
+          ? materializeApprovedOwnerOpportunityAction({
+              db,
+              requestId: record.requestId,
+            })
+          : undefined;
       if (asJson) {
-        logger.info(JSON.stringify(record, null, 2));
+        logger.info(JSON.stringify(action ? { request: record, action } : record, null, 2));
         return;
       }
       logger.info(
-        `${command === "approve" ? "Approved" : "Rejected"} ${record.requestId}`,
+        `${command === "approve" ? "Approved" : "Rejected"} ${record.requestId}${action ? ` and queued ${action.actionId}` : ""}`,
       );
       return;
     }

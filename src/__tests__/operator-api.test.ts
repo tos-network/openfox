@@ -933,9 +933,15 @@ describe("operator api", () => {
       method: "POST",
       headers,
       body: JSON.stringify({
-        kind: "treasury_policy_change",
-        scope: "treasury.max_daily_transfer",
-        reason: "raise ceiling",
+        kind: "opportunity_action",
+        scope: "owner-alert:alert-api-1:review",
+        reason: "review an opportunity",
+        payload: {
+          alertId: "alert-api-1",
+          actionKind: "review",
+          title: "Review one bounded opportunity",
+          summary: "A bounded owner opportunity action.",
+        },
       }),
     });
     expect(request.status).toBe(200);
@@ -963,8 +969,25 @@ describe("operator api", () => {
       },
     );
     expect(approve.status).toBe(200);
-    const approveJson = (await approve.json()) as { status: string };
-    expect(approveJson.status).toBe("approved");
+    const approveJson = (await approve.json()) as {
+      request: { status: string; requestId: string };
+      action: { actionId: string; status: string; requestId: string };
+    };
+    expect(approveJson.request.status).toBe("approved");
+    expect(approveJson.action.status).toBe("queued");
+    expect(approveJson.action.requestId).toBe(requestJson.requestId);
+
+    const ownerActions = await fetch(
+      `${server.url}/owner/actions?status=queued&limit=10`,
+      {
+        headers: { Authorization: "Bearer secret-token" },
+      },
+    );
+    expect(ownerActions.status).toBe(200);
+    const ownerActionsJson = (await ownerActions.json()) as {
+      items: Array<{ actionId: string; status: string }>;
+    };
+    expect(ownerActionsJson.items[0]?.actionId).toBe(approveJson.action.actionId);
 
     const run = await fetch(`${server.url}/autopilot/run`, {
       method: "POST",

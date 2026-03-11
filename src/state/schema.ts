@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 33;
+export const SCHEMA_VERSION = 34;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -481,6 +481,37 @@ export const CREATE_TABLES = `
 
   CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_hash
     ON owner_opportunity_alerts(opportunity_hash, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS owner_opportunity_actions (
+    action_id TEXT PRIMARY KEY,
+    alert_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('review','pursue','delegate')),
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    capability TEXT,
+    base_url TEXT,
+    requested_by TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    decision_note TEXT,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('queued','completed','cancelled')),
+    queued_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    cancelled_at TEXT
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_opportunity_actions_request
+    ON owner_opportunity_actions(request_id);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_opportunity_actions_alert
+    ON owner_opportunity_actions(alert_id);
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_actions_status
+    ON owner_opportunity_actions(status, created_at DESC);
 
   CREATE TABLE IF NOT EXISTS signer_quotes (
     quote_id TEXT PRIMARY KEY,
@@ -1785,6 +1816,39 @@ export const MIGRATION_V33 = `
 
   CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_kind
     ON operator_approval_requests(kind, created_at DESC);
+`;
+
+export const MIGRATION_V34 = `
+  CREATE TABLE IF NOT EXISTS owner_opportunity_actions (
+    action_id TEXT PRIMARY KEY,
+    alert_id TEXT NOT NULL,
+    request_id TEXT NOT NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('review','pursue','delegate')),
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    capability TEXT,
+    base_url TEXT,
+    requested_by TEXT NOT NULL,
+    approved_by TEXT,
+    approved_at TEXT,
+    decision_note TEXT,
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('queued','completed','cancelled')),
+    queued_at TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL,
+    completed_at TEXT,
+    cancelled_at TEXT
+  );
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_opportunity_actions_request
+    ON owner_opportunity_actions(request_id);
+
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_opportunity_actions_alert
+    ON owner_opportunity_actions(alert_id);
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_actions_status
+    ON owner_opportunity_actions(status, created_at DESC);
 `;
 
 export const MIGRATION_V3 = `

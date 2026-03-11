@@ -37,6 +37,7 @@ import {
   generateOwnerReport,
 } from "../reports/generation.js";
 import { generateOwnerOpportunityAlerts } from "../reports/alerts.js";
+import { syncApprovedOwnerOpportunityActions } from "../reports/actions.js";
 import {
   auditLocalStorageLease,
   replicateTrackedLease,
@@ -889,6 +890,32 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       message:
         result.created > 0
           ? `Generated ${result.created} new owner opportunity alert(s).`
+          : undefined,
+    };
+  },
+
+  sync_owner_opportunity_actions: async (
+    _ctx: TickContext,
+    taskCtx: HeartbeatLegacyContext,
+  ) => {
+    if (!taskCtx.config.ownerReports?.enabled || !taskCtx.config.ownerReports.alerts?.enabled) {
+      return { shouldWake: false };
+    }
+    const result = syncApprovedOwnerOpportunityActions({
+      db: taskCtx.db,
+    });
+    taskCtx.db.setKV(
+      "last_owner_opportunity_action_sync",
+      JSON.stringify({
+        created: result.created,
+        at: new Date().toISOString(),
+      }),
+    );
+    return {
+      shouldWake: result.created > 0,
+      message:
+        result.created > 0
+          ? `Queued ${result.created} owner opportunity action(s).`
           : undefined,
     };
   },

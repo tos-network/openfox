@@ -41,6 +41,7 @@ import {
   decideOperatorApprovalRequest,
   runOperatorAutopilot,
 } from "./autopilot.js";
+import { materializeApprovedOwnerOpportunityAction } from "../reports/actions.js";
 
 const logger = createLogger("operator.api");
 
@@ -134,6 +135,7 @@ export async function startOperatorApiServer(
   const ownerReportLatestPath = `${pathPrefix}/owner/reports/latest`;
   const ownerReportDeliveriesPath = `${pathPrefix}/owner/report-deliveries`;
   const ownerAlertsPath = `${pathPrefix}/owner/alerts`;
+  const ownerActionsPath = `${pathPrefix}/owner/actions`;
   const paymentsPath = `${pathPrefix}/payments/status`;
   const settlementPath = `${pathPrefix}/settlement/status`;
   const marketPath = `${pathPrefix}/market/status`;
@@ -414,6 +416,33 @@ export async function startOperatorApiServer(
         return;
       }
 
+      if (req.method === "GET" && url.pathname === ownerActionsPath) {
+        const limitParam = url.searchParams.get("limit");
+        const limit =
+          limitParam && Number.isFinite(Number(limitParam))
+            ? Number(limitParam)
+            : 20;
+        const statusParam = url.searchParams.get("status");
+        const kindParam = url.searchParams.get("kind");
+        json(res, 200, {
+          items: params.db.listOwnerOpportunityActions(limit, {
+            status:
+              statusParam === "queued" ||
+              statusParam === "completed" ||
+              statusParam === "cancelled"
+                ? statusParam
+                : undefined,
+            kind:
+              kindParam === "review" ||
+              kindParam === "pursue" ||
+              kindParam === "delegate"
+                ? kindParam
+                : undefined,
+          }),
+        });
+        return;
+      }
+
       if (req.method === "GET" && url.pathname === paymentsPath) {
         json(
           res,
@@ -482,7 +511,8 @@ export async function startOperatorApiServer(
               kindParam === "treasury_policy_change" ||
               kindParam === "spend_cap_change" ||
               kindParam === "signer_policy_change" ||
-              kindParam === "paymaster_policy_change"
+              kindParam === "paymaster_policy_change" ||
+              kindParam === "opportunity_action"
                 ? kindParam
                 : undefined,
           }),
@@ -649,23 +679,27 @@ export async function startOperatorApiServer(
         }
         const [, requestId, decision] = match;
         const body = await readJsonBody(req);
-        json(
-          res,
-          200,
-          decideOperatorApprovalRequest({
-            db: params.db,
-            requestId,
-            status: decision === "approve" ? "approved" : "rejected",
-            decidedBy:
-              typeof body.decidedBy === "string" && body.decidedBy.trim()
-                ? body.decidedBy.trim()
-                : "operator-api",
-            decisionNote:
-              typeof body.decisionNote === "string" && body.decisionNote.trim()
-                ? body.decisionNote.trim()
-                : undefined,
-          }),
-        );
+        const record = decideOperatorApprovalRequest({
+          db: params.db,
+          requestId,
+          status: decision === "approve" ? "approved" : "rejected",
+          decidedBy:
+            typeof body.decidedBy === "string" && body.decidedBy.trim()
+              ? body.decidedBy.trim()
+              : "operator-api",
+          decisionNote:
+            typeof body.decisionNote === "string" && body.decisionNote.trim()
+              ? body.decisionNote.trim()
+              : undefined,
+        });
+        const actionRecord =
+          decision === "approve" && record.kind === "opportunity_action"
+            ? materializeApprovedOwnerOpportunityAction({
+                db: params.db,
+                requestId: record.requestId,
+              })
+            : undefined;
+        json(res, 200, actionRecord ? { request: record, action: actionRecord } : record);
         return;
       }
 

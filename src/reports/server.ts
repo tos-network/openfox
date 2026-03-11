@@ -9,6 +9,7 @@ import type {
 import { createLogger } from "../observability/logger.js";
 import { decideOperatorApprovalRequest } from "../operator/autopilot.js";
 import { queueOwnerOpportunityAlertAction } from "./alerts.js";
+import { materializeApprovedOwnerOpportunityAction } from "./actions.js";
 import { renderOwnerReportHtml } from "./render.js";
 
 const logger = createLogger("reports.server");
@@ -218,6 +219,62 @@ function renderOwnerAlertsHtml(params: {
 </html>`;
 }
 
+function renderOwnerActionsHtml(params: {
+  actions: import("../types.js").OwnerOpportunityActionRecord[];
+  pathPrefix: string;
+  token?: string;
+  status?: string | null;
+}): string {
+  const tokenQuery = params.token ? `?token=${encodeURIComponent(params.token)}` : "";
+  const statusLabel = params.status?.trim() || "all";
+  const rows = params.actions
+    .map((action) => {
+      const completeAction = `${params.pathPrefix}/actions/${encodeURIComponent(action.actionId)}/complete${tokenQuery}`;
+      const cancelAction = `${params.pathPrefix}/actions/${encodeURIComponent(action.actionId)}/cancel${tokenQuery}`;
+      const metadata = [
+        `<p><strong>Status:</strong> ${action.status}</p>`,
+        `<p><strong>Kind:</strong> ${action.kind}</p>`,
+        `<p><strong>Alert:</strong> ${action.alertId}</p>`,
+        `<p><strong>Approval request:</strong> ${action.requestId}</p>`,
+        action.capability ? `<p><strong>Capability:</strong> ${action.capability}</p>` : "",
+        action.baseUrl ? `<p><strong>Base URL:</strong> ${action.baseUrl}</p>` : "",
+        action.decisionNote ? `<p><strong>Decision note:</strong> ${action.decisionNote}</p>` : "",
+      ].join("");
+      const controls =
+        action.status === "queued"
+          ? `
+        <form method="post" action="${completeAction}" style="display:inline-block;margin-right:8px;">
+          <button type="submit">Mark complete</button>
+        </form>
+        <form method="post" action="${cancelAction}" style="display:inline-block;">
+          <button type="submit">Cancel</button>
+        </form>`
+          : `<p><strong>Queued:</strong> ${action.queuedAt}</p>`;
+      return `
+      <article style="border:1px solid #d0d7de;border-radius:12px;padding:16px;margin:16px 0;">
+        <h2 style="margin:0 0 8px 0;">${action.title}</h2>
+        <p>${action.summary}</p>
+        ${metadata}
+        <div style="margin-top:12px;">${controls}</div>
+      </article>`;
+    })
+    .join("\n");
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenFox Opportunity Actions</title>
+  </head>
+  <body style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:840px;margin:0 auto;padding:24px;">
+    <h1>OpenFox Opportunity Actions</h1>
+    <p>Showing <strong>${params.actions.length}</strong> ${statusLabel} action(s).</p>
+    <p><a href="${params.pathPrefix}${tokenQuery}">Back to latest report</a></p>
+    ${rows || "<p>No owner opportunity actions found.</p>"}
+  </body>
+</html>`;
+}
+
 export async function startOwnerReportServer(params: {
   config: OpenFoxConfig;
   db: OpenFoxDatabase;
@@ -249,7 +306,7 @@ export async function startOwnerReportServer(params: {
             html(
               res,
               200,
-              `<!doctype html><html><body><h1>No owner reports yet.</h1><p><a href="${pathPrefix}/approvals${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open approval inbox</a></p><p><a href="${pathPrefix}/alerts${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open opportunity alerts</a></p></body></html>`,
+              `<!doctype html><html><body><h1>No owner reports yet.</h1><p><a href="${pathPrefix}/approvals${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open approval inbox</a></p><p><a href="${pathPrefix}/alerts${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open opportunity alerts</a></p><p><a href="${pathPrefix}/actions${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open opportunity actions</a></p></body></html>`,
             );
             return;
           }
@@ -286,6 +343,34 @@ export async function startOwnerReportServer(params: {
             200,
             renderOwnerAlertsHtml({
               alerts: items,
+              pathPrefix,
+              token: webConfig.authToken,
+              status: statusRaw,
+            }),
+          );
+          return;
+        }
+
+        if (req.method === "GET" && url.pathname === `${pathPrefix}/actions`) {
+          const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
+          const statusRaw = url.searchParams.get("status");
+          const status =
+            statusRaw === "queued" ||
+            statusRaw === "completed" ||
+            statusRaw === "cancelled"
+              ? statusRaw
+              : undefined;
+          const items = params.db.listOwnerOpportunityActions(limit, { status });
+          const format = url.searchParams.get("format");
+          if (format === "json") {
+            json(res, 200, { items });
+            return;
+          }
+          html(
+            res,
+            200,
+            renderOwnerActionsHtml({
+              actions: items,
               pathPrefix,
               token: webConfig.authToken,
               status: statusRaw,
@@ -350,6 +435,33 @@ export async function startOwnerReportServer(params: {
             return;
           }
           redirect(res, `${pathPrefix}/alerts${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}`);
+          return;
+        }
+
+        if (
+          req.method === "POST" &&
+          /^\/?.*\/actions\/[^/]+\/(complete|cancel)$/.test(url.pathname)
+        ) {
+          const match = url.pathname.match(/\/actions\/([^/]+)\/(complete|cancel)$/);
+          const actionId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
+          const action = match?.[2];
+          if (!actionId || !action) {
+            json(res, 404, { error: "action route not found" });
+            return;
+          }
+          const record = params.db.updateOwnerOpportunityActionStatus(
+            actionId,
+            action === "complete" ? "completed" : "cancelled",
+          );
+          if (!record) {
+            json(res, 404, { error: "action not found" });
+            return;
+          }
+          if (url.searchParams.get("format") === "json") {
+            json(res, 200, record);
+            return;
+          }
+          redirect(res, `${pathPrefix}/actions${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}`);
           return;
         }
 
@@ -454,9 +566,16 @@ export async function startOwnerReportServer(params: {
             decidedBy: "owner-web",
             decisionNote: body.note,
           });
+          const actionRecord =
+            decision === "approve" && record.kind === "opportunity_action"
+              ? materializeApprovedOwnerOpportunityAction({
+                  db: params.db,
+                  requestId: record.requestId,
+                })
+              : undefined;
           const format = url.searchParams.get("format");
           if (format === "json" || req.headers.accept === "application/json") {
-            json(res, 200, record);
+            json(res, 200, actionRecord ? { request: record, action: actionRecord } : record);
             return;
           }
           redirect(

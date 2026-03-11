@@ -1300,3 +1300,49 @@ Acceptance criteria:
 - the owner can queue one bounded action from an alert through CLI or web
 - the queued action appears as a normal approval request in the existing approval inbox
 - the originating alert records which action was queued and which approval request was created
+
+### Phase 26: Owner Opportunity Action Queue
+
+Status: completed
+
+Goal:
+
+- turn approved owner opportunity actions into a bounded persistent execution
+  queue that stays visible across CLI, web, operator API, heartbeat, and
+  diagnostics
+
+Delivered surface:
+
+- persistent owner opportunity action records
+- `openfox report actions`
+- `openfox report action-complete <action-id>`
+- `openfox report action-cancel <action-id>`
+- owner web `GET /owner/actions`
+- owner web `POST /owner/actions/:actionId/complete`
+- owner web `POST /owner/actions/:actionId/cancel`
+- operator API `GET /operator/owner/actions`
+- heartbeat-driven approved-action materialization
+- queued action visibility in `openfox status`, `openfox health`, and
+  `openfox doctor`
+
+Implementation tasks:
+
+- define one bounded persistent owner-action record linked to the originating
+  alert and approval request
+- materialize approved `opportunity_action` requests into queued owner-action
+  records
+- add owner-facing CLI list/complete/cancel flows under `openfox report`
+- add owner-web routes for action listing and bounded completion/cancellation
+- add operator API listing for dashboard and control-plane use
+- add heartbeat-driven sync so approved actions still materialize in
+  managed-service mode
+- add diagnostics and tests for action-queue visibility and state transitions
+
+Acceptance criteria:
+
+- approved `opportunity_action` requests materialize exactly once into queued
+  owner-action records
+- the owner can review queued actions without reading raw approval records
+- the owner can complete or cancel a queued action from CLI and web
+- operator dashboards can fetch queued and historical owner actions through the
+  authenticated operator API

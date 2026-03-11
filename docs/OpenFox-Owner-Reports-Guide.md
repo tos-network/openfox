@@ -105,6 +105,9 @@ openfox report alerts-generate --json
 openfox report alert-read <alert-id>
 openfox report alert-dismiss <alert-id>
 openfox report alert-request-action <alert-id> --action review
+openfox report actions --status queued --json
+openfox report action-complete <action-id>
+openfox report action-cancel <action-id>
 openfox report deliveries --channel web --json
 openfox report approvals --status pending --json
 openfox report approve <request-id>
@@ -170,10 +173,13 @@ Routes:
 - `GET /owner/reports/:reportId`
 - `GET /owner/deliveries`
 - `GET /owner/approvals`
+- `GET /owner/actions`
 - `POST /owner/alerts/:alertId/read`
 - `POST /owner/alerts/:alertId/dismiss`
 - `POST /owner/approvals/:requestId/approve`
 - `POST /owner/approvals/:requestId/reject`
+- `POST /owner/actions/:actionId/complete`
+- `POST /owner/actions/:actionId/cancel`
 
 If `authToken` is configured, callers must provide it via:
 
@@ -237,6 +243,38 @@ Owner-web routes:
 - `POST /owner/alerts/:alertId/read`
 - `POST /owner/alerts/:alertId/dismiss`
 - `POST /owner/alerts/:alertId/request-action`
+
+## 8. Owner Opportunity Actions
+
+Approved `opportunity_action` requests can now materialize into one bounded
+owner action queue.
+
+CLI surface:
+
+```bash
+openfox report actions --status queued --json
+openfox report action-complete <action-id>
+openfox report action-cancel <action-id>
+```
+
+Owner-web routes:
+
+- `GET /owner/actions`
+- `POST /owner/actions/:actionId/complete`
+- `POST /owner/actions/:actionId/cancel`
+
+Operator API:
+
+- `GET /operator/owner/actions`
+
+This keeps the owner-facing flow bounded:
+
+- scout and strategy generate alerts
+- the owner queues one bounded action request from an alert
+- the owner approves or rejects that request
+- approved requests materialize into queued owner actions
+- queued actions can then be completed or cancelled without rereading the raw
+  approval inbox
 
 Operator API route:
 

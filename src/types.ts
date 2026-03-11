@@ -822,6 +822,33 @@ export interface OwnerOpportunityAlertRecord {
   dismissedAt?: string | null;
 }
 
+export type OwnerOpportunityActionStatus =
+  | "queued"
+  | "completed"
+  | "cancelled";
+
+export interface OwnerOpportunityActionRecord {
+  actionId: string;
+  alertId: string;
+  requestId: string;
+  kind: OwnerOpportunityActionKind;
+  title: string;
+  summary: string;
+  capability?: string | null;
+  baseUrl?: string | null;
+  requestedBy: string;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  decisionNote?: string | null;
+  payload: Record<string, unknown>;
+  status: OwnerOpportunityActionStatus;
+  queuedAt: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string | null;
+  cancelledAt?: string | null;
+}
+
 export interface OwnerReportWebConfig {
   enabled: boolean;
   bindHost: string;
@@ -2780,6 +2807,25 @@ export interface OpenFoxDatabase {
     requestId: string,
     requestedAt?: string,
   ): OwnerOpportunityAlertRecord | undefined;
+  upsertOwnerOpportunityAction(record: OwnerOpportunityActionRecord): void;
+  getOwnerOpportunityAction(
+    actionId: string,
+  ): OwnerOpportunityActionRecord | undefined;
+  getOwnerOpportunityActionByRequestId(
+    requestId: string,
+  ): OwnerOpportunityActionRecord | undefined;
+  listOwnerOpportunityActions(
+    limit: number,
+    filters?: {
+      status?: OwnerOpportunityActionStatus;
+      kind?: OwnerOpportunityActionKind;
+    },
+  ): OwnerOpportunityActionRecord[];
+  updateOwnerOpportunityActionStatus(
+    actionId: string,
+    status: OwnerOpportunityActionStatus,
+    decidedAt?: string,
+  ): OwnerOpportunityActionRecord | undefined;
 
   // Signer provider
   upsertSignerQuote(record: SignerQuoteRecord): void;

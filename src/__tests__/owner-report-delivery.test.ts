@@ -308,4 +308,101 @@ describe("owner report delivery", () => {
       db.close();
     }
   });
+
+  it("serves and updates owner opportunity actions over the owner report web surface", async () => {
+    const db = createTestDb();
+    let server: Awaited<ReturnType<typeof startOwnerReportServer>> | null = null;
+    try {
+      const config = createTestConfig({
+        ownerReports: {
+          ...DEFAULT_OWNER_REPORTS_CONFIG,
+          enabled: true,
+          web: {
+            ...DEFAULT_OWNER_REPORTS_CONFIG.web,
+            enabled: true,
+            bindHost: "127.0.0.1",
+            port: 0,
+            pathPrefix: "/owner",
+            authToken: "owner-secret",
+          },
+        },
+      });
+
+      const alert = createAlert("alert-action-1");
+      db.upsertOwnerOpportunityAlert(alert);
+      const request = createOperatorApprovalRequest({
+        db,
+        config,
+        kind: "opportunity_action",
+        scope: "owner-alert:alert-action-1:review",
+        requestedBy: "owner-alert",
+        reason: "review this opportunity",
+        payload: {
+          alertId: alert.alertId,
+          actionKind: "review",
+          title: alert.title,
+          summary: alert.summary,
+          capability: alert.capability,
+          baseUrl: alert.baseUrl,
+        },
+      });
+
+      server = await startOwnerReportServer({ config, db });
+      expect(server).not.toBeNull();
+
+      const approve = await fetch(
+        `${server!.url}/approvals/${encodeURIComponent(request.requestId)}/approve?format=json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer owner-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note: "approved from phone" }),
+        },
+      );
+      expect(approve.status).toBe(200);
+      const approvePayload = (await approve.json()) as {
+        request: { requestId: string; status: string };
+        action: { actionId: string; status: string };
+      };
+      expect(approvePayload.request.status).toBe("approved");
+      expect(approvePayload.action.status).toBe("queued");
+
+      const actionsJson = await fetch(`${server!.url}/actions?format=json`, {
+        headers: {
+          Authorization: "Bearer owner-secret",
+        },
+      });
+      expect(actionsJson.status).toBe(200);
+      const actionsPayload = (await actionsJson.json()) as {
+        items: Array<{ actionId: string; status: string }>;
+      };
+      expect(actionsPayload.items[0]?.actionId).toBe(approvePayload.action.actionId);
+
+      const actionsHtml = await fetch(`${server!.url}/actions?token=owner-secret`);
+      expect(actionsHtml.status).toBe(200);
+      expect(await actionsHtml.text()).toContain("OpenFox Opportunity Actions");
+
+      const complete = await fetch(
+        `${server!.url}/actions/${encodeURIComponent(approvePayload.action.actionId)}/complete?format=json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer owner-secret",
+          },
+        },
+      );
+      expect(complete.status).toBe(200);
+      const completePayload = (await complete.json()) as {
+        actionId: string;
+        status: string;
+      };
+      expect(completePayload.actionId).toBe(approvePayload.action.actionId);
+      expect(completePayload.status).toBe("completed");
+    } finally {
+      await server?.close?.();
+      db.close();
+    }
+  });
 });

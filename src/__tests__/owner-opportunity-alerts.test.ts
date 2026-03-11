@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_OWNER_REPORTS_CONFIG, type OpportunityItem } from "../types.js";
+import { decideOperatorApprovalRequest } from "../operator/autopilot.js";
 import { upsertStrategyProfile } from "../opportunity/strategy.js";
 import {
   generateOwnerOpportunityAlerts,
   queueOwnerOpportunityAlertAction,
 } from "../reports/alerts.js";
+import { materializeApprovedOwnerOpportunityAction } from "../reports/actions.js";
 import { createTestConfig, createTestDb } from "./mocks.js";
 
 describe("owner opportunity alerts", () => {
@@ -146,6 +148,82 @@ describe("owner opportunity alerts", () => {
       expect(result.alert.actionRequestId).toBe(result.request.requestId);
       expect(result.alert.actionKind).toBe("review");
       expect(result.alert.status).toBe("read");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("materializes an approved owner opportunity action from the approval queue", async () => {
+    const db = createTestDb();
+    try {
+      const config = createTestConfig({
+        ownerReports: {
+          ...DEFAULT_OWNER_REPORTS_CONFIG,
+          enabled: true,
+          alerts: {
+            ...DEFAULT_OWNER_REPORTS_CONFIG.alerts,
+            enabled: true,
+          },
+        },
+      });
+
+      db.upsertOwnerOpportunityAlert({
+        alertId: "alert-2",
+        opportunityHash:
+          "0x2222222222222222222222222222222222222222222222222222222222222222",
+        kind: "provider",
+        providerClass: "oracle",
+        trustTier: "org_trusted",
+        title: "Resolve one bounded oracle quote",
+        summary: "reward=50 margin=40 score=1400 trust=org_trusted",
+        suggestedAction: "Queue a bounded review and decide whether to pursue it.",
+        capability: "oracle.resolve",
+        baseUrl: "https://oracle.example.com",
+        rewardWei: "50",
+        estimatedCostWei: "10",
+        marginWei: "40",
+        marginBps: 8000,
+        strategyScore: 1400,
+        strategyMatched: true,
+        strategyReasons: [],
+        payload: { provider: "oracle-1" },
+        status: "unread",
+        actionKind: null,
+        actionRequestId: null,
+        actionRequestedAt: null,
+        createdAt: "2026-03-11T18:00:00.000Z",
+        updatedAt: "2026-03-11T18:00:00.000Z",
+        readAt: null,
+        dismissedAt: null,
+      });
+
+      const queued = queueOwnerOpportunityAlertAction({
+        config,
+        db,
+        alertId: "alert-2",
+        actionKind: "pursue",
+        requestedBy: "test",
+      });
+      const approved = decideOperatorApprovalRequest({
+        db,
+        requestId: queued.request.requestId,
+        status: "approved",
+        decidedBy: "owner-test",
+        decisionNote: "looks good",
+      });
+      const action = materializeApprovedOwnerOpportunityAction({
+        db,
+        requestId: approved.requestId,
+      });
+
+      expect(action.kind).toBe("pursue");
+      expect(action.requestId).toBe(approved.requestId);
+      expect(action.alertId).toBe("alert-2");
+      expect(action.status).toBe("queued");
+      expect(action.approvedBy).toBe("owner-test");
+      expect(db.getOwnerOpportunityActionByRequestId(approved.requestId)?.actionId).toBe(
+        action.actionId,
+      );
     } finally {
       db.close();
     }

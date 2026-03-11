@@ -80,6 +80,8 @@ export interface HealthSnapshot {
   ownerAlertsEnabled: boolean;
   ownerRecentAlerts: number;
   ownerUnreadAlerts: number;
+  ownerRecentActions: number;
+  ownerQueuedActions: number;
   ownerReportsWebReady: boolean;
   ownerReportsEmailReady: boolean;
   storageEnabled: boolean;
@@ -206,6 +208,8 @@ async function buildConfigSnapshot(
   ownerAlertsEnabled: boolean;
   ownerRecentAlerts: number;
   ownerUnreadAlerts: number;
+  ownerRecentActions: number;
+  ownerQueuedActions: number;
   ownerReportsWebReady: boolean;
   ownerReportsEmailReady: boolean;
   storageEnabled: boolean;
@@ -414,6 +418,12 @@ async function buildConfigSnapshot(
       : 0,
     ownerUnreadAlerts: config.ownerReports?.enabled
       ? db.listOwnerOpportunityAlerts(100, { status: "unread" }).length
+      : 0,
+    ownerRecentActions: config.ownerReports?.enabled
+      ? db.listOwnerOpportunityActions(20).length
+      : 0,
+    ownerQueuedActions: config.ownerReports?.enabled
+      ? db.listOwnerOpportunityActions(100, { status: "queued" }).length
       : 0,
     ownerReportsWebReady: Boolean(
       !config.ownerReports?.enabled ||
@@ -915,10 +925,12 @@ function collectFindings(
       findings.push({
         id: "owner-alerts-enabled",
         severity: "ok",
-        summary: `Owner opportunity alerts are enabled (${snapshot.ownerRecentAlerts} recent alert${snapshot.ownerRecentAlerts === 1 ? "" : "s"}, ${snapshot.ownerUnreadAlerts} unread).`,
+        summary: `Owner opportunity alerts are enabled (${snapshot.ownerRecentAlerts} recent alert${snapshot.ownerRecentAlerts === 1 ? "" : "s"}, ${snapshot.ownerUnreadAlerts} unread, ${snapshot.ownerQueuedActions} queued action${snapshot.ownerQueuedActions === 1 ? "" : "s"}).`,
         recommendation:
           snapshot.ownerUnreadAlerts > 0
             ? "Run `openfox report alerts --status unread --json` or open the owner alerts web inbox."
+            : snapshot.ownerQueuedActions > 0
+              ? "Run `openfox report actions --status queued --json` or open the owner actions web inbox."
             : undefined,
       });
     }
@@ -1166,6 +1178,8 @@ export async function buildHealthSnapshot(
       ownerAlertsEnabled: false,
       ownerRecentAlerts: 0,
       ownerUnreadAlerts: 0,
+      ownerRecentActions: 0,
+      ownerQueuedActions: 0,
       ownerReportsWebReady: false,
       ownerReportsEmailReady: false,
       storageEnabled: false,
@@ -1266,7 +1280,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Gateway enabled: ${yesNo(snapshot.gatewayEnabled)}`,
     `Bounty enabled: ${yesNo(snapshot.bountyEnabled)}${snapshot.bountyRole ? ` (${snapshot.bountyRole})` : ""}`,
     `Bounty auto mode: ${yesNo(snapshot.bountyAutoEnabled)}`,
-    `Owner reports enabled: ${yesNo(snapshot.ownerReportsEnabled)}${snapshot.ownerReportsEnabled ? ` (${snapshot.ownerReportsRecentReports} recent, ${snapshot.ownerReportsRecentDeliveries} deliveries, ${snapshot.ownerReportsPendingDeliveries} pending, alerts=${snapshot.ownerAlertsEnabled ? `${snapshot.ownerRecentAlerts} recent/${snapshot.ownerUnreadAlerts} unread` : "off"}, web=${snapshot.ownerReportsWebEnabled ? "on" : "off"}, email=${snapshot.ownerReportsEmailEnabled ? "on" : "off"})` : ""}`,
+    `Owner reports enabled: ${yesNo(snapshot.ownerReportsEnabled)}${snapshot.ownerReportsEnabled ? ` (${snapshot.ownerReportsRecentReports} recent, ${snapshot.ownerReportsRecentDeliveries} deliveries, ${snapshot.ownerReportsPendingDeliveries} pending, alerts=${snapshot.ownerAlertsEnabled ? `${snapshot.ownerRecentAlerts} recent/${snapshot.ownerUnreadAlerts} unread` : "off"}, actions=${snapshot.ownerRecentActions} recent/${snapshot.ownerQueuedActions} queued, web=${snapshot.ownerReportsWebEnabled ? "on" : "off"}, email=${snapshot.ownerReportsEmailEnabled ? "on" : "off"})` : ""}`,
     `Storage enabled: ${yesNo(snapshot.storageEnabled)}${snapshot.storageEnabled ? ` (${snapshot.storageActiveLeases} active, ${snapshot.storageRecentRenewals} renewals, ${snapshot.storageRecentAudits} audits, ${snapshot.storageRecentAnchors} anchors, ${snapshot.storageUnderReplicatedBundles} under-replicated)` : ""}`,
     `Artifacts enabled: ${yesNo(snapshot.artifactsEnabled)}${snapshot.artifactsEnabled ? ` (${snapshot.artifactsRecentCount} recent, ${snapshot.artifactsVerifiedCount} verified, ${snapshot.artifactsAnchoredCount} anchored)` : ""}`,
     `x402 server: ${yesNo(snapshot.x402ServerEnabled)}${snapshot.x402ServerEnabled ? ` (${snapshot.x402RecentPayments} recent, ${snapshot.x402PendingPayments} pending, ${snapshot.x402FailedPayments} failed)` : ""}`,

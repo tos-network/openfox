@@ -183,6 +183,8 @@ It supports:
   bounded owner-facing opportunity alert queue and action surface
 - `openfox report alert-request-action` to turn one owner alert into one
   bounded approval request
+- `openfox report actions|action-complete|action-cancel` for the owner-facing
+  post-approval action queue
 - a built-in owner report web surface for mobile-friendly review of the latest
   daily and weekly reports, owner opportunity alerts, and persisted web/email
   delivery logs
@@ -758,6 +760,9 @@ openfox report alerts-generate --json
 openfox report alert-read <alert-id>
 openfox report alert-dismiss <alert-id>
 openfox report alert-request-action <alert-id> --action review
+openfox report actions --status queued --json
+openfox report action-complete <action-id>
+openfox report action-cancel <action-id>
 openfox report approvals --status pending --json
 openfox report approve <request-id>
 openfox report reject <request-id>

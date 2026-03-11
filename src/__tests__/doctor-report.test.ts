@@ -59,6 +59,8 @@ describe("doctor report formatting", () => {
       ownerAlertsEnabled: true,
       ownerRecentAlerts: 3,
       ownerUnreadAlerts: 2,
+      ownerRecentActions: 2,
+      ownerQueuedActions: 1,
       ownerReportsWebReady: true,
       ownerReportsEmailReady: true,
       storageEnabled: true,
@@ -154,7 +156,7 @@ describe("doctor report formatting", () => {
     );
     expect(health).toContain("Bounty enabled: yes (host)");
     expect(health).toContain(
-      "Owner reports enabled: yes (2 recent, 1 deliveries, 1 pending, alerts=3 recent/2 unread, web=on, email=off)",
+      "Owner reports enabled: yes (2 recent, 1 deliveries, 1 pending, alerts=3 recent/2 unread, actions=2 recent/1 queued, web=on, email=off)",
     );
     expect(health).toContain(
       "Storage enabled: yes (1 active, 1 renewals, 1 audits, 1 anchors, 0 under-replicated)",

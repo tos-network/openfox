@@ -55,6 +55,8 @@ import type {
   OwnerReportDeliveryRecord,
   OwnerReportDeliveryStatus,
   OwnerOpportunityActionKind,
+  OwnerOpportunityActionRecord,
+  OwnerOpportunityActionStatus,
   OwnerOpportunityAlertRecord,
   OwnerOpportunityAlertStatus,
   OwnerReportPeriodKind,
@@ -123,6 +125,7 @@ import {
   MIGRATION_V30,
   MIGRATION_V31,
   MIGRATION_V33,
+  MIGRATION_V34,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -1719,6 +1722,123 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     return getOwnerOpportunityAlert(alertId);
   };
 
+  const upsertOwnerOpportunityAction = (
+    record: OwnerOpportunityActionRecord,
+  ): void => {
+    db.prepare(
+      `INSERT INTO owner_opportunity_actions (
+        action_id, alert_id, request_id, kind, title, summary, capability,
+        base_url, requested_by, approved_by, approved_at, decision_note,
+        payload_json, status, queued_at, created_at, updated_at,
+        completed_at, cancelled_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(action_id) DO UPDATE SET
+        alert_id = excluded.alert_id,
+        request_id = excluded.request_id,
+        kind = excluded.kind,
+        title = excluded.title,
+        summary = excluded.summary,
+        capability = excluded.capability,
+        base_url = excluded.base_url,
+        requested_by = excluded.requested_by,
+        approved_by = excluded.approved_by,
+        approved_at = excluded.approved_at,
+        decision_note = excluded.decision_note,
+        payload_json = excluded.payload_json,
+        status = excluded.status,
+        queued_at = excluded.queued_at,
+        updated_at = excluded.updated_at,
+        completed_at = excluded.completed_at,
+        cancelled_at = excluded.cancelled_at`,
+    ).run(
+      record.actionId,
+      record.alertId,
+      record.requestId,
+      record.kind,
+      record.title,
+      record.summary,
+      record.capability ?? null,
+      record.baseUrl ?? null,
+      record.requestedBy,
+      record.approvedBy ?? null,
+      record.approvedAt ?? null,
+      record.decisionNote ?? null,
+      JSON.stringify(record.payload ?? {}),
+      record.status,
+      record.queuedAt,
+      record.createdAt,
+      record.updatedAt,
+      record.completedAt ?? null,
+      record.cancelledAt ?? null,
+    );
+  };
+
+  const getOwnerOpportunityAction = (
+    actionId: string,
+  ): OwnerOpportunityActionRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM owner_opportunity_actions WHERE action_id = ?")
+      .get(actionId) as any | undefined;
+    return row ? deserializeOwnerOpportunityActionRecord(row) : undefined;
+  };
+
+  const getOwnerOpportunityActionByRequestId = (
+    requestId: string,
+  ): OwnerOpportunityActionRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM owner_opportunity_actions WHERE request_id = ?")
+      .get(requestId) as any | undefined;
+    return row ? deserializeOwnerOpportunityActionRecord(row) : undefined;
+  };
+
+  const listOwnerOpportunityActions = (
+    limit: number,
+    filters?: {
+      status?: OwnerOpportunityActionStatus;
+      kind?: OwnerOpportunityActionKind;
+    },
+  ): OwnerOpportunityActionRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.kind) {
+      clauses.push("kind = ?");
+      params.push(filters.kind);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(
+        `SELECT * FROM owner_opportunity_actions ${where} ORDER BY created_at DESC, updated_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as any[];
+    return rows.map(deserializeOwnerOpportunityActionRecord);
+  };
+
+  const updateOwnerOpportunityActionStatus = (
+    actionId: string,
+    status: OwnerOpportunityActionStatus,
+    decidedAt?: string,
+  ): OwnerOpportunityActionRecord | undefined => {
+    const existing = getOwnerOpportunityAction(actionId);
+    if (!existing) return undefined;
+    const nowIso = decidedAt || new Date().toISOString();
+    db.prepare(
+      `UPDATE owner_opportunity_actions
+       SET status = ?, completed_at = ?, cancelled_at = ?, updated_at = ?
+       WHERE action_id = ?`,
+    ).run(
+      status,
+      status === "completed" ? nowIso : existing.completedAt ?? null,
+      status === "cancelled" ? nowIso : existing.cancelledAt ?? null,
+      nowIso,
+      actionId,
+    );
+    return getOwnerOpportunityAction(actionId);
+  };
+
   const upsertSignerQuote = (record: SignerQuoteRecord): void => {
     db.prepare(
       `INSERT INTO signer_quotes (
@@ -2953,6 +3073,11 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     listOwnerOpportunityAlerts,
     updateOwnerOpportunityAlertStatus,
     linkOwnerOpportunityAlertActionRequest,
+    upsertOwnerOpportunityAction,
+    getOwnerOpportunityAction,
+    getOwnerOpportunityActionByRequestId,
+    listOwnerOpportunityActions,
+    updateOwnerOpportunityActionStatus,
     upsertSignerQuote,
     getSignerQuote,
     listSignerQuotes,
@@ -3292,6 +3417,10 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 33,
       apply: () => db.exec(MIGRATION_V33),
+    },
+    {
+      version: 34,
+      apply: () => db.exec(MIGRATION_V34),
     },
   ];
 
@@ -4679,6 +4808,32 @@ function deserializeOwnerOpportunityAlertRecord(
     dismissedAt: row.dismissed_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function deserializeOwnerOpportunityActionRecord(
+  row: any,
+): OwnerOpportunityActionRecord {
+  return {
+    actionId: row.action_id,
+    alertId: row.alert_id,
+    requestId: row.request_id,
+    kind: row.kind,
+    title: row.title,
+    summary: row.summary,
+    capability: row.capability ?? null,
+    baseUrl: row.base_url ?? null,
+    requestedBy: row.requested_by,
+    approvedBy: row.approved_by ?? null,
+    approvedAt: row.approved_at ?? null,
+    decisionNote: row.decision_note ?? null,
+    payload: row.payload_json ? JSON.parse(row.payload_json) : {},
+    status: row.status,
+    queuedAt: row.queued_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    completedAt: row.completed_at ?? null,
+    cancelledAt: row.cancelled_at ?? null,
   };
 }
 
