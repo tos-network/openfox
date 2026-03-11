@@ -1,14 +1,15 @@
 import { discoverCapabilityProviders } from "../agent-discovery/client.js";
-import { fetchRemoteBounties } from "../bounty/client.js";
+import { fetchRemoteBounties, fetchRemoteCampaigns } from "../bounty/client.js";
 import type { OpenFoxConfig, OpenFoxDatabase } from "../types.js";
 
 export interface OpportunityItem {
-  kind: "bounty" | "provider";
+  kind: "bounty" | "campaign" | "provider";
   title: string;
   description: string;
   capability?: string;
   baseUrl?: string;
   bountyId?: string;
+  campaignId?: string;
   rewardWei?: string;
   providerAgentId?: string;
   providerAddress?: string;
@@ -46,6 +47,27 @@ export async function collectOpportunityItems(params: {
 
   for (const baseUrl of remoteBaseUrls) {
     try {
+      const campaigns = await fetchRemoteCampaigns(baseUrl);
+      for (const campaign of campaigns) {
+        if (campaign.status !== "open" && campaign.status !== "exhausted") continue;
+        const remainingWei = safeBigInt(campaign.progress.remainingWei);
+        const allocatedWei = safeBigInt(campaign.progress.allocatedWei);
+        const scoreBase = remainingWei > 0n ? remainingWei : allocatedWei;
+        if (scoreBase < minRewardWei) continue;
+        items.push({
+          kind: "campaign",
+          title: campaign.title,
+          description: campaign.description,
+          capability: "task.submit",
+          baseUrl,
+          campaignId: campaign.campaignId,
+          rewardWei: campaign.progress.remainingWei,
+          providerAgentId: campaign.hostAgentId,
+          providerAddress: campaign.hostAddress,
+          score: toScore(scoreBase) + campaign.progress.openBountyCount * 100,
+        });
+      }
+
       const bounties = await fetchRemoteBounties(baseUrl);
       for (const bounty of bounties) {
         if (bounty.status !== "open") continue;

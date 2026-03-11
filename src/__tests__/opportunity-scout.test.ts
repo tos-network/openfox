@@ -28,9 +28,10 @@ describe("opportunity scout", () => {
     db.raw.exec("DELETE FROM bounty_results");
     db.raw.exec("DELETE FROM bounty_submissions");
     db.raw.exec("DELETE FROM bounties");
+    db.raw.exec("DELETE FROM campaigns");
   });
 
-  it("collects open remote bounties as earning opportunities", async () => {
+  it("collects open remote campaigns and bounties as earning opportunities", async () => {
     const engine = createBountyEngine({
       identity: createIdentity(),
       db,
@@ -45,7 +46,16 @@ describe("opportunity scout", () => {
       now: () => new Date("2026-03-09T00:00:00.000Z"),
     });
 
+    engine.createCampaign({
+      title: "Problem Solving Sprint",
+      description: "A sponsor campaign for summarization tasks.",
+      budgetWei: "10000",
+      maxOpenBounties: 2,
+      allowedKinds: ["problem_solving"],
+    });
+
     engine.openBounty({
+      campaignId: db.listCampaigns()[0]!.campaignId,
       kind: "problem_solving",
       title: "Summarize one paragraph",
       taskPrompt: "Summarize the given paragraph in one sentence.",
@@ -79,10 +89,11 @@ describe("opportunity scout", () => {
         db,
       });
 
-      expect(items).toHaveLength(1);
-      expect(items[0]?.kind).toBe("bounty");
-      expect(items[0]?.title).toBe("Summarize one paragraph");
+      expect(items).toHaveLength(2);
+      expect(items.some((item) => item.kind === "campaign")).toBe(true);
+      expect(items.some((item) => item.kind === "bounty")).toBe(true);
       expect(buildOpportunityReport(items)).toContain("Summarize one paragraph");
+      expect(buildOpportunityReport(items)).toContain("Problem Solving Sprint");
     } finally {
       await server.close();
     }

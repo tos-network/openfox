@@ -1,5 +1,5 @@
 import type { Address } from "tosdk";
-import type { BountyRecord, InferenceClient } from "../types.js";
+import type { BountyRecord, CampaignRecord, CampaignProgress, InferenceClient } from "../types.js";
 import { buildQuestionBountySolverPrompt } from "./skills/question-solver.js";
 import { buildTaskBountySolverPrompt } from "./skills/task-solver.js";
 
@@ -16,6 +16,39 @@ export async function fetchRemoteBounties(baseUrl: string): Promise<BountyRecord
   }
   const payload = (await response.json()) as { items?: BountyRecord[] };
   return payload.items ?? [];
+}
+
+export async function fetchRemoteCampaigns(
+  baseUrl: string,
+): Promise<Array<CampaignRecord & { progress: CampaignProgress }>> {
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/campaigns`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`failed to fetch campaigns: ${response.status}`);
+  }
+  const payload = (await response.json()) as {
+    items?: Array<CampaignRecord & { progress: CampaignProgress }>;
+  };
+  return payload.items ?? [];
+}
+
+export async function fetchRemoteCampaign(baseUrl: string, campaignId: string): Promise<{
+  campaign: CampaignRecord;
+  progress: CampaignProgress;
+  bounties: BountyRecord[];
+}> {
+  const response = await fetch(`${normalizeBaseUrl(baseUrl)}/campaigns/${campaignId}`, {
+    headers: { Accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(`failed to fetch campaign ${campaignId}: ${response.status}`);
+  }
+  return (await response.json()) as {
+    campaign: CampaignRecord;
+    progress: CampaignProgress;
+    bounties: BountyRecord[];
+  };
 }
 
 export async function fetchRemoteBounty(baseUrl: string, bountyId: string): Promise<{

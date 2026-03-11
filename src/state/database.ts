@@ -26,6 +26,7 @@ import type {
   ChildStatus,
   ReputationEntry,
   InboxMessage,
+  CampaignRecord,
   BountyRecord,
   BountyResultRecord,
   ArtifactAnchorRecord,
@@ -46,6 +47,7 @@ import type {
   SettlementCallbackRecord,
   SettlementCallbackStatus,
   BountyStatus,
+  CampaignStatus,
   BountySubmissionRecord,
   BountySubmissionStatus,
   X402PaymentRecord,
@@ -100,6 +102,7 @@ import {
   MIGRATION_V23,
   MIGRATION_V24,
   MIGRATION_V26,
+  MIGRATION_V27,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -532,17 +535,66 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     ).run(id);
   };
 
+  // ─── Campaigns ───────────────────────────────────────────────
+
+  const insertCampaign = (campaign: CampaignRecord): void => {
+    db.prepare(
+      `INSERT INTO campaigns (
+        campaign_id, host_agent_id, host_address, title, description, budget_wei,
+        max_open_bounties, allowed_kinds_json, metadata_json, status, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      campaign.campaignId,
+      campaign.hostAgentId,
+      campaign.hostAddress,
+      campaign.title,
+      campaign.description,
+      campaign.budgetWei,
+      campaign.maxOpenBounties,
+      JSON.stringify(campaign.allowedKinds),
+      JSON.stringify(campaign.metadata ?? {}),
+      campaign.status,
+      campaign.createdAt,
+      campaign.updatedAt,
+    );
+  };
+
+  const listCampaigns = (status?: CampaignStatus): CampaignRecord[] => {
+    const rows = status
+      ? db
+          .prepare(
+            "SELECT * FROM campaigns WHERE status = ? ORDER BY created_at DESC",
+          )
+          .all(status)
+      : db.prepare("SELECT * FROM campaigns ORDER BY created_at DESC").all();
+    return (rows as any[]).map(deserializeCampaign);
+  };
+
+  const getCampaignById = (campaignId: string): CampaignRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM campaigns WHERE campaign_id = ?")
+      .get(campaignId) as any | undefined;
+    return row ? deserializeCampaign(row) : undefined;
+  };
+
+  const updateCampaignStatus = (campaignId: string, status: CampaignStatus): void => {
+    db.prepare(
+      "UPDATE campaigns SET status = ?, updated_at = datetime('now') WHERE campaign_id = ?",
+    ).run(status, campaignId);
+  };
+
   // ─── Bounties ───────────────────────────────────────────────
 
   const insertBounty = (bounty: BountyRecord): void => {
     db.prepare(
       `INSERT INTO bounties (
-        bounty_id, host_agent_id, host_address, kind, title, task_prompt,
+        bounty_id, campaign_id, host_agent_id, host_address, kind, title, task_prompt,
         reference_output, skill_name, metadata_json, policy_json, reward_wei,
         submission_deadline, judge_mode, status, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       bounty.bountyId,
+      bounty.campaignId ?? null,
       bounty.hostAgentId,
       bounty.hostAddress,
       bounty.kind,
@@ -570,6 +622,15 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
           .all(status)
       : db.prepare("SELECT * FROM bounties ORDER BY created_at DESC").all();
     return (rows as any[]).map(deserializeBounty);
+  };
+
+  const listBountiesByCampaign = (campaignId: string): BountyRecord[] => {
+    const rows = db
+      .prepare(
+        "SELECT * FROM bounties WHERE campaign_id = ? ORDER BY created_at DESC",
+      )
+      .all(campaignId) as any[];
+    return rows.map(deserializeBounty);
   };
 
   const getBountyById = (bountyId: string): BountyRecord | undefined => {
@@ -2312,8 +2373,13 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     insertInboxMessage,
     getUnprocessedInboxMessages,
     markInboxMessageProcessed,
+    insertCampaign,
+    listCampaigns,
+    getCampaignById,
+    updateCampaignStatus,
     insertBounty,
     listBounties,
+    listBountiesByCampaign,
     getBountyById,
     updateBountyStatus,
     insertBountySubmission,
@@ -2611,6 +2677,40 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 26,
       apply: () => db.exec(MIGRATION_V26),
+    },
+    {
+      version: 27,
+      apply: () => {
+        const bountyColumns = db
+          .prepare("PRAGMA table_info(bounties)")
+          .all() as Array<{ name: string }>;
+        if (!bountyColumns.some((column) => column.name === "campaign_id")) {
+          db.exec(MIGRATION_V27);
+        } else {
+          db.exec(`
+            CREATE TABLE IF NOT EXISTS campaigns (
+              campaign_id TEXT PRIMARY KEY,
+              host_agent_id TEXT NOT NULL,
+              host_address TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT NOT NULL,
+              budget_wei TEXT NOT NULL,
+              max_open_bounties INTEGER NOT NULL,
+              allowed_kinds_json TEXT NOT NULL DEFAULT '[]',
+              metadata_json TEXT NOT NULL DEFAULT '{}',
+              status TEXT NOT NULL CHECK(status IN ('open','paused','exhausted','completed')),
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_campaigns_status
+              ON campaigns(status, created_at);
+
+            CREATE INDEX IF NOT EXISTS idx_bounties_campaign
+              ON bounties(campaign_id, created_at);
+          `);
+        }
+      },
     },
   ];
 
@@ -3658,6 +3758,7 @@ function deserializeReputation(row: any): ReputationEntry {
 function deserializeBounty(row: any): BountyRecord {
   return {
     bountyId: row.bounty_id,
+    campaignId: row.campaign_id ?? null,
     hostAgentId: row.host_agent_id,
     hostAddress: row.host_address,
     kind: row.kind,
@@ -3677,6 +3778,31 @@ function deserializeBounty(row: any): BountyRecord {
     rewardWei: row.reward_wei,
     submissionDeadline: row.submission_deadline,
     judgeMode: row.judge_mode,
+    status: row.status,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeCampaign(row: any): CampaignRecord {
+  return {
+    campaignId: row.campaign_id,
+    hostAgentId: row.host_agent_id,
+    hostAddress: row.host_address,
+    title: row.title,
+    description: row.description,
+    budgetWei: row.budget_wei,
+    maxOpenBounties: row.max_open_bounties,
+    allowedKinds: safeJsonParse(
+      row.allowed_kinds_json ?? "[]",
+      [],
+      "deserializeCampaign.allowed_kinds_json",
+    ),
+    metadata: safeJsonParse(
+      row.metadata_json ?? "{}",
+      {},
+      "deserializeCampaign.metadata_json",
+    ),
     status: row.status,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

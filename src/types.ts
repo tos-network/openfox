@@ -462,6 +462,11 @@ export type BountyKind =
   | "problem_solving"
   | "public_news_capture"
   | "oracle_evidence_capture";
+export type CampaignStatus =
+  | "open"
+  | "paused"
+  | "exhausted"
+  | "completed";
 export type BountyStatus =
   | "open"
   | "submitted"
@@ -479,6 +484,40 @@ export interface BountyPolicy {
   solverCooldownSeconds: number;
   maxAutoPayPerSolverPerDayWei: string;
   trustedProofUrlPrefixes: string[];
+}
+
+export interface CampaignRecord {
+  campaignId: string;
+  hostAgentId: string;
+  hostAddress: Address;
+  title: string;
+  description: string;
+  budgetWei: string;
+  maxOpenBounties: number;
+  allowedKinds: BountyKind[];
+  metadata?: Record<string, unknown>;
+  status: CampaignStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CampaignCreateInput {
+  title: string;
+  description: string;
+  budgetWei: string;
+  maxOpenBounties?: number;
+  allowedKinds?: BountyKind[];
+  metadata?: Record<string, unknown>;
+}
+
+export interface CampaignProgress {
+  totalBudgetWei: string;
+  allocatedWei: string;
+  remainingWei: string;
+  bountyCount: number;
+  openBountyCount: number;
+  paidBountyCount: number;
+  submissionCount: number;
 }
 
 export interface BountyConfig {
@@ -507,6 +546,7 @@ export interface BountyConfig {
 
 export interface BountyRecord {
   bountyId: string;
+  campaignId?: string | null;
   hostAgentId: string;
   hostAddress: Address;
   kind: BountyKind;
@@ -555,6 +595,7 @@ export interface BountyJudgeResult {
 }
 
 export interface BountyCreateInput {
+  campaignId?: string | null;
   kind: BountyKind;
   title: string;
   taskPrompt: string;
@@ -2137,9 +2178,16 @@ export interface OpenFoxDatabase {
   getUnprocessedInboxMessages(limit: number): InboxMessage[];
   markInboxMessageProcessed(id: string): void;
 
+  // Campaigns
+  insertCampaign(campaign: CampaignRecord): void;
+  listCampaigns(status?: CampaignStatus): CampaignRecord[];
+  getCampaignById(campaignId: string): CampaignRecord | undefined;
+  updateCampaignStatus(campaignId: string, status: CampaignStatus): void;
+
   // Bounties
   insertBounty(bounty: BountyRecord): void;
   listBounties(status?: BountyStatus): BountyRecord[];
+  listBountiesByCampaign(campaignId: string): BountyRecord[];
   getBountyById(bountyId: string): BountyRecord | undefined;
   updateBountyStatus(bountyId: string, status: BountyStatus): void;
   insertBountySubmission(submission: BountySubmissionRecord): void;

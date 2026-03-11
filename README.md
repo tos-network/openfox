@@ -709,13 +709,17 @@ OpenFox now includes the first bounded-task marketplace slice for:
 - `translation`
 - `social_proof`
 - `problem_solving`
+- sponsor-facing `campaigns` that group multiple bounties under one budget
 
 Host-side:
 
 ```bash
+openfox campaign open --title "Spring Translation Sprint" --description "Reward small translation tasks" --budget-wei 100000000000000000
 openfox bounty open --kind question --task "Capital of France?" --reference "Paris"
 openfox bounty list
 openfox bounty status <bounty-id>
+openfox campaign list
+openfox campaign status <campaign-id>
 ```
 
 Solver-side:
@@ -732,6 +736,7 @@ The current runtime also supports:
 
 - host-side automatic bounty opening via `autoOpenOnStartup` / `autoOpenWhenIdle`
 - solver-side automatic polling and solving via `autoSolveOnStartup` / `autoSolveEnabled`
+- sponsor-side campaign grouping with budget, allowed task kinds, and progress reporting
 - direct solver-to-host mode with `remoteBaseUrl`
 - discovery-based solver mode through `task.submit`
 - proof-aware social tasks with trusted proof URL prefixes

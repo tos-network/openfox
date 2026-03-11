@@ -29,6 +29,7 @@ describe("bounty http server", () => {
     db.raw.exec("DELETE FROM bounty_results");
     db.raw.exec("DELETE FROM bounty_submissions");
     db.raw.exec("DELETE FROM bounties");
+    db.raw.exec("DELETE FROM campaigns");
   });
 
   it("serves the host bounty API and auto-judges submissions", async () => {
@@ -99,10 +100,33 @@ describe("bounty http server", () => {
     });
 
     try {
+      const createCampaign = await fetch(`${server.url}/campaigns`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: "Spring Sprint",
+          description: "Group several translation tasks.",
+          budget_wei: "10000",
+          max_open_bounties: 2,
+          allowed_kinds: ["question", "translation"],
+        }),
+      });
+      expect(createCampaign.status).toBe(201);
+      const campaign = (await createCampaign.json()) as { campaignId: string };
+
+      const campaignsResponse = await fetch(`${server.url}/campaigns`);
+      const campaignsPayload = (await campaignsResponse.json()) as {
+        items: Array<{ campaignId: string }>;
+      };
+      expect(campaignsPayload.items.some((item) => item.campaignId === campaign.campaignId)).toBe(
+        true,
+      );
+
       const createResponse = await fetch(`${server.url}/bounties`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          campaign_id: campaign.campaignId,
           question: "Capital of France?",
           reference_answer: "Paris",
           reward_wei: "2000",
@@ -110,7 +134,8 @@ describe("bounty http server", () => {
         }),
       });
       expect(createResponse.status).toBe(201);
-      const bounty = (await createResponse.json()) as { bountyId: string };
+      const bounty = (await createResponse.json()) as { bountyId: string; campaignId: string };
+      expect(bounty.campaignId).toBe(campaign.campaignId);
 
       const listResponse = await fetch(`${server.url}/bounties`);
       const listPayload = (await listResponse.json()) as { items: Array<{ bountyId: string }> };
@@ -137,6 +162,16 @@ describe("bounty http server", () => {
       expect(resultPayload.settlement.settlementTxHash).toBe(
         "0x3333333333333333333333333333333333333333333333333333333333333333",
       );
+
+      const campaignStatus = await fetch(`${server.url}/campaigns/${campaign.campaignId}`);
+      const campaignDetails = (await campaignStatus.json()) as {
+        campaign: { campaignId: string };
+        progress: { allocatedWei: string };
+        bounties: Array<{ bountyId: string }>;
+      };
+      expect(campaignDetails.campaign.campaignId).toBe(campaign.campaignId);
+      expect(campaignDetails.progress.allocatedWei).toBe("2000");
+      expect(campaignDetails.bounties.some((item) => item.bountyId === bounty.bountyId)).toBe(true);
 
       const createTranslation = await fetch(`${server.url}/bounties`, {
         method: "POST",

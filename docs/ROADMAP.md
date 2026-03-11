@@ -766,8 +766,9 @@ The current core roadmap phases are complete.
 The next work should not reopen the completed core phases. It should focus on:
 
 1. broader public-network deployment hardening for storage, artifact, signer, and paymaster fleets
-2. richer operator dashboards and ecosystem-facing SDK examples on top of the now-stable runtime, marketplace, settlement, and artifact layers
-3. new work surfaces and product loops built on the completed foundations rather than more runtime rewrites
+2. richer operator dashboards, wallet visibility, and finance reporting on top of the now-stable runtime, marketplace, settlement, and artifact layers
+3. bounded fleet-control and autopilot surfaces for low-risk remote maintenance
+4. new work surfaces and product loops built on the completed foundations rather than more runtime rewrites
 
 The latest completed slice under this next stage is:
 
@@ -777,3 +778,202 @@ The latest completed slice under this next stage is:
 - reusable fleet dashboard snapshots and HTML exports for public operator fleets
 - reusable `tosdk` signer-provider and paymaster-provider requester clients for
   third-party builders
+
+The next operator-focused design target is documented in:
+
+- `docs/OpenFox-Operator-Box-Design.md`
+
+### Phase 14: Operator Wallet and Finance Snapshots
+
+Status: planned
+
+Goal:
+
+- give every OpenFox node a standard wallet and finance report that can be
+  consumed locally, through the operator API, and across a fleet
+
+Delivered surface:
+
+- `GET /operator/wallet/status`
+- `GET /operator/finance/status`
+- `openfox wallet report`
+- `openfox finance report`
+- `openfox fleet wallet --manifest <path>`
+- `openfox fleet finance --manifest <path>`
+- dashboard sections for wallet balances, revenue, cost, and net profit
+
+Implementation tasks:
+
+- add finance projection helpers that combine wallet, payment, settlement,
+  market, spend-tracking, inference-cost, and on-chain transaction data
+- define a normalized per-node wallet snapshot schema
+- define a normalized per-node finance snapshot schema
+- expose wallet and finance snapshots through authenticated operator endpoints
+- add human-readable and JSON CLI reports for single-node wallet and finance views
+- add fleet aggregation and summaries for wallet and finance snapshots
+- add tests for wallet and finance operator endpoints, CLI rendering, and fleet aggregation
+
+Acceptance criteria:
+
+- operators can see current balance, reserved balance, available balance, and
+  runway per node
+- operators can see revenue, cost, and net profit for today, 7 days, and 30 days
+- operators can inspect pending receivables, pending payables, and retryable
+  failed items per node
+- wallet and finance data are available in human-readable and JSON form
+
+### Phase 15: Fleet FinOps and Profit Attribution
+
+Status: planned
+
+Goal:
+
+- turn raw runtime records into role-aware fleet economics so operators know
+  which nodes and services actually make money
+
+Delivered surface:
+
+- node, role, capability, and customer revenue breakdowns
+- cost-category and margin breakdowns
+- `openfox fleet payments --manifest <path>`
+- `openfox fleet settlement --manifest <path>`
+- `openfox fleet market --manifest <path>`
+- finance sections in dashboard JSON, HTML, and bundle exports
+
+Implementation tasks:
+
+- add attribution rules for revenue and cost by node, role, capability,
+  customer, provider, request key, and subject identifier
+- normalize pending and confirmed states across payments, settlement callbacks,
+  market callbacks, signer submissions, and paymaster authorizations
+- compute per-role profit views for gateway, host, solver, storage, artifact,
+  signer, and paymaster nodes
+- add fleet payment, settlement, and market summary commands backed by the new
+  finance projections
+- extend dashboard exports with receivables, liabilities, margin, and negative-profit warnings
+- add tests for attribution correctness and dashboard finance exports
+
+Acceptance criteria:
+
+- operators can rank nodes and roles by revenue, cost, and net margin
+- operators can identify top customers, top capabilities, and top loss sources
+- operators can see where pending callbacks or failed retries are delaying
+  revenue recognition
+- finance dashboards remain exportable as reusable audit artifacts
+
+### Phase 16: Fleet Control and Queue Recovery
+
+Status: planned
+
+Goal:
+
+- add bounded remote control actions so operators can recover revenue-affecting
+  queues and safely steer degraded nodes without logging into each machine
+
+Delivered surface:
+
+- `POST /operator/control/pause`
+- `POST /operator/control/resume`
+- `POST /operator/control/drain`
+- `POST /operator/control/retry/payments`
+- `POST /operator/control/retry/settlement`
+- `POST /operator/control/retry/market`
+- `POST /operator/control/retry/signer`
+- `POST /operator/control/retry/paymaster`
+- `openfox fleet control <pause|resume|drain> --manifest <path> --node <name>`
+- `openfox fleet retry <payments|settlement|market|signer|paymaster> --manifest <path>`
+
+Implementation tasks:
+
+- define authenticated mutation handlers for bounded control actions
+- add queue-specific retry workers for payments, settlement, market, signer,
+  and paymaster paths
+- add audit logging for all remote control actions
+- add safety checks for role, state, and maintenance intent before mutating a node
+- add fleet CLI support for targeted node control and batch retry flows
+- add tests for authorization, idempotency, and audit logging of control actions
+
+Acceptance criteria:
+
+- operators can pause, resume, or drain a node without direct shell access
+- operators can recover eligible queues remotely through bounded authenticated APIs
+- every mutation action leaves an auditable control record
+- unsafe high-risk actions remain outside the automatic fleet-control surface
+
+### Phase 17: Conservative Autopilot Policies
+
+Status: planned
+
+Goal:
+
+- let operator-box automate low-risk maintenance while keeping treasury and
+  policy expansion under explicit approval
+
+Delivered surface:
+
+- operator automation policies for retries, renewals, verification catch-up,
+  and provider quarantine
+- approval-gated policies for treasury, spend-cap, and signer or paymaster policy changes
+- control-event reporting in dashboards and audit bundles
+
+Implementation tasks:
+
+- define policy rules for low-risk automated maintenance triggers
+- add threshold-based actions for queue backlogs, lease-health failures, and
+  provider degradation
+- add approval workflows for high-risk actions
+- persist operator control events for audit and post-incident review
+- extend dashboard bundles with automation and control-event reports
+- add tests for rule triggering, suppression, approval gates, and audit trails
+
+Acceptance criteria:
+
+- operators can enable bounded automation for common low-risk maintenance paths
+- automation never widens treasury or execution authority without approval
+- audit bundles explain what the operator box did, when it did it, and why
+
+### Phase 18: Sponsor Campaigns on Top of the Task Marketplace
+
+Status: completed
+
+Goal:
+
+- add a sponsor-facing grouping layer above individual bounties so operators
+  can run coherent campaigns with one budget and one progress view without
+  splitting the marketplace into a second parallel system
+
+Delivered surface:
+
+- persistent `campaign` records in the OpenFox marketplace database
+- `campaign_id` binding on bounties
+- `GET /campaigns`
+- `POST /campaigns`
+- `GET /campaigns/:id`
+- `openfox campaign list`
+- `openfox campaign status <campaign-id>`
+- `openfox campaign open --title ... --description ... --budget-wei ...`
+- campaign-aware opportunity scouting and reports
+
+Implementation tasks:
+
+- add a campaign record type with budget, allowed task kinds, and bounded
+  open-bounty counts
+- add campaign-aware bounty creation rules so budget and kind limits are
+  enforced inside the existing bounty engine
+- add local and remote campaign inspection surfaces through CLI and HTTP
+- surface campaign progress as allocated budget, remaining budget, bounty
+  count, open-bounty count, paid-bounty count, and submission count
+- include campaigns in opportunity scouting so sponsors and solver agents can
+  discover grouped work programs, not only one-off tasks
+- add tests for campaign CRUD, budget enforcement, and campaign HTTP/scout
+  flows
+
+Acceptance criteria:
+
+- sponsors can create one campaign with a fixed budget and allowed task kinds
+- hosts can open multiple bounties under one campaign until the campaign
+  budget or open-bounty cap is exhausted
+- operators can inspect a campaign and see its bounties plus progress in one
+  response
+- opportunity scouting can see campaign-level work surfaces in addition to
+  one-off bounties

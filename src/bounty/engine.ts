@@ -2,6 +2,9 @@ import { ulid } from "ulid";
 import type {
   BountyConfig,
   BountyCreateInput,
+  CampaignCreateInput,
+  CampaignProgress,
+  CampaignRecord,
   BountyPolicy,
   BountyRecord,
   BountyResultRecord,
@@ -22,6 +25,13 @@ import type { MarketContractDispatcher } from "../market/contracts.js";
 import type { ArtifactManager } from "../artifacts/manager.js";
 
 export interface BountyEngine {
+  createCampaign(input: CampaignCreateInput): CampaignRecord;
+  listCampaigns(): Array<CampaignRecord & { progress: CampaignProgress }>;
+  getCampaignDetails(campaignId: string): {
+    campaign: CampaignRecord;
+    progress: CampaignProgress;
+    bounties: BountyRecord[];
+  } | null;
   openBounty(input: BountyCreateInput): BountyRecord;
   openQuestionBounty(input: {
     question: string;
@@ -117,6 +127,31 @@ function collectSolverPayoutStats(params: {
   return { paidWeiLast24h, mostRecentPaidAt };
 }
 
+function collectCampaignProgress(params: {
+  db: OpenFoxDatabase;
+  campaign: CampaignRecord;
+}): CampaignProgress {
+  const bounties = params.db.listBountiesByCampaign(params.campaign.campaignId);
+  const allocatedWei = bounties.reduce((sum, bounty) => sum + BigInt(bounty.rewardWei), 0n);
+  const submissionCount = bounties.reduce(
+    (sum, bounty) => sum + params.db.listBountySubmissions(bounty.bountyId).length,
+    0,
+  );
+  const openBountyCount = bounties.filter((bounty) => bounty.status === "open").length;
+  const paidBountyCount = bounties.filter((bounty) => bounty.status === "paid").length;
+  const totalBudgetWei = BigInt(params.campaign.budgetWei);
+  const remainingWei = totalBudgetWei > allocatedWei ? totalBudgetWei - allocatedWei : 0n;
+  return {
+    totalBudgetWei: totalBudgetWei.toString(),
+    allocatedWei: allocatedWei.toString(),
+    remainingWei: remainingWei.toString(),
+    bountyCount: bounties.length,
+    openBountyCount,
+    paidBountyCount,
+    submissionCount,
+  };
+}
+
 export function createBountyEngine(params: {
   identity: OpenFoxIdentity;
   db: OpenFoxDatabase;
@@ -133,7 +168,84 @@ export function createBountyEngine(params: {
 }): BountyEngine {
   const now = params.now ?? (() => new Date());
 
+  function createCampaign(input: CampaignCreateInput): CampaignRecord {
+    const timestamp = now().toISOString();
+    const campaign: CampaignRecord = {
+      campaignId: ulid(),
+      hostAgentId: params.identity.sandboxId || params.identity.address,
+      hostAddress: params.identity.address,
+      title: input.title.trim(),
+      description: input.description.trim(),
+      budgetWei: input.budgetWei,
+      maxOpenBounties: input.maxOpenBounties ?? params.bountyConfig.maxOpenBounties,
+      allowedKinds: input.allowedKinds?.length
+        ? [...input.allowedKinds]
+        : [
+            "question",
+            "translation",
+            "social_proof",
+            "problem_solving",
+            "public_news_capture",
+            "oracle_evidence_capture",
+          ],
+      metadata: input.metadata ?? {},
+      status: "open",
+      createdAt: timestamp,
+      updatedAt: timestamp,
+    };
+    if (!campaign.title) {
+      throw new Error("campaign title is required");
+    }
+    if (!campaign.description) {
+      throw new Error("campaign description is required");
+    }
+    if (BigInt(campaign.budgetWei) <= 0n) {
+      throw new Error("campaign budgetWei must be greater than zero");
+    }
+    params.db.insertCampaign(campaign);
+    return campaign;
+  }
+
+  function listCampaigns(): Array<CampaignRecord & { progress: CampaignProgress }> {
+    return params.db.listCampaigns().map((campaign) => ({
+      ...campaign,
+      progress: collectCampaignProgress({ db: params.db, campaign }),
+    }));
+  }
+
+  function getCampaignDetails(campaignId: string) {
+    const campaign = params.db.getCampaignById(campaignId);
+    if (!campaign) return null;
+    return {
+      campaign,
+      progress: collectCampaignProgress({ db: params.db, campaign }),
+      bounties: params.db.listBountiesByCampaign(campaignId),
+    };
+  }
+
   function openBounty(input: BountyCreateInput): BountyRecord {
+    let campaign: CampaignRecord | undefined;
+    if (input.campaignId) {
+      campaign = params.db.getCampaignById(input.campaignId);
+      if (!campaign) {
+        throw new Error(`campaign not found: ${input.campaignId}`);
+      }
+      if (campaign.status !== "open") {
+        throw new Error(`campaign is not open: ${campaign.status}`);
+      }
+      if (!campaign.allowedKinds.includes(input.kind)) {
+        throw new Error(`campaign does not allow bounty kind: ${input.kind}`);
+      }
+      const progress = collectCampaignProgress({ db: params.db, campaign });
+      if (progress.openBountyCount >= campaign.maxOpenBounties) {
+        throw new Error("campaign has reached the maximum open bounty count");
+      }
+      const nextAllocatedWei = BigInt(progress.allocatedWei) + BigInt(input.rewardWei);
+      if (nextAllocatedWei > BigInt(campaign.budgetWei)) {
+        throw new Error("campaign budget is exhausted");
+      }
+    }
+
     const openBounties = params.db
       .listBounties("open")
       .filter((row) => row.hostAddress === params.identity.address);
@@ -159,6 +271,7 @@ export function createBountyEngine(params: {
     const timestamp = now().toISOString();
     const bounty: BountyRecord = {
       bountyId: ulid(),
+      campaignId: input.campaignId ?? null,
       hostAgentId: params.identity.sandboxId || params.identity.address,
       hostAddress: params.identity.address,
       kind: input.kind,
@@ -176,6 +289,12 @@ export function createBountyEngine(params: {
       updatedAt: timestamp,
     };
     params.db.insertBounty(bounty);
+    if (campaign) {
+      const progress = collectCampaignProgress({ db: params.db, campaign });
+      if (BigInt(progress.remainingWei) === 0n) {
+        params.db.updateCampaignStatus(campaign.campaignId, "exhausted");
+      }
+    }
     if (params.marketBindingPublisher) {
       const binding = params.marketBindingPublisher.publish({
         kind: "bounty",
@@ -432,6 +551,9 @@ export function createBountyEngine(params: {
   }
 
   return {
+    createCampaign,
+    listCampaigns,
+    getCampaignDetails,
     openBounty,
     openQuestionBounty,
     listBounties,

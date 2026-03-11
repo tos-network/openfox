@@ -268,6 +268,11 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Export one self-contained audit bundle with the manifest copy,
     dashboard JSON, dashboard HTML, and lint report instead of requiring
     operators to stitch those artifacts together manually.
+- [x] Task 57: Add sponsor-facing campaign grouping for the task marketplace
+  - Status: Complete
+  - Goal: Add a campaign layer above individual bounties so sponsors can group
+    budgets, allowed task kinds, and progress reporting without introducing a
+    second marketplace system.
 
 ## Task 53 Breakdown
 
@@ -299,6 +304,15 @@ building OpenFox into a TOS-native agent platform.
 - [x] Include dashboard JSON and HTML in the export.
 - [x] Include a fleet lint JSON report in the export.
 - [x] Add tests and dashboard-guide updates for bundle export.
+
+## Task 57 Breakdown
+
+- [x] Add persistent campaign records with budget, allowed task kinds, and status.
+- [x] Add `campaign_id` support to bounties without forking the marketplace engine.
+- [x] Add `openfox campaign list|status|open`.
+- [x] Add HTTP `GET/POST /campaigns` and `GET /campaigns/:id`.
+- [x] Add campaign-aware opportunity scouting.
+- [x] Add tests for campaign CRUD, budget enforcement, and HTTP/scout surfaces.
 
 ## Task 1 Breakdown
 

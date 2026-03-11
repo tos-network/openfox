@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 26;
+export const SCHEMA_VERSION = 27;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -164,9 +164,27 @@ export const CREATE_TABLES = `
   CREATE INDEX IF NOT EXISTS idx_inbox_unprocessed
     ON inbox_messages(received_at) WHERE processed_at IS NULL;
 
+  CREATE TABLE IF NOT EXISTS campaigns (
+    campaign_id TEXT PRIMARY KEY,
+    host_agent_id TEXT NOT NULL,
+    host_address TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    budget_wei TEXT NOT NULL,
+    max_open_bounties INTEGER NOT NULL,
+    allowed_kinds_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('open','paused','exhausted','completed')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_campaigns_status ON campaigns(status, created_at);
+
   -- Bounty engine
   CREATE TABLE IF NOT EXISTS bounties (
     bounty_id TEXT PRIMARY KEY,
+    campaign_id TEXT REFERENCES campaigns(campaign_id) ON DELETE SET NULL,
     host_agent_id TEXT NOT NULL,
     host_address TEXT NOT NULL,
     kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture')),
@@ -1400,6 +1418,32 @@ export const MIGRATION_V26 = `
 
   CREATE INDEX IF NOT EXISTS idx_paymaster_authorizations_receipt_hash
     ON paymaster_authorizations(receipt_hash);
+`;
+
+export const MIGRATION_V27 = `
+  CREATE TABLE IF NOT EXISTS campaigns (
+    campaign_id TEXT PRIMARY KEY,
+    host_agent_id TEXT NOT NULL,
+    host_address TEXT NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL,
+    budget_wei TEXT NOT NULL,
+    max_open_bounties INTEGER NOT NULL,
+    allowed_kinds_json TEXT NOT NULL DEFAULT '[]',
+    metadata_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('open','paused','exhausted','completed')),
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_campaigns_status
+    ON campaigns(status, created_at);
+
+  ALTER TABLE bounties
+    ADD COLUMN campaign_id TEXT REFERENCES campaigns(campaign_id) ON DELETE SET NULL;
+
+  CREATE INDEX IF NOT EXISTS idx_bounties_campaign
+    ON bounties(campaign_id, created_at);
 `;
 
 export const MIGRATION_V3 = `

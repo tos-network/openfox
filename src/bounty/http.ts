@@ -59,6 +59,46 @@ export async function startBountyHttpServer(params: {
       }
 
       const parts = parsePath(pathPrefix, url.pathname);
+      if (parts.length === 1 && parts[0] === "campaigns" && req.method === "GET") {
+        json(res, 200, { items: params.engine.listCampaigns() });
+        return;
+      }
+
+      if (parts.length === 1 && parts[0] === "campaigns" && req.method === "POST") {
+        const body = (await readJsonBody(req)) as Record<string, unknown>;
+        const campaign = params.engine.createCampaign({
+          title: String(body.title || "").trim(),
+          description: String(body.description || "").trim(),
+          budgetWei: String(body.budget_wei || "").trim(),
+          maxOpenBounties:
+            typeof body.max_open_bounties === "number" &&
+            Number.isFinite(body.max_open_bounties)
+              ? body.max_open_bounties
+              : undefined,
+          allowedKinds: Array.isArray(body.allowed_kinds)
+            ? body.allowed_kinds
+                .filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+                .map((item) => item.trim() as any)
+            : undefined,
+          metadata:
+            typeof body.metadata === "object" && body.metadata !== null
+              ? (body.metadata as Record<string, unknown>)
+              : {},
+        });
+        json(res, 201, campaign);
+        return;
+      }
+
+      if (parts.length === 2 && parts[0] === "campaigns" && req.method === "GET") {
+        const details = params.engine.getCampaignDetails(parts[1]!);
+        if (!details) {
+          json(res, 404, { error: "campaign not found" });
+          return;
+        }
+        json(res, 200, details);
+        return;
+      }
+
       if (parts.length === 1 && parts[0] === "bounties" && req.method === "GET") {
         json(res, 200, { items: params.engine.listBounties() });
         return;
@@ -85,6 +125,10 @@ export async function startBountyHttpServer(params: {
             ? body.reference_output.trim()
             : String(body.reference_answer || "").trim();
         const bounty = params.engine.openBounty({
+          campaignId:
+            typeof body.campaign_id === "string" && body.campaign_id.trim()
+              ? body.campaign_id.trim()
+              : null,
           kind: kind as any,
           title:
             typeof body.title === "string" && body.title.trim()

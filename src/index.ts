@@ -127,6 +127,8 @@ import { startBountyHttpServer } from "./bounty/http.js";
 import { createNativeBountyPayoutSender } from "./bounty/payout.js";
 import { startBountyAutomation } from "./bounty/automation.js";
 import {
+  fetchRemoteCampaign,
+  fetchRemoteCampaigns,
   fetchRemoteBounties,
   fetchRemoteBounty,
   solveRemoteBounty,
@@ -207,6 +209,18 @@ import { buildStorageLeaseHealthSnapshot } from "./operator/storage-health.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
+
+class NoopInferenceClient {
+  async chat(): Promise<never> {
+    throw new Error("inference is not available for this command");
+  }
+
+  setLowComputeMode(): void {}
+
+  getDefaultModel(): string {
+    return "noop";
+  }
+}
 
 function resolveBountySkillName(config: {
   role: "host" | "solver";
@@ -321,6 +335,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "campaign") {
+    await handleCampaignCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "bounty") {
     await handleBountyCommand(args.slice(1));
     process.exit(0);
@@ -415,6 +434,7 @@ Usage:
   openfox wallet ...     Inspect, fund, and bootstrap the native wallet
   openfox templates ...  Inspect and export bundled third-party templates
   openfox logs           Show recent OpenFox service logs
+  openfox campaign ...   Create and inspect sponsor-facing task campaigns
   openfox bounty ...     Open, inspect, and solve task bounties
   openfox settlement ... Inspect on-chain settlement receipts and anchors
   openfox market ...     Inspect contract-native market bindings and callbacks
@@ -1657,6 +1677,146 @@ Usage:
   logger.info(buildServiceLogsReport({ tail }));
 }
 
+async function handleCampaignCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox campaign
+
+Usage:
+  openfox campaign list [--url <base-url>]
+  openfox campaign status <campaign-id> [--url <base-url>]
+  openfox campaign open --title "<text>" --description "<text>" --budget-wei <wei> [--max-open-bounties <n>] [--allowed-kinds <csv>]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+  if (!config.bounty?.enabled) {
+    throw new Error("Bounty mode is not enabled in openfox.json");
+  }
+
+  const remoteBaseUrl = readOption(args, "--url");
+  if (command === "list") {
+    if (remoteBaseUrl) {
+      logger.info(JSON.stringify(await fetchRemoteCampaigns(remoteBaseUrl), null, 2));
+      return;
+    }
+    const db = createDatabase(resolvePath(config.dbPath));
+    try {
+      const engine = createBountyEngine({
+        identity: {
+          name: config.name,
+          address: config.walletAddress,
+          account: {} as any,
+          creatorAddress: config.creatorAddress,
+          sandboxId: config.sandboxId,
+          apiKey: config.runtimeApiKey || loadApiKeyFromConfig() || "",
+          createdAt: db.getIdentity("createdAt") || new Date().toISOString(),
+        },
+        db,
+        inference: new NoopInferenceClient(),
+        bountyConfig: config.bounty,
+      });
+      logger.info(JSON.stringify(engine.listCampaigns(), null, 2));
+      return;
+    } finally {
+      db.close();
+    }
+  }
+
+  if (command === "status") {
+    const campaignId = args[1];
+    if (!campaignId) {
+      throw new Error("Usage: openfox campaign status <campaign-id> [--url <base-url>]");
+    }
+    if (remoteBaseUrl) {
+      logger.info(JSON.stringify(await fetchRemoteCampaign(remoteBaseUrl, campaignId), null, 2));
+      return;
+    }
+    const db = createDatabase(resolvePath(config.dbPath));
+    try {
+      const engine = createBountyEngine({
+        identity: {
+          name: config.name,
+          address: config.walletAddress,
+          account: {} as any,
+          creatorAddress: config.creatorAddress,
+          sandboxId: config.sandboxId,
+          apiKey: config.runtimeApiKey || loadApiKeyFromConfig() || "",
+          createdAt: db.getIdentity("createdAt") || new Date().toISOString(),
+        },
+        db,
+        inference: new NoopInferenceClient(),
+        bountyConfig: config.bounty,
+      });
+      const details = engine.getCampaignDetails(campaignId);
+      if (!details) throw new Error(`Campaign not found: ${campaignId}`);
+      logger.info(JSON.stringify(details, null, 2));
+      return;
+    } finally {
+      db.close();
+    }
+  }
+
+  if (command !== "open") {
+    throw new Error(`Unknown campaign command: ${command}`);
+  }
+
+  const title = readOption(args, "--title");
+  const description = readOption(args, "--description");
+  const budgetWei = readOption(args, "--budget-wei");
+  if (!title || !description || !budgetWei) {
+    throw new Error(
+      'Usage: openfox campaign open --title "<text>" --description "<text>" --budget-wei <wei> [--max-open-bounties <n>] [--allowed-kinds <csv>]',
+    );
+  }
+
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    const engine = createBountyEngine({
+      identity: {
+        name: config.name,
+        address: config.walletAddress,
+        account: {} as any,
+        creatorAddress: config.creatorAddress,
+        sandboxId: config.sandboxId,
+        apiKey: config.runtimeApiKey || loadApiKeyFromConfig() || "",
+        createdAt: db.getIdentity("createdAt") || new Date().toISOString(),
+      },
+      db,
+      inference: new NoopInferenceClient(),
+      bountyConfig: config.bounty,
+    });
+    const allowedKinds = readOption(args, "--allowed-kinds")
+      ?.split(",")
+      .map((item) => item.trim())
+      .filter(Boolean) as
+      | Array<
+          | "question"
+          | "translation"
+          | "social_proof"
+          | "problem_solving"
+          | "public_news_capture"
+          | "oracle_evidence_capture"
+        >
+      | undefined;
+    const campaign = engine.createCampaign({
+      title,
+      description,
+      budgetWei,
+      maxOpenBounties: readNumberOption(args, "--max-open-bounties", config.bounty.maxOpenBounties),
+      allowedKinds,
+    });
+    logger.info(JSON.stringify(campaign, null, 2));
+  } finally {
+    db.close();
+  }
+}
+
 async function handleBountyCommand(args: string[]): Promise<void> {
   const command = args[0] || "list";
   if (args.includes("--help") || args.includes("-h") || command === "help") {
@@ -1666,8 +1826,8 @@ OpenFox bounty
 Usage:
   openfox bounty list [--url <base-url>]
   openfox bounty status <bounty-id> [--url <base-url>]
-  openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--skill <name>]
-  openfox bounty open --question "<text>" --answer "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>]
+  openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--skill <name>] [--campaign-id <id>]
+  openfox bounty open --question "<text>" --answer "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--campaign-id <id>]
   openfox bounty submit <bounty-id> --submission "<text>" [--proof-url <url>] [--url <base-url>]
   openfox bounty submit <bounty-id> --answer "<text>" [--url <base-url>]
   openfox bounty solve <bounty-id> --url <base-url>
@@ -1771,7 +1931,7 @@ Usage:
         readOption(args, "--reference") || readOption(args, "--answer");
       if (!taskPrompt || !referenceOutput) {
         throw new Error(
-          'Usage: openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>]',
+          'Usage: openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--campaign-id <id>]',
         );
       }
       const ttlSeconds = readNumberOption(
@@ -1780,6 +1940,7 @@ Usage:
         config.bounty.defaultSubmissionTtlSeconds,
       );
       const bounty = engine.openBounty({
+        campaignId: readOption(args, "--campaign-id") || null,
         kind,
         title: readOption(args, "--title") || taskPrompt.slice(0, 160),
         taskPrompt,
