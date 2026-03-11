@@ -23,11 +23,17 @@ import type {
 import { parseSkillMd } from "./format.js";
 
 // Validation patterns to prevent injection via path/URL arguments
-const SKILL_NAME_RE = /^[a-zA-Z0-9-]+$/;
+const SKILL_NAME_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/;
 const SAFE_URL_RE = /^https?:\/\/[^\s;|&$`(){}<>]+$/;
 
+// Install spec validation patterns (aligned with OpenClaw)
+export const BREW_FORMULA_PATTERN = /^[A-Za-z0-9][A-Za-z0-9@+._/-]*$/;
+export const GO_MODULE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._~+\-/]*(?:@[A-Za-z0-9][A-Za-z0-9._~+\-/]*)?$/;
+export const UV_PACKAGE_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._\-[\]=<>!~+,]*$/;
+export const NPM_SPEC_PATTERN = /^[a-zA-Z0-9@][a-zA-Z0-9@._\-/]*$/;
+
 // Size limits for skill content
-const MAX_DESCRIPTION_LENGTH = 500;
+const MAX_DESCRIPTION_LENGTH = 1024;
 const MAX_INSTRUCTIONS_LENGTH = 10_000;
 
 /**
@@ -40,6 +46,63 @@ function validateSkillPath(skillsDir: string, name: string): string {
     throw new Error(`Skill path traversal detected: ${name}`);
   }
   return resolved;
+}
+
+// ─── Install Spec Validation ──────────────────────────────────────
+
+function hasUnsafeChars(value: string): boolean {
+  return value.startsWith("-") || value.includes("\\") || value.includes("..");
+}
+
+function hasProtocolScheme(value: string): boolean {
+  return /:\/\//.test(value);
+}
+
+/**
+ * Validate a brew formula name. Blocks flag injection, backslash, `..`.
+ */
+export function normalizeSafeBrewFormula(formula: string): string | null {
+  if (!formula || hasUnsafeChars(formula)) return null;
+  return BREW_FORMULA_PATTERN.test(formula) ? formula : null;
+}
+
+/**
+ * Validate an npm package spec. Blocks flag injection.
+ */
+export function normalizeSafeNpmSpec(spec: string): string | null {
+  if (!spec || spec.startsWith("-")) return null;
+  return NPM_SPEC_PATTERN.test(spec) ? spec : null;
+}
+
+/**
+ * Validate a Go module path. Blocks backslash, protocol schemes.
+ */
+export function normalizeSafeGoModule(mod: string): string | null {
+  if (!mod || hasUnsafeChars(mod) || hasProtocolScheme(mod)) return null;
+  return GO_MODULE_PATTERN.test(mod) ? mod : null;
+}
+
+/**
+ * Validate a uv/pip package spec. Blocks backslash, protocol schemes.
+ */
+export function normalizeSafeUvPackage(pkg: string): string | null {
+  if (!pkg || hasUnsafeChars(pkg) || hasProtocolScheme(pkg)) return null;
+  return UV_PACKAGE_PATTERN.test(pkg) ? pkg : null;
+}
+
+/**
+ * Validate a download URL. Only allows http/https, no whitespace.
+ */
+export function normalizeSafeDownloadUrl(rawUrl: string): string | null {
+  if (!rawUrl) return null;
+  try {
+    const parsed = new URL(rawUrl);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") return null;
+    if (/\s/.test(rawUrl)) return null;
+    return rawUrl;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -183,6 +246,7 @@ export async function createSkill(
     instructions: safeInstructions,
     source: "self",
     path: skillMdPath,
+    baseDir: targetDir,
     enabled: true,
     installedAt: new Date().toISOString(),
   };

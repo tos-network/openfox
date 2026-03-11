@@ -3303,20 +3303,32 @@ export interface Skill {
   always?: boolean;
   homepage?: string;
   primaryEnv?: string;
+  os?: string[];
   requires?: SkillRequirements;
   install?: SkillInstallSpec[];
   providerBackends?: Record<string, SkillProviderBackendSpec>;
   instructions: string;
   source: SkillSource;
   path: string;
+  baseDir: string;
   enabled: boolean;
   installedAt: string;
+  license?: string;
+  compatibility?: string;
+  allowedTools?: string[];
+  invocation?: SkillInvocationPolicy;
+}
+
+export interface SkillInvocationPolicy {
+  userInvocable: boolean;
+  disableModelInvocation: boolean;
 }
 
 export interface SkillRequirements {
   bins?: string[];
   anyBins?: string[];
   env?: string[];
+  config?: string[];
 }
 
 export interface SkillInstallSpec {
@@ -3324,10 +3336,15 @@ export interface SkillInstallSpec {
   kind: "brew" | "node" | "go" | "uv" | "download";
   label?: string;
   bins?: string[];
+  os?: string[];
   formula?: string;
   package?: string;
   module?: string;
   url?: string;
+  archive?: string;
+  extract?: boolean;
+  stripComponents?: number;
+  targetDir?: string;
 }
 
 export interface SkillProviderBackendSpec {
@@ -3346,6 +3363,7 @@ export interface SkillSnapshot {
   prompt: string;
   skills: SkillPromptEntry[];
   resolvedSkills: Skill[];
+  version?: number;
 }
 
 export interface SkillStatusEntry {
@@ -3358,10 +3376,13 @@ export interface SkillStatusEntry {
   always: boolean;
   homepage?: string;
   primaryEnv?: string;
+  os?: string[];
   missingBins: string[];
   missingAnyBins: string[];
   missingEnv: string[];
+  missingConfig: string[];
   install: SkillInstallSpec[];
+  license?: string;
 }
 
 export type SkillSource =
@@ -3371,15 +3392,28 @@ export type SkillSource =
   | "builtin"
   | "git"
   | "url"
-  | "self";
+  | "self"
+  | "agents-personal"
+  | "agents-project"
+  | "extra";
 
 export interface SkillFrontmatter {
+  // agentskills.io standard fields
   name?: string;
   description?: string;
+  license?: string;
+  compatibility?: string;
+  metadata?: Record<string, unknown>;
+  "allowed-tools"?: string;
+  // Invocation policy (per agentskills.io / Claude Code convention)
+  "user-invocable"?: boolean;
+  "disable-model-invocation"?: boolean;
+  // Platform fields (top-level, per agentskills.io convention)
   "auto-activate"?: boolean;
-  homepage?: string;
   always?: boolean;
+  homepage?: string;
   "primary-env"?: string;
+  os?: string[];
   requires?: SkillRequirements;
   install?: SkillInstallSpec[];
   "provider-backends"?: Record<
@@ -3390,6 +3424,42 @@ export interface SkillFrontmatter {
         description?: string;
       }
   >;
+}
+
+// ─── Skills Configuration ────────────────────────────────────────
+
+export interface SkillConfig {
+  enabled?: boolean;
+  apiKey?: string;
+  env?: Record<string, string>;
+  config?: Record<string, unknown>;
+}
+
+export interface SkillsLoadConfig {
+  extraDirs?: string[];
+  watch?: boolean;
+  watchDebounceMs?: number;
+}
+
+export interface SkillsInstallConfig {
+  preferBrew?: boolean;
+  nodeManager?: "npm" | "pnpm" | "yarn" | "bun";
+}
+
+export interface SkillsLimitsConfig {
+  maxCandidatesPerRoot?: number;
+  maxSkillsLoadedPerSource?: number;
+  maxSkillsInPrompt?: number;
+  maxSkillsPromptChars?: number;
+  maxSkillFileBytes?: number;
+}
+
+export interface SkillsConfig {
+  allowBundled?: string[];
+  load?: SkillsLoadConfig;
+  install?: SkillsInstallConfig;
+  limits?: SkillsLimitsConfig;
+  entries?: Record<string, SkillConfig>;
 }
 
 // ─── Git ────────────────────────────────────────────────────────

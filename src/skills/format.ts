@@ -2,12 +2,59 @@
  * SKILL.md Parser
  *
  * Parses SKILL.md files with YAML frontmatter + Markdown body into structured
- * skill definitions. This parser intentionally supports a richer frontmatter
- * subset so OpenFox can move closer to the OpenClaw skill catalog shape.
+ * skill definitions. Follows the agentskills.io standard: platform-specific
+ * fields live at the top level of frontmatter; metadata is a generic key-value
+ * map for author/version/custom data.
  */
 
+import path from "path";
 import { parse as parseYaml } from "yaml";
-import type { SkillFrontmatter, Skill, SkillSource } from "../types.js";
+import type { SkillFrontmatter, Skill, SkillSource, SkillInvocationPolicy } from "../types.js";
+import { createLogger } from "../observability/logger.js";
+
+const logger = createLogger("skills.format");
+
+/**
+ * Validate and normalize skill name per agentskills.io spec:
+ * - Auto-lowercase
+ * - 1-64 chars (reject if exceeded)
+ * - No leading/trailing hyphens
+ * - No consecutive hyphens
+ * - Warn on name/directory mismatch
+ */
+function validateSkillName(name: string, filePath: string): string | null {
+  const lowered = name.toLowerCase();
+  if (lowered !== name) {
+    logger.warn(`Skill name "${name}" auto-lowercased to "${lowered}" in ${filePath}`);
+  }
+  if (lowered.length === 0 || lowered.length > 64) {
+    logger.warn(`Skill name "${lowered}" rejected: must be 1-64 chars in ${filePath}`);
+    return null;
+  }
+  if (/^-|-$/.test(lowered)) {
+    logger.warn(`Skill name "${lowered}" rejected: leading/trailing hyphens in ${filePath}`);
+    return null;
+  }
+  if (/--/.test(lowered)) {
+    logger.warn(`Skill name "${lowered}" rejected: consecutive hyphens in ${filePath}`);
+    return null;
+  }
+  const dirName = extractNameFromPath(filePath);
+  if (dirName && lowered !== dirName.toLowerCase() && dirName !== filePath) {
+    logger.warn(`Skill name "${lowered}" does not match directory name "${dirName}" in ${filePath}`);
+  }
+  return lowered;
+}
+
+/**
+ * Parse invocation policy from frontmatter.
+ */
+function resolveInvocationPolicy(fm: SkillFrontmatter): SkillInvocationPolicy {
+  return {
+    userInvocable: fm["user-invocable"] !== false,
+    disableModelInvocation: fm["disable-model-invocation"] === true,
+  };
+}
 
 /**
  * Parse a SKILL.md file content into frontmatter + body.
@@ -20,8 +67,6 @@ export function parseSkillMd(
 ): Skill | null {
   const trimmed = content.trim();
   if (!trimmed.startsWith("---")) {
-    // No frontmatter -- treat entire content as instructions
-    // with a name derived from the directory
     const name = extractNameFromPath(filePath);
     return {
       name,
@@ -30,12 +75,12 @@ export function parseSkillMd(
       instructions: trimmed,
       source,
       path: filePath,
+      baseDir: path.dirname(filePath),
       enabled: true,
       installedAt: new Date().toISOString(),
     };
   }
 
-  // Find the closing ---
   const endIndex = trimmed.indexOf("---", 3);
   if (endIndex === -1) {
     return null;
@@ -44,27 +89,57 @@ export function parseSkillMd(
   const frontmatterRaw = trimmed.slice(3, endIndex).trim();
   const body = trimmed.slice(endIndex + 3).trim();
 
-  // Parse YAML frontmatter manually (avoid requiring gray-matter at runtime)
   const frontmatter = parseYamlFrontmatter(frontmatterRaw);
   if (!frontmatter) {
     return null;
   }
 
+  const rawName = frontmatter.name || extractNameFromPath(filePath);
+  const name = validateSkillName(rawName, filePath);
+  if (!name) {
+    return null;
+  }
+
+  // Parse allowed-tools: space/comma-delimited string → array
+  let allowedTools: string[] | undefined;
+  if (typeof frontmatter["allowed-tools"] === "string" && frontmatter["allowed-tools"].trim()) {
+    allowedTools = frontmatter["allowed-tools"]
+      .split(/[\s,]+/)
+      .map((t) => t.trim())
+      .filter(Boolean);
+  }
+
+  // Parse os: normalize to lowercase string array
+  let os: string[] | undefined;
+  if (Array.isArray(frontmatter.os)) {
+    os = frontmatter.os
+      .filter((v): v is string => typeof v === "string")
+      .map((v) => v.toLowerCase().trim())
+      .filter(Boolean);
+    if (os.length === 0) os = undefined;
+  }
+
   return {
-    name: frontmatter.name || extractNameFromPath(filePath),
+    name,
     description: frontmatter.description || "",
     autoActivate: frontmatter["auto-activate"] !== false,
     always: frontmatter.always === true,
     homepage: frontmatter.homepage,
     primaryEnv: frontmatter["primary-env"],
+    os,
     requires: frontmatter.requires,
     install: frontmatter.install,
     providerBackends: normalizeProviderBackends(frontmatter["provider-backends"]),
     instructions: body,
     source,
     path: filePath,
+    baseDir: path.dirname(filePath),
     enabled: true,
     installedAt: new Date().toISOString(),
+    license: frontmatter.license,
+    compatibility: frontmatter.compatibility,
+    allowedTools,
+    invocation: resolveInvocationPolicy(frontmatter),
   };
 }
 
@@ -115,8 +190,7 @@ function normalizeProviderBackends(
   return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
-function extractNameFromPath(filePath: string): string {
-  // Extract skill name from path like ~/.openfox/skills/web-scraper/SKILL.md
+export function extractNameFromPath(filePath: string): string {
   const parts = filePath.split("/");
   const skillMdIndex = parts.findIndex(
     (p) => p.toLowerCase() === "skill.md",
