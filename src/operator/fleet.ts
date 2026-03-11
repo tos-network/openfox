@@ -56,7 +56,9 @@ export type FleetEndpoint =
   | "artifacts"
   | "signer"
   | "paymaster"
-  | "providers";
+  | "providers"
+  | "reconciliation"
+  | "provider-liveness";
 
 export interface FleetSnapshot {
   manifestPath: string;
@@ -67,7 +69,91 @@ export interface FleetSnapshot {
   nodes: FleetNodeResult[];
 }
 
-export type FleetRepairComponent = "storage" | "artifacts";
+export type FleetRepairComponent = "storage" | "artifacts" | "replication";
+
+export type FleetReconciliationKind =
+  | "lease"
+  | "audit"
+  | "renewal"
+  | "replication";
+
+export interface FleetReconciliationEntry {
+  node: string;
+  role: string | null;
+  kind: FleetReconciliationKind;
+  total: number;
+  healthy: number;
+  warning: number;
+  critical: number;
+  details: Record<string, number>;
+}
+
+export interface FleetReconciliationSnapshot {
+  manifestPath: string;
+  generatedAt: string;
+  total: number;
+  ok: number;
+  failed: number;
+  entries: FleetReconciliationEntry[];
+  nodes: FleetNodeResult[];
+  summary: string;
+}
+
+export type FleetProviderLivenessState = "alive" | "degraded" | "unreachable";
+
+export interface FleetProviderLivenessEntry {
+  node: string;
+  role: string | null;
+  providerKind: string;
+  state: FleetProviderLivenessState;
+  failureDomain: string | null;
+  degradedRoutes: string[];
+  lastSeenAt: string | null;
+  latencyMs: number | null;
+}
+
+export interface FleetProviderLivenessSnapshot {
+  manifestPath: string;
+  generatedAt: string;
+  total: number;
+  alive: number;
+  degraded: number;
+  unreachable: number;
+  failureDomains: Record<string, number>;
+  entries: FleetProviderLivenessEntry[];
+  nodes: FleetNodeResult[];
+  summary: string;
+}
+
+export type FleetRecoveryKind =
+  | "replication"
+  | "provider_route"
+  | "callback_queue";
+
+export type FleetRecoveryStatus = "recovered" | "partial" | "failed" | "skipped";
+
+export interface FleetRecoveryEntry {
+  node: string;
+  role: string | null;
+  kind: FleetRecoveryKind;
+  status: FleetRecoveryStatus;
+  attempted: number;
+  recovered: number;
+  failed: number;
+  details: Record<string, unknown>;
+}
+
+export interface FleetRecoverySnapshot {
+  manifestPath: string;
+  generatedAt: string;
+  kind: FleetRecoveryKind;
+  total: number;
+  ok: number;
+  failed: number;
+  entries: FleetRecoveryEntry[];
+  nodes: FleetNodeResult[];
+  summary: string;
+}
 
 export interface FleetRepairSnapshot {
   manifestPath: string;
@@ -194,6 +280,10 @@ function getEndpointPath(endpoint: FleetEndpoint): string {
       return "paymaster/status";
     case "providers":
       return "providers/reputation";
+    case "reconciliation":
+      return "fleet/reconciliation";
+    case "provider-liveness":
+      return "fleet/provider-liveness";
   }
 }
 
@@ -889,5 +979,419 @@ export function buildFleetBundleReport(snapshot: FleetBundleSnapshot): string {
   if (snapshot.lint) {
     lines.push(`Lint sum:  ${snapshot.lint.errors} error(s), ${snapshot.lint.warnings} warning(s)`);
   }
+  return lines.join("\n");
+}
+
+// ─── Fleet Reconciliation ─────────────────────────────────────────
+
+function parseReconciliationPayload(
+  node: FleetNodeResult,
+): FleetReconciliationEntry[] {
+  const payload = node.payload;
+  if (!payload || typeof payload !== "object") return [];
+  const entries: FleetReconciliationEntry[] = [];
+  const raw = payload as Record<string, unknown>;
+
+  // Extract per-kind reconciliation data from node payloads
+  const kinds: FleetReconciliationKind[] = ["lease", "audit", "renewal", "replication"];
+  for (const kind of kinds) {
+    const section = raw[kind] as Record<string, unknown> | undefined;
+    if (!section || typeof section !== "object") continue;
+    entries.push({
+      node: node.name,
+      role: node.role,
+      kind,
+      total: typeof section.total === "number" ? section.total : 0,
+      healthy: typeof section.healthy === "number" ? section.healthy : 0,
+      warning: typeof section.warning === "number" ? section.warning : 0,
+      critical: typeof section.critical === "number" ? section.critical : 0,
+      details: Object.fromEntries(
+        Object.entries(section).filter(
+          ([k, v]) => typeof v === "number" && !["total", "healthy", "warning", "critical"].includes(k),
+        ),
+      ) as Record<string, number>,
+    });
+  }
+
+  // If no structured sections, attempt to treat the whole payload as a flat reconciliation view
+  if (entries.length === 0 && typeof raw.totalLeases === "number") {
+    entries.push({
+      node: node.name,
+      role: node.role,
+      kind: "lease",
+      total: (raw.totalLeases as number) || 0,
+      healthy: (raw.healthy as number) || 0,
+      warning: (raw.warning as number) || 0,
+      critical: (raw.critical as number) || 0,
+      details: {
+        dueRenewals: typeof raw.dueRenewals === "number" ? raw.dueRenewals : 0,
+        dueAudits: typeof raw.dueAudits === "number" ? raw.dueAudits : 0,
+        underReplicated: typeof raw.underReplicated === "number" ? raw.underReplicated : 0,
+      },
+    });
+  }
+
+  return entries;
+}
+
+export async function buildFleetReconciliationSnapshot(params: {
+  manifestPath: string;
+}): Promise<FleetReconciliationSnapshot> {
+  const manifestPath = path.resolve(params.manifestPath);
+  const manifest = loadFleetManifest(manifestPath);
+
+  // Fetch lease-health and storage status from all nodes to reconcile
+  const leaseHealthNodes = await Promise.all(
+    manifest.nodes.map((node) => fetchNodeEndpoint(node, "lease-health")),
+  );
+  const storageNodes = await Promise.all(
+    manifest.nodes.map((node) => fetchNodeEndpoint(node, "storage")),
+  );
+
+  const allNodes = [...leaseHealthNodes, ...storageNodes];
+  const okCount = allNodes.filter((n) => n.ok).length;
+  const entries: FleetReconciliationEntry[] = [];
+
+  for (const node of leaseHealthNodes) {
+    if (node.ok) {
+      entries.push(...parseReconciliationPayload(node));
+    }
+  }
+
+  for (const node of storageNodes) {
+    if (node.ok && typeof node.payload === "object" && node.payload !== null) {
+      const raw = node.payload as Record<string, unknown>;
+      if (typeof raw.replication === "object" && raw.replication !== null) {
+        const rep = raw.replication as Record<string, unknown>;
+        entries.push({
+          node: node.name,
+          role: node.role,
+          kind: "replication",
+          total: typeof rep.targetCopies === "number" ? rep.targetCopies : 0,
+          healthy: typeof rep.currentCopies === "number" ? rep.currentCopies : 0,
+          warning: typeof rep.gap === "number" && (rep.gap as number) > 0 ? 1 : 0,
+          critical: typeof rep.missing === "number" && (rep.missing as number) > 0 ? 1 : 0,
+          details: Object.fromEntries(
+            Object.entries(rep).filter(([, v]) => typeof v === "number"),
+          ) as Record<string, number>,
+        });
+      }
+    }
+  }
+
+  const totalCritical = entries.reduce((sum, e) => sum + e.critical, 0);
+  const totalWarning = entries.reduce((sum, e) => sum + e.warning, 0);
+
+  return {
+    manifestPath,
+    generatedAt: new Date().toISOString(),
+    total: allNodes.length,
+    ok: okCount,
+    failed: allNodes.length - okCount,
+    entries,
+    nodes: allNodes,
+    summary: `${entries.length} reconciliation entries, ${totalCritical} critical, ${totalWarning} warning`,
+  };
+}
+
+export function buildFleetReconciliationReport(
+  snapshot: FleetReconciliationSnapshot,
+): string {
+  const lines = [
+    "=== OPENFOX FLEET RECONCILIATION ===",
+    `Generated: ${snapshot.generatedAt}`,
+    `Manifest:  ${snapshot.manifestPath}`,
+    `Nodes:     ${snapshot.total} (ok=${snapshot.ok}, failed=${snapshot.failed})`,
+    "",
+  ];
+  if (snapshot.entries.length === 0) {
+    lines.push("No reconciliation entries found.");
+    return lines.join("\n");
+  }
+  for (const entry of snapshot.entries) {
+    lines.push(
+      `${entry.node}${entry.role ? ` [${entry.role}]` : ""}: ${entry.kind} -> total=${entry.total} healthy=${entry.healthy} warning=${entry.warning} critical=${entry.critical}`,
+    );
+    const detailParts = Object.entries(entry.details)
+      .map(([k, v]) => `${k}=${v}`)
+      .join(", ");
+    if (detailParts) {
+      lines.push(`  ${detailParts}`);
+    }
+  }
+  lines.push("");
+  lines.push(snapshot.summary);
+  return lines.join("\n");
+}
+
+// ─── Fleet Provider Liveness ──────────────────────────────────────
+
+function parseProviderLivenessPayload(
+  node: FleetNodeResult,
+): FleetProviderLivenessEntry[] {
+  const payload = node.payload;
+  if (!payload || typeof payload !== "object") return [];
+  const raw = payload as Record<string, unknown>;
+
+  // If payload has an 'entries' array, use it
+  const rawEntries = Array.isArray(raw.entries) ? raw.entries : [];
+  if (rawEntries.length > 0) {
+    return rawEntries.flatMap((entry: unknown) => {
+      if (!entry || typeof entry !== "object") return [];
+      const e = entry as Record<string, unknown>;
+      return [
+        {
+          node: node.name,
+          role: node.role,
+          providerKind: typeof e.kind === "string" ? e.kind : "unknown",
+          state: classifyLivenessState(e),
+          failureDomain: typeof e.failureDomain === "string" ? e.failureDomain : null,
+          degradedRoutes: Array.isArray(e.degradedRoutes)
+            ? e.degradedRoutes.filter((r): r is string => typeof r === "string")
+            : [],
+          lastSeenAt: typeof e.lastSeenAt === "string" ? e.lastSeenAt : null,
+          latencyMs: typeof e.latencyMs === "number" ? e.latencyMs : null,
+        } satisfies FleetProviderLivenessEntry,
+      ];
+    });
+  }
+
+  // Otherwise build a single entry from the node itself
+  if (typeof raw.kind === "string") {
+    return [
+      {
+        node: node.name,
+        role: node.role,
+        providerKind: raw.kind,
+        state: classifyLivenessState(raw),
+        failureDomain: typeof raw.failureDomain === "string" ? raw.failureDomain : null,
+        degradedRoutes: Array.isArray(raw.degradedRoutes)
+          ? raw.degradedRoutes.filter((r): r is string => typeof r === "string")
+          : [],
+        lastSeenAt: typeof raw.lastSeenAt === "string" ? raw.lastSeenAt : null,
+        latencyMs: typeof raw.latencyMs === "number" ? raw.latencyMs : null,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function classifyLivenessState(
+  entry: Record<string, unknown>,
+): FleetProviderLivenessState {
+  if (entry.state === "alive" || entry.state === "degraded" || entry.state === "unreachable") {
+    return entry.state;
+  }
+  // Infer from score or status fields
+  if (typeof entry.score === "number") {
+    if (entry.score >= 70) return "alive";
+    if (entry.score >= 40) return "degraded";
+    return "unreachable";
+  }
+  if (entry.status === "failed" || entry.ok === false) return "unreachable";
+  if (entry.status === "degraded") return "degraded";
+  return "alive";
+}
+
+export async function buildFleetProviderLivenessSnapshot(params: {
+  manifestPath: string;
+}): Promise<FleetProviderLivenessSnapshot> {
+  const manifestPath = path.resolve(params.manifestPath);
+  const manifest = loadFleetManifest(manifestPath);
+
+  const providerNodes = await Promise.all(
+    manifest.nodes.map((node) => fetchNodeEndpoint(node, "providers")),
+  );
+
+  const entries: FleetProviderLivenessEntry[] = [];
+  for (const node of providerNodes) {
+    if (node.ok) {
+      entries.push(...parseProviderLivenessPayload(node));
+    } else {
+      // The node itself is unreachable
+      entries.push({
+        node: node.name,
+        role: node.role,
+        providerKind: node.role || "unknown",
+        state: "unreachable",
+        failureDomain: null,
+        degradedRoutes: [],
+        lastSeenAt: null,
+        latencyMs: null,
+      });
+    }
+  }
+
+  const alive = entries.filter((e) => e.state === "alive").length;
+  const degraded = entries.filter((e) => e.state === "degraded").length;
+  const unreachable = entries.filter((e) => e.state === "unreachable").length;
+
+  const failureDomains: Record<string, number> = {};
+  for (const entry of entries) {
+    if (entry.failureDomain) {
+      failureDomains[entry.failureDomain] = (failureDomains[entry.failureDomain] || 0) + 1;
+    }
+  }
+
+  return {
+    manifestPath,
+    generatedAt: new Date().toISOString(),
+    total: entries.length,
+    alive,
+    degraded,
+    unreachable,
+    failureDomains,
+    entries,
+    nodes: providerNodes,
+    summary: `${entries.length} providers: ${alive} alive, ${degraded} degraded, ${unreachable} unreachable`,
+  };
+}
+
+export function buildFleetProviderLivenessReport(
+  snapshot: FleetProviderLivenessSnapshot,
+): string {
+  const lines = [
+    "=== OPENFOX FLEET PROVIDER LIVENESS ===",
+    `Generated:   ${snapshot.generatedAt}`,
+    `Manifest:    ${snapshot.manifestPath}`,
+    `Alive:       ${snapshot.alive}`,
+    `Degraded:    ${snapshot.degraded}`,
+    `Unreachable: ${snapshot.unreachable}`,
+    "",
+  ];
+  if (Object.keys(snapshot.failureDomains).length > 0) {
+    lines.push(
+      `Failure domains: ${Object.entries(snapshot.failureDomains)
+        .map(([domain, count]) => `${domain}=${count}`)
+        .join(", ")}`,
+    );
+    lines.push("");
+  }
+  for (const entry of snapshot.entries) {
+    const degradedSuffix =
+      entry.degradedRoutes.length > 0
+        ? ` degraded_routes=[${entry.degradedRoutes.join(",")}]`
+        : "";
+    const domainSuffix = entry.failureDomain ? ` domain=${entry.failureDomain}` : "";
+    const latencySuffix = entry.latencyMs !== null ? ` latency=${entry.latencyMs}ms` : "";
+    lines.push(
+      `${entry.node}${entry.role ? ` [${entry.role}]` : ""}: ${entry.providerKind} ${entry.state}${domainSuffix}${degradedSuffix}${latencySuffix}`,
+    );
+  }
+  lines.push("");
+  lines.push(snapshot.summary);
+  return lines.join("\n");
+}
+
+// ─── Fleet Bounded Recovery ───────────────────────────────────────
+
+function getRecoveryPath(kind: FleetRecoveryKind): string {
+  switch (kind) {
+    case "replication":
+      return "fleet/recover/replication";
+    case "provider_route":
+      return "fleet/recover/provider-route";
+    case "callback_queue":
+      return "fleet/recover/callback-queue";
+  }
+}
+
+export async function buildFleetRecoverySnapshot(params: {
+  manifestPath: string;
+  kind: FleetRecoveryKind;
+  limit?: number;
+}): Promise<FleetRecoverySnapshot> {
+  const manifestPath = path.resolve(params.manifestPath);
+  const manifest = loadFleetManifest(manifestPath);
+  const recoveryPath = getRecoveryPath(params.kind);
+
+  const nodes = await Promise.all(
+    manifest.nodes.map((node) =>
+      invokeNodeControlAction(node, recoveryPath, {
+        kind: params.kind,
+        ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
+      }),
+    ),
+  );
+
+  const entries: FleetRecoveryEntry[] = nodes.map((node) => {
+    if (!node.ok) {
+      return {
+        node: node.name,
+        role: node.role,
+        kind: params.kind,
+        status: "failed" as FleetRecoveryStatus,
+        attempted: 0,
+        recovered: 0,
+        failed: 1,
+        details: { error: node.error || "unknown" },
+      };
+    }
+    const payload =
+      typeof node.payload === "object" && node.payload !== null
+        ? (node.payload as Record<string, unknown>)
+        : {};
+    const attempted = typeof payload.attempted === "number" ? payload.attempted : 0;
+    const recovered = typeof payload.recovered === "number" ? payload.recovered : 0;
+    const failed = typeof payload.failed === "number" ? payload.failed : 0;
+    const status: FleetRecoveryStatus =
+      typeof payload.status === "string" &&
+      (payload.status === "recovered" || payload.status === "partial" || payload.status === "failed" || payload.status === "skipped")
+        ? payload.status
+        : recovered > 0 && failed === 0
+          ? "recovered"
+          : recovered > 0 && failed > 0
+            ? "partial"
+            : attempted === 0
+              ? "skipped"
+              : "failed";
+    return {
+      node: node.name,
+      role: node.role,
+      kind: params.kind,
+      status,
+      attempted,
+      recovered,
+      failed,
+      details: payload,
+    };
+  });
+
+  const okCount = entries.filter((e) => e.status === "recovered" || e.status === "skipped").length;
+  const totalRecovered = entries.reduce((sum, e) => sum + e.recovered, 0);
+  const totalFailed = entries.reduce((sum, e) => sum + e.failed, 0);
+
+  return {
+    manifestPath,
+    generatedAt: new Date().toISOString(),
+    kind: params.kind,
+    total: nodes.length,
+    ok: okCount,
+    failed: nodes.length - okCount,
+    entries,
+    nodes,
+    summary: `${params.kind} recovery: ${totalRecovered} recovered, ${totalFailed} failed across ${nodes.length} nodes`,
+  };
+}
+
+export function buildFleetRecoveryReport(
+  snapshot: FleetRecoverySnapshot,
+): string {
+  const lines = [
+    "=== OPENFOX FLEET RECOVERY ===",
+    `Generated: ${snapshot.generatedAt}`,
+    `Manifest:  ${snapshot.manifestPath}`,
+    `Kind:      ${snapshot.kind}`,
+    `Nodes:     ${snapshot.total} (ok=${snapshot.ok}, failed=${snapshot.failed})`,
+    "",
+  ];
+  for (const entry of snapshot.entries) {
+    lines.push(
+      `${entry.node}${entry.role ? ` [${entry.role}]` : ""}: ${entry.status} -> attempted=${entry.attempted} recovered=${entry.recovered} failed=${entry.failed}`,
+    );
+  }
+  lines.push("");
+  lines.push(snapshot.summary);
   return lines.join("\n");
 }

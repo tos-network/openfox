@@ -52,6 +52,7 @@ import { startAgentDiscoveryNewsFetchServer } from "./agent-discovery/news-fetch
 import { startAgentDiscoveryObservationServer } from "./agent-discovery/observation-server.js";
 import { startAgentDiscoveryOracleServer } from "./agent-discovery/oracle-server.js";
 import { startAgentDiscoveryProofVerifyServer } from "./agent-discovery/proof-verify-server.js";
+import { startAgentDiscoverySentimentAnalysisServer } from "./agent-discovery/sentiment-analysis-server.js";
 import { startAgentDiscoveryStorageServer } from "./agent-discovery/storage-server.js";
 import { normalizeAgentDiscoveryConfig } from "./agent-discovery/types.js";
 import { startAgentGatewayServer } from "./agent-gateway/server.js";
@@ -214,11 +215,18 @@ import {
   buildFleetQueueRetrySnapshot,
   buildFleetRepairReport,
   buildFleetRepairSnapshot,
+  buildFleetReconciliationReport,
+  buildFleetReconciliationSnapshot,
+  buildFleetProviderLivenessReport,
+  buildFleetProviderLivenessSnapshot,
+  buildFleetRecoveryReport,
+  buildFleetRecoverySnapshot,
   buildFleetSnapshot,
   type FleetControlAction,
   type FleetRepairComponent,
   type FleetEndpoint,
   type FleetRetryQueue,
+  type FleetRecoveryKind,
 } from "./operator/fleet.js";
 import {
   buildFleetDashboardReport,
@@ -286,7 +294,8 @@ function resolveBountySkillName(config: {
     | "social_proof"
     | "problem_solving"
     | "public_news_capture"
-    | "oracle_evidence_capture";
+    | "oracle_evidence_capture"
+    | "data_labeling";
   skill: string;
 }): string {
   const defaultHostSkill =
@@ -300,6 +309,8 @@ function resolveBountySkillName(config: {
             ? "public-news-capture-host"
             : config.defaultKind === "oracle_evidence_capture"
               ? "oracle-evidence-capture-host"
+              : config.defaultKind === "data_labeling"
+                ? "data-labeling-bounty-host"
           : "question-bounty-host";
   const defaultSolverSkill =
     config.defaultKind === "translation"
@@ -312,6 +323,8 @@ function resolveBountySkillName(config: {
             ? "public-news-capture-solver"
             : config.defaultKind === "oracle_evidence_capture"
               ? "oracle-evidence-capture-solver"
+              : config.defaultKind === "data_labeling"
+                ? "data-labeling-bounty-solver"
           : "question-bounty-solver";
   if (config.role === "solver") {
     return config.skill === "question-bounty-host"
@@ -1609,6 +1622,9 @@ Usage:
   openfox fleet control <pause|resume|drain> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--json]
   openfox fleet retry <payments|settlement|market|signer|paymaster> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--limit N] [--json]
   openfox fleet repair <storage|artifacts> --manifest <path> [--limit N] [--json]
+  openfox fleet reconciliation --manifest <path> [--json]
+  openfox fleet provider-liveness --manifest <path> [--json]
+  openfox fleet recover <replication|provider_route|callback_queue> --manifest <path> [--limit N] [--json]
 `);
     if (!manifestPath && command !== "bundle" && !helpRequested) {
       throw new Error("A fleet manifest is required. Use --manifest <path>.");
@@ -1724,6 +1740,54 @@ Usage:
     return;
   }
 
+  if (command === "reconciliation") {
+    const snapshot = await buildFleetReconciliationSnapshot({
+      manifestPath: resolvedManifestPath,
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetReconciliationReport(snapshot));
+    return;
+  }
+
+  if (command === "provider-liveness") {
+    const snapshot = await buildFleetProviderLivenessSnapshot({
+      manifestPath: resolvedManifestPath,
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetProviderLivenessReport(snapshot));
+    return;
+  }
+
+  if (command === "recover") {
+    const kind = args[1];
+    const normalizedKind =
+      kind === "replication" || kind === "provider_route" || kind === "callback_queue"
+        ? (kind as FleetRecoveryKind)
+        : null;
+    if (!normalizedKind) {
+      throw new Error(
+        "Usage: openfox fleet recover <replication|provider_route|callback_queue> --manifest <path> [--limit N] [--json]",
+      );
+    }
+    const snapshot = await buildFleetRecoverySnapshot({
+      manifestPath: resolvedManifestPath,
+      kind: normalizedKind,
+      limit: readNumberOption(args, "--limit", 25),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetRecoveryReport(snapshot));
+    return;
+  }
+
   const endpoint =
     command === "status" ||
     command === "health" ||
@@ -1740,7 +1804,9 @@ Usage:
     command === "artifacts" ||
     command === "signer" ||
     command === "paymaster" ||
-    command === "providers"
+    command === "providers" ||
+    command === "reconciliation" ||
+    command === "provider-liveness"
       ? (command as FleetEndpoint)
       : null;
   if (!endpoint) {
@@ -2686,7 +2752,7 @@ OpenFox bounty
 Usage:
   openfox bounty list [--url <base-url>]
   openfox bounty status <bounty-id> [--url <base-url>]
-  openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--skill <name>] [--campaign-id <id>]
+  openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture|data_labeling> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--skill <name>] [--campaign-id <id>]
   openfox bounty open --question "<text>" --answer "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--campaign-id <id>]
   openfox bounty submit <bounty-id> --submission "<text>" [--proof-url <url>] [--url <base-url>]
   openfox bounty submit <bounty-id> --answer "<text>" [--url <base-url>]
@@ -2791,7 +2857,7 @@ Usage:
         readOption(args, "--reference") || readOption(args, "--answer");
       if (!taskPrompt || !referenceOutput) {
         throw new Error(
-          'Usage: openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--campaign-id <id>]',
+          'Usage: openfox bounty open --kind <question|translation|social_proof|problem_solving|public_news_capture|oracle_evidence_capture|data_labeling> --title "<text>" --task "<prompt>" --reference "<canonical>" [--reward-wei <wei>] [--ttl-seconds <n>] [--campaign-id <id>]',
         );
       }
       const ttlSeconds = readNumberOption(
@@ -4859,6 +4925,9 @@ async function run(): Promise<void> {
   let discoveryStorageServer:
     | Awaited<ReturnType<typeof startAgentDiscoveryStorageServer>>
     | undefined;
+  let sentimentAnalysisServer:
+    | Awaited<ReturnType<typeof startAgentDiscoverySentimentAnalysisServer>>
+    | undefined;
   let storageServer:
     | Awaited<ReturnType<typeof startStorageProviderServer>>
     | undefined;
@@ -5022,6 +5091,24 @@ async function run(): Promise<void> {
     } catch (error) {
       logger.warn(
         `Agent Discovery proof.verify server failed to start: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (config.agentDiscovery?.sentimentAnalysisServer?.enabled) {
+    try {
+      sentimentAnalysisServer = await startAgentDiscoverySentimentAnalysisServer({
+        identity,
+        config,
+        address,
+        db,
+        inference,
+        sentimentConfig: config.agentDiscovery.sentimentAnalysisServer,
+      });
+      logger.info(`Agent Discovery sentiment.analyze provider enabled at ${sentimentAnalysisServer.url}`);
+    } catch (error) {
+      logger.warn(
+        `Agent Discovery sentiment analysis server failed to start: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
   }

@@ -92,6 +92,7 @@ function classifyProviderClass(capability: string): OpportunityProviderClass {
   }
   if (capability.startsWith("observation.")) return "observation";
   if (capability.startsWith("oracle.")) return "oracle";
+  if (capability.startsWith("sentiment.")) return "general_provider";
   if (
     capability.startsWith("signer.") ||
     capability.startsWith("paymaster.") ||

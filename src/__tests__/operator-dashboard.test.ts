@@ -119,6 +119,8 @@ describe("operator dashboard", () => {
       "/operator/signer/status": { summary: "1 pending signer execution" },
       "/operator/paymaster/status": { summary: "sponsor funded" },
       "/operator/providers/reputation": { summary: "2 providers tracked, 0 weak" },
+      "/operator/fleet/reconciliation": { summary: "reconciliation ok" },
+      "/operator/fleet/provider-liveness": { summary: "all providers alive" },
     });
     const manifestPath = createManifest(
       JSON.stringify({
@@ -130,7 +132,7 @@ describe("operator dashboard", () => {
     const snapshot = await buildFleetDashboardSnapshot({ manifestPath });
     expect(snapshot.nodeCount).toBe(1);
     expect(snapshot.roles.storage).toBe(1);
-    expect(snapshot.endpointSummaries).toHaveLength(17);
+    expect(snapshot.endpointSummaries).toHaveLength(19);
     expect(snapshot.failingEndpoints).toHaveLength(0);
     expect(snapshot.financeSummary.roles[0]?.role).toBe("storage");
     expect(snapshot.financeSummary.capabilities[0]?.capability).toBe("oracle");

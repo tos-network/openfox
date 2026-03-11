@@ -161,6 +161,11 @@ export async function startOperatorApiServer(
   const autopilotRunPath = `${pathPrefix}/autopilot/run`;
   const autopilotApprovalsPath = `${pathPrefix}/autopilot/approvals`;
   const healthzPath = `${pathPrefix}/healthz`;
+  const fleetReconciliationPath = `${pathPrefix}/fleet/reconciliation`;
+  const fleetProviderLivenessPath = `${pathPrefix}/fleet/provider-liveness`;
+  const fleetRecoverReplicationPath = `${pathPrefix}/fleet/recover/replication`;
+  const fleetRecoverProviderRoutePath = `${pathPrefix}/fleet/recover/provider-route`;
+  const fleetRecoverCallbackQueuePath = `${pathPrefix}/fleet/recover/callback-queue`;
 
   const hasInferenceConfigured = Boolean(
     params.config.openaiApiKey ||
@@ -834,6 +839,91 @@ export async function startOperatorApiServer(
               })
             : undefined;
         json(res, 200, actionRecord ? { request: record, action: actionRecord } : record);
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === fleetReconciliationPath) {
+        json(res, 200, buildStorageLeaseHealthSnapshot({
+          config: params.config,
+          db: params.db,
+        }));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === fleetProviderLivenessPath) {
+        json(res, 200, buildProviderReputationSnapshot({
+          db: params.db,
+        }));
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        (url.pathname === fleetRecoverReplicationPath ||
+          url.pathname === fleetRecoverProviderRoutePath ||
+          url.pathname === fleetRecoverCallbackQueuePath)
+      ) {
+        const body = await readJsonBody(req);
+        const kind =
+          url.pathname === fleetRecoverReplicationPath
+            ? "replication"
+            : url.pathname === fleetRecoverProviderRoutePath
+              ? "provider_route"
+              : "callback_queue";
+        const limit =
+          typeof body.limit === "number" && Number.isFinite(body.limit)
+            ? body.limit
+            : 25;
+        const actor =
+          typeof body.actor === "string" && body.actor.trim()
+            ? body.actor.trim()
+            : "operator-api";
+
+        if (kind === "replication") {
+          const result = await runStorageMaintenance({
+            config: params.config,
+            db: params.db,
+            limit,
+          });
+          json(res, 200, {
+            status: result.renewed > 0 || result.audited > 0 ? "recovered" : "skipped",
+            attempted: result.renewalAttempts + result.auditAttempts,
+            recovered: result.renewed + result.audited,
+            failed: result.renewalFailures + result.auditFailures,
+            details: result,
+          });
+        } else if (kind === "provider_route") {
+          // Provider route recovery: run artifact maintenance to re-verify degraded routes
+          const result = await runArtifactMaintenance({
+            config: params.config,
+            db: params.db,
+            limit,
+          });
+          json(res, 200, {
+            status: result.verified > 0 || result.anchored > 0 ? "recovered" : "skipped",
+            attempted: result.verifyAttempts + result.anchorAttempts,
+            recovered: result.verified + result.anchored,
+            failed: result.verifyFailures + result.anchorFailures,
+            details: result,
+          });
+        } else {
+          // Callback queue recovery: dispatch to the appropriate retry action
+          const controlResult = await applyOperatorControlAction({
+            config: params.config,
+            db: params.db,
+            action: "retry_settlement",
+            actor,
+            reason: "fleet recovery: stuck callback queue",
+            limit,
+          });
+          json(res, 200, {
+            status: controlResult.changed ? "recovered" : "skipped",
+            attempted: 1,
+            recovered: controlResult.changed ? 1 : 0,
+            failed: controlResult.status === "failed" ? 1 : 0,
+            details: controlResult,
+          });
+        }
         return;
       }
 

@@ -352,6 +352,41 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Turn owner opportunity reporting from passive reporting into bounded
     execution loops that can queue, execute, and journal follow-up work across
     multiple opportunity classes.
+- [x] Task 75: Replace news.fetch skeleton with bounded paid HTTP capture backend
+  - Status: Complete
+  - Goal: Return canonical URL, content hash, bounded article text, and bundle
+    hash in news.fetch receipts.
+- [x] Task 76: Replace proof.verify skeleton with bounded paid verifier backend
+  - Status: Complete
+  - Goal: Verify subject hashes, bundle hashes, and referenced receipt hashes
+    inside fetched bundle payloads.
+- [x] Task 77: Add TTL and expiry policy to agent-discovery storage
+  - Status: Complete
+  - Goal: Surface expiry timestamps in stored object receipts and prune expired
+    objects on read.
+- [x] Task 78: Add coordinator-side M-of-N evidence workflow
+  - Status: Complete
+  - Goal: Compose news.fetch, proof.verify, and storage.put into one
+    operator-visible workflow with durable local state.
+- [x] Task 79: Move provider backends behind versioned skill-composed interfaces
+  - Status: Complete
+  - Goal: Separate stable provider shells from versioned business-logic backends
+    with skills_first as the default mode.
+- [x] Task 80: Add fleet public-network hardening
+  - Status: Complete
+  - Goal: Add fleet-level lease/audit/renewal/replication reconciliation,
+    provider liveness and failure-domain reporting, bounded recovery flows, and
+    multi-node validation suites for public-role deployments.
+- [x] Task 81: Expand ecosystem SDK builder packs
+  - Status: Complete
+  - Goal: Expand tosdk examples into fuller builder starter packs, add reusable
+    SDK surfaces for delegated execution, evidence, and operator-control, publish
+    versioned schema/reference exports, and add validation and drift detection.
+- [x] Task 82: Add new work surfaces and product loops
+  - Status: Complete
+  - Goal: Add new reusable work surfaces across bounty/task (data_labeling),
+    provider-service (sentiment.analyze), and owner-opportunity categories,
+    packaged with skills, templates, docs, and operator commands.
 
 ## Task 53 Breakdown
 
@@ -1060,21 +1095,21 @@ building OpenFox into a TOS-native agent platform.
 
 ## Task 80 Breakdown
 
-- [ ] Add fleet-level lease, audit, renewal, and replication reconciliation views for public-role deployments.
-- [ ] Add provider liveness, failure-domain, and degraded-route reporting to fleet dashboards and operator APIs.
-- [ ] Add bounded recovery flows for failed replication, degraded provider routes, and stuck callback queues.
-- [ ] Add multi-node validation suites covering restart, failover, and partial fleet degradation.
+- [x] Add fleet-level lease, audit, renewal, and replication reconciliation views for public-role deployments.
+- [x] Add provider liveness, failure-domain, and degraded-route reporting to fleet dashboards and operator APIs.
+- [x] Add bounded recovery flows for failed replication, degraded provider routes, and stuck callback queues.
+- [x] Add multi-node validation suites covering restart, failover, and partial fleet degradation.
 
 ## Task 81 Breakdown
 
-- [ ] Expand `tosdk/examples` into fuller builder starter packs for requester, provider, gateway, marketplace, evidence, signer, paymaster, storage, and artifact roles.
-- [ ] Add more reusable SDK surfaces for delegated execution, evidence, and operator-control consumers.
-- [ ] Publish versioned schema/reference exports for core provider and operator API contracts.
-- [ ] Add validation and drift detection for builder packs and exported references.
+- [x] Expand `tosdk/examples` into fuller builder starter packs for requester, provider, gateway, marketplace, evidence, signer, paymaster, storage, and artifact roles.
+- [x] Add more reusable SDK surfaces for delegated execution, evidence, and operator-control consumers.
+- [x] Publish versioned schema/reference exports for core provider and operator API contracts.
+- [x] Add validation and drift detection for builder packs and exported references.
 
 ## Task 82 Breakdown
 
-- [ ] Add new reusable work surfaces across bounty/task, provider-service, and owner-opportunity categories.
-- [ ] Package each new surface with bundled skills, templates, docs, and operator commands.
-- [ ] Reuse the existing marketplace, payment, settlement, artifact, and discovery foundations instead of introducing parallel engines.
-- [ ] Add end-to-end tests showing operators can launch and run each new surface with bounded configuration changes.
+- [x] Add new reusable work surfaces across bounty/task, provider-service, and owner-opportunity categories.
+- [x] Package each new surface with bundled skills, templates, docs, and operator commands.
+- [x] Reuse the existing marketplace, payment, settlement, artifact, and discovery foundations instead of introducing parallel engines.
+- [x] Add end-to-end tests showing operators can launch and run each new surface with bounded configuration changes.

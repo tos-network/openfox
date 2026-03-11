@@ -21,6 +21,8 @@ function labelForKind(kind: BountyKind): string {
       return "public news capture";
     case "oracle_evidence_capture":
       return "oracle evidence capture";
+    case "data_labeling":
+      return "data labeling";
   }
 }
 
@@ -40,6 +42,8 @@ export function buildTaskBountyDraftPrompt(params: {
         ? "For public news capture bounties, require a source URL and a concise capture summary."
         : params.kind === "oracle_evidence_capture"
           ? "For oracle evidence capture bounties, require a concise evidence package tied to a bounded question."
+          : params.kind === "data_labeling"
+            ? "For data labeling bounties, provide a small bounded dataset (1-5 items) with clear labeling instructions and an expected label set. The solver must return structured labels matching the reference."
       : "Avoid subjective or open-ended tasks that cannot be judged reliably.",
     params.skillInstructions?.trim()
       ? `Skill instructions:\n${params.skillInstructions.trim()}`
@@ -112,6 +116,8 @@ export function buildTaskBountyJudgePrompt(params: {
         ? "For public news capture bounties, only accept if the submission clearly captures the requested public source and evidence."
         : params.kind === "oracle_evidence_capture"
           ? "For oracle evidence capture bounties, only accept if the submission clearly supports the bounded question with concrete evidence."
+          : params.kind === "data_labeling"
+            ? "For data labeling bounties, only accept if the submitted labels exactly match the reference labels for the given dataset items."
       : undefined,
     params.skillInstructions?.trim()
       ? `Skill instructions:\n${params.skillInstructions.trim()}`

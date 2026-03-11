@@ -175,6 +175,17 @@ export interface AgentDiscoveryStorageServerConfig {
   getSkillStages: SkillBackendStageConfig[];
 }
 
+export interface AgentDiscoverySentimentAnalysisServerConfig {
+  enabled: boolean;
+  bindHost: string;
+  port: number;
+  path: string;
+  capability: string;
+  priceWei: string;
+  maxTextChars: number;
+  requestTimeoutMs: number;
+}
+
 export interface AgentGatewayBootnodeConfig {
   agentId: string;
   url: string;
@@ -307,6 +318,7 @@ export interface AgentDiscoveryConfig {
   newsFetchServer?: AgentDiscoveryNewsFetchServerConfig;
   proofVerifyServer?: AgentDiscoveryProofVerifyServerConfig;
   storageServer?: AgentDiscoveryStorageServerConfig;
+  sentimentAnalysisServer?: AgentDiscoverySentimentAnalysisServerConfig;
   gatewayServer?: AgentGatewayServerConfig;
   gatewayClient?: AgentGatewayClientConfig;
 }
@@ -402,6 +414,18 @@ export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorag
     getBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
     putSkillStages: cloneSkillBackendStages(DEFAULT_STORAGE_PUT_SKILL_STAGES),
     getSkillStages: cloneSkillBackendStages(DEFAULT_STORAGE_GET_SKILL_STAGES),
+  };
+
+export const DEFAULT_AGENT_DISCOVERY_SENTIMENT_ANALYSIS_SERVER_CONFIG: AgentDiscoverySentimentAnalysisServerConfig =
+  {
+    enabled: false,
+    bindHost: "127.0.0.1",
+    port: 4884,
+    path: "/agent-discovery/sentiment-analyze",
+    capability: "sentiment.analyze",
+    priceWei: "1500000000000000",
+    maxTextChars: 4096,
+    requestTimeoutMs: 10_000,
   };
 
 export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {
@@ -611,7 +635,8 @@ export type BountyKind =
   | "social_proof"
   | "problem_solving"
   | "public_news_capture"
-  | "oracle_evidence_capture";
+  | "oracle_evidence_capture"
+  | "data_labeling";
 export type CampaignStatus =
   | "open"
   | "paused"
@@ -1818,6 +1843,7 @@ export interface MarketContractCallbackRecord {
 export type X402PaymentServiceKind =
   | "observation"
   | "oracle"
+  | "sentiment"
   | "signer"
   | "paymaster"
   | "storage"

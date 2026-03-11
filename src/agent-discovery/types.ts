@@ -10,6 +10,7 @@ import type {
   AgentDiscoveryPolicyProfiles,
   AgentDiscoveryProofVerifyServerConfig,
   AgentDiscoverySelectionPolicy,
+  AgentDiscoverySentimentAnalysisServerConfig,
   AgentDiscoveryStorageServerConfig,
 } from "../types.js";
 
@@ -24,6 +25,7 @@ export type {
   AgentDiscoveryPolicyProfiles,
   AgentDiscoveryProofVerifyServerConfig,
   AgentDiscoverySelectionPolicy,
+  AgentDiscoverySentimentAnalysisServerConfig,
   AgentDiscoveryStorageServerConfig,
 };
 
@@ -233,6 +235,33 @@ export interface OracleResolutionResponse {
   confidence: number;
   summary: string;
   options?: string[];
+}
+
+export interface SentimentAnalysisRequest {
+  capability: string;
+  requester: {
+    agent_id: string;
+    identity: AgentDiscoveryIdentityRef;
+  };
+  request_nonce: string;
+  request_expires_at: number;
+  text: string;
+  reason: string;
+}
+
+export type SentimentLabel = "positive" | "negative" | "neutral" | "mixed";
+
+export interface SentimentAnalysisResponse {
+  status: "ok";
+  result_id?: string;
+  payment_tx_hash?: string;
+  payment_status?: string;
+  idempotent?: boolean;
+  analyzed_at: number;
+  text_preview: string;
+  sentiment: SentimentLabel;
+  confidence: number;
+  summary: string;
 }
 
 export interface NewsFetchInvocationRequest {
@@ -532,6 +561,27 @@ export function normalizeAgentDiscoveryConfig(
       });
     }
   }
+  const sentimentAnalysisServer = config.sentimentAnalysisServer;
+  if (includeHostedServerEndpoints && sentimentAnalysisServer?.enabled) {
+    const sentimentUrl = buildSentimentAnalysisServerUrl(sentimentAnalysisServer);
+    if (!endpoints.some((entry) => entry.url === sentimentUrl)) {
+      endpoints.push({
+        kind: "http",
+        url: sentimentUrl,
+        role: "requester_invocation",
+      });
+    }
+    if (
+      !capabilities.some((entry) => entry.name === sentimentAnalysisServer.capability)
+    ) {
+      capabilities.push({
+        name: sentimentAnalysisServer.capability,
+        mode: "paid",
+        price_model: "x402-exact",
+        description: "Paid sentiment.analyze capability for bounded text sentiment classification",
+      });
+    }
+  }
   if (!endpoints.length || !capabilities.length) {
     return null;
   }
@@ -621,4 +671,14 @@ export function buildStorageGetServerUrl(
   config: AgentDiscoveryStorageServerConfig,
 ): string {
   return `${buildStorageServerUrl(config)}/get`;
+}
+
+export function buildSentimentAnalysisServerUrl(
+  config: AgentDiscoverySentimentAnalysisServerConfig,
+): string {
+  const host = config.bindHost.includes(":")
+    ? `[${config.bindHost}]`
+    : config.bindHost;
+  const path = config.path.startsWith("/") ? config.path : `/${config.path}`;
+  return `http://${host}:${config.port}${path}`;
 }

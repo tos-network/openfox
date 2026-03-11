@@ -232,7 +232,7 @@ export const CREATE_TABLES = `
     campaign_id TEXT REFERENCES campaigns(campaign_id) ON DELETE SET NULL,
     host_agent_id TEXT NOT NULL,
     host_address TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture')),
+    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling')),
     title TEXT NOT NULL,
     task_prompt TEXT NOT NULL,
     reference_output TEXT NOT NULL,
@@ -1140,7 +1140,7 @@ export const MIGRATION_V20 = `
     bounty_id TEXT PRIMARY KEY,
     host_agent_id TEXT NOT NULL,
     host_address TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture')),
+    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling')),
     title TEXT NOT NULL,
     task_prompt TEXT NOT NULL,
     reference_output TEXT NOT NULL,
@@ -1180,7 +1180,7 @@ export const MIGRATION_V20 = `
     host_agent_id,
     host_address,
     CASE
-      WHEN kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture') THEN kind
+      WHEN kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling') THEN kind
       ELSE 'question'
     END,
     title,
@@ -2514,7 +2514,7 @@ export const MIGRATION_V13 = `
     bounty_id TEXT PRIMARY KEY,
     host_agent_id TEXT NOT NULL,
     host_address TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture')),
+    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling')),
     title TEXT NOT NULL,
     task_prompt TEXT NOT NULL,
     reference_output TEXT NOT NULL,
@@ -2554,7 +2554,7 @@ export const MIGRATION_V13 = `
     host_agent_id,
     host_address,
     CASE
-      WHEN kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture') THEN kind
+      WHEN kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling') THEN kind
       ELSE 'question'
     END,
     substr(question, 1, 160),

@@ -1704,7 +1704,7 @@ Acceptance criteria:
 
 ### Phase 36: Public-Network Hardening
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -1738,7 +1738,7 @@ Acceptance criteria:
 
 ### Phase 37: Ecosystem Builder Surface Expansion
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -1771,7 +1771,7 @@ Acceptance criteria:
 
 ### Phase 38: New Work Surfaces and Product Loops
 
-Status: planned
+Status: completed
 
 Goal:
 

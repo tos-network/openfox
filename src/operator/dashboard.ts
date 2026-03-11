@@ -26,6 +26,8 @@ export const DEFAULT_DASHBOARD_ENDPOINTS: FleetEndpoint[] = [
   "signer",
   "paymaster",
   "providers",
+  "reconciliation",
+  "provider-liveness",
 ];
 
 interface FleetFinanceNodeSummary {
