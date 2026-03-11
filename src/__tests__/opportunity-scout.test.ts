@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createBountyEngine } from "../bounty/engine.js";
 import { startBountyHttpServer } from "../bounty/http.js";
-import { buildOpportunityReport, collectOpportunityItems } from "../opportunity/scout.js";
+import {
+  buildOpportunityReport,
+  buildRankedOpportunityReport,
+  collectOpportunityItems,
+  rankOpportunityItems,
+} from "../opportunity/scout.js";
+import { upsertStrategyProfile } from "../opportunity/strategy.js";
 import { MockInferenceClient, createTestConfig, createTestDb } from "./mocks.js";
 import { DEFAULT_BOUNTY_CONFIG } from "../types.js";
 import type { OpenFoxIdentity } from "../types.js";
@@ -92,10 +98,65 @@ describe("opportunity scout", () => {
       expect(items).toHaveLength(2);
       expect(items.some((item) => item.kind === "campaign")).toBe(true);
       expect(items.some((item) => item.kind === "bounty")).toBe(true);
+      expect(items.every((item) => item.providerClass === "task_market")).toBe(
+        true,
+      );
       expect(buildOpportunityReport(items)).toContain("Summarize one paragraph");
       expect(buildOpportunityReport(items)).toContain("Problem Solving Sprint");
     } finally {
       await server.close();
     }
+  });
+
+  it("ranks opportunities against the stored strategy profile", async () => {
+    const strategy = upsertStrategyProfile(db, {
+      name: "Fast task revenue",
+      minMarginBps: 1000,
+      enabledOpportunityKinds: ["bounty"],
+      enabledProviderClasses: ["task_market"],
+      allowedTrustTiers: ["unknown", "org_trusted"],
+      maxDeadlineHours: 12,
+    });
+
+    const items = rankOpportunityItems({
+      strategy,
+      items: [
+        {
+          kind: "bounty",
+          providerClass: "task_market",
+          trustTier: "unknown",
+          title: "Short bounty",
+          description: "Quick task",
+          grossValueWei: "5000",
+          estimatedCostWei: "0",
+          marginWei: "5000",
+          marginBps: 10000,
+          rawScore: 10,
+          deadlineAt: new Date(Date.now() + 2 * 3_600_000).toISOString(),
+        },
+        {
+          kind: "provider",
+          providerClass: "oracle",
+          trustTier: "public_low_trust",
+          title: "Paid oracle provider",
+          description: "Would cost money",
+          grossValueWei: "0",
+          estimatedCostWei: "9000",
+          marginWei: "-9000",
+          marginBps: -10000,
+          rawScore: 1,
+        },
+      ],
+    });
+
+    expect(items[0]?.title).toBe("Short bounty");
+    expect(items[0]?.strategyMatched).toBe(true);
+    expect(items[1]?.strategyMatched).toBe(false);
+    expect(items[1]?.strategyReasons).toContain(
+      "kind provider is disabled",
+    );
+    expect(buildRankedOpportunityReport(items, strategy)).toContain(
+      "[matched] Short bounty",
+    );
   });
 });

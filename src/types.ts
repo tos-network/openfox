@@ -625,6 +625,45 @@ export interface OpportunityScoutConfig {
   minRewardWei: string;
 }
 
+export type OpportunityKind = "bounty" | "campaign" | "provider";
+
+export type OpportunityProviderClass =
+  | "task_market"
+  | "observation"
+  | "oracle"
+  | "sponsored_execution"
+  | "storage_artifacts"
+  | "general_provider";
+
+export type OpportunityTrustTier =
+  | "self_hosted"
+  | "org_trusted"
+  | "public_low_trust"
+  | "unknown";
+
+export type OpportunityAutomationLevel =
+  | "manual"
+  | "assisted"
+  | "bounded_auto";
+
+export type OpportunityReportCadence = "on_demand" | "daily" | "weekly";
+
+export interface OpportunityStrategyProfile {
+  profileId: string;
+  name: string;
+  revenueTargetWei: string;
+  maxSpendPerOpportunityWei: string;
+  minMarginBps: number;
+  enabledOpportunityKinds: OpportunityKind[];
+  enabledProviderClasses: OpportunityProviderClass[];
+  allowedTrustTiers: OpportunityTrustTier[];
+  automationLevel: OpportunityAutomationLevel;
+  reportCadence: OpportunityReportCadence;
+  maxDeadlineHours: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface OperatorApiConfig {
   enabled: boolean;
   bindHost: string;

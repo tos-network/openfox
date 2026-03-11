@@ -292,6 +292,10 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Let operator boxes automate low-risk retries, maintenance, and
     provider quarantine while forcing treasury and policy-expansion changes
     through explicit approval requests and audit trails.
+- [x] Task 62: Add strategy profiles and opportunity ranking
+  - Status: Complete
+  - Goal: Let owners persist a bounded earning strategy and rank discovered
+    opportunities by value, cost, trust, deadline, and policy fit.
 
 ## Task 53 Breakdown
 
@@ -367,6 +371,20 @@ building OpenFox into a TOS-native agent platform.
   - `approvals.json`
 - [x] Add targeted tests for rule triggering, cooldown suppression, approval
   flows, operator API endpoints, and dashboard bundle exports.
+
+## Task 62 Breakdown
+
+- [x] Define a local strategy profile schema with revenue target, spend cap,
+  margin threshold, enabled opportunity kinds, enabled provider classes,
+  allowed trust tiers, automation level, and report cadence.
+- [x] Persist the current strategy profile in local OpenFox state.
+- [x] Add `openfox strategy show|set|validate`.
+- [x] Extend opportunity scouting to normalize campaigns, bounties, and
+  discovery providers into one comparable opportunity model.
+- [x] Add ranking based on payout, estimated cost, margin, deadline, trust,
+  and policy fit.
+- [x] Add `openfox scout rank`.
+- [x] Add targeted tests for strategy persistence, validation, and ranking behavior.
 
 ## Task 1 Breakdown
 

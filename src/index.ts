@@ -134,7 +134,17 @@ import {
   solveRemoteBounty,
   submitRemoteBountySubmission,
 } from "./bounty/client.js";
-import { buildOpportunityReport, collectOpportunityItems } from "./opportunity/scout.js";
+import {
+  buildOpportunityReport,
+  buildRankedOpportunityReport,
+  collectOpportunityItems,
+  rankOpportunityItems,
+} from "./opportunity/scout.js";
+import {
+  getCurrentStrategyProfile,
+  upsertStrategyProfile,
+  validateStrategyProfile,
+} from "./opportunity/strategy.js";
 import { createNativeSettlementPublisher } from "./settlement/publisher.js";
 import { createNativeSettlementCallbackDispatcher } from "./settlement/callbacks.js";
 import { createMarketBindingPublisher } from "./market/publisher.js";
@@ -387,6 +397,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "strategy") {
+    await handleStrategyCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "storage") {
     await handleStorageCommand(args.slice(1));
     process.exit(0);
@@ -468,6 +483,7 @@ Usage:
   openfox market ...     Inspect contract-native market bindings and callbacks
   openfox payments ...   Inspect and recover server-side x402 payments
   openfox scout ...      Discover earning opportunities and task surfaces
+  openfox strategy ...   Define and validate bounded earning strategy profiles
   openfox storage ...    Use the OpenFox storage market
   openfox providers ...  Inspect provider reputation snapshots
   openfox artifacts ...  Build and verify public news and oracle bundles
@@ -704,6 +720,16 @@ function collectRepeatedOption(args: string[], flag: string): string[] {
     }
   }
   return values;
+}
+
+function readCsvOption(args: string[], flag: string): string[] | undefined {
+  const raw = readOption(args, flag);
+  if (!raw) return undefined;
+  const values = raw
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return values.length ? values : undefined;
 }
 
 function readSignerTrustTierOption(
@@ -2707,11 +2733,12 @@ OpenFox scout
 
 Usage:
   openfox scout list [--json]
+  openfox scout rank [--json]
 `);
     return;
   }
 
-  if (command !== "list") {
+  if (command !== "list" && command !== "rank") {
     throw new Error(`Unknown scout command: ${command}`);
   }
 
@@ -2722,11 +2749,121 @@ Usage:
   const db = createDatabase(resolvePath(config.dbPath));
   try {
     const items = await collectOpportunityItems({ config, db });
+    if (command === "rank") {
+      const strategy = getCurrentStrategyProfile(db);
+      const ranked = rankOpportunityItems({
+        items,
+        strategy,
+        maxItems: config.opportunityScout?.maxItems,
+      });
+      if (asJson) {
+        logger.info(JSON.stringify({ strategy, items: ranked }, null, 2));
+        return;
+      }
+      logger.info(buildRankedOpportunityReport(ranked, strategy));
+      return;
+    }
     if (asJson) {
       logger.info(JSON.stringify({ items }, null, 2));
       return;
     }
     logger.info(buildOpportunityReport(items));
+  } finally {
+    db.close();
+  }
+}
+
+async function handleStrategyCommand(args: string[]): Promise<void> {
+  const command = args[0] || "show";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox strategy
+
+Usage:
+  openfox strategy show [--json]
+  openfox strategy validate [--json]
+  openfox strategy set [--name <text>] [--revenue-target-wei <wei>] [--max-spend-wei <wei>] [--min-margin-bps <n>] [--opportunity-kinds <csv>] [--provider-classes <csv>] [--trust-tiers <csv>] [--automation-level <manual|assisted|bounded_auto>] [--report-cadence <on_demand|daily|weekly>] [--max-deadline-hours <n>] [--json]
+`);
+    return;
+  }
+
+  if (!["show", "set", "validate"].includes(command)) {
+    throw new Error(`Unknown strategy command: ${command}`);
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    if (command === "show") {
+      const strategy = getCurrentStrategyProfile(db);
+      if (asJson) {
+        logger.info(JSON.stringify(strategy, null, 2));
+        return;
+      }
+      logger.info(JSON.stringify(strategy, null, 2));
+      return;
+    }
+
+    if (command === "validate") {
+      const strategy = getCurrentStrategyProfile(db);
+      const validation = validateStrategyProfile(strategy);
+      if (asJson) {
+        logger.info(JSON.stringify({ strategy, validation }, null, 2));
+        return;
+      }
+      logger.info(JSON.stringify({ strategy, validation }, null, 2));
+      return;
+    }
+
+    const strategy = upsertStrategyProfile(db, {
+      name: readOption(args, "--name"),
+      revenueTargetWei: readOption(args, "--revenue-target-wei"),
+      maxSpendPerOpportunityWei: readOption(args, "--max-spend-wei"),
+      minMarginBps: (() => {
+        const raw = readOption(args, "--min-margin-bps");
+        return raw ? Number.parseInt(raw, 10) : undefined;
+      })(),
+      enabledOpportunityKinds: readCsvOption(args, "--opportunity-kinds") as
+        | ("bounty" | "campaign" | "provider")[]
+        | undefined,
+      enabledProviderClasses: readCsvOption(args, "--provider-classes") as
+        | (
+            | "task_market"
+            | "observation"
+            | "oracle"
+            | "sponsored_execution"
+            | "storage_artifacts"
+            | "general_provider"
+          )[]
+        | undefined,
+      allowedTrustTiers: readCsvOption(args, "--trust-tiers") as
+        | ("self_hosted" | "org_trusted" | "public_low_trust" | "unknown")[]
+        | undefined,
+      automationLevel: readOption(args, "--automation-level") as
+        | "manual"
+        | "assisted"
+        | "bounded_auto"
+        | undefined,
+      reportCadence: readOption(args, "--report-cadence") as
+        | "on_demand"
+        | "daily"
+        | "weekly"
+        | undefined,
+      maxDeadlineHours: (() => {
+        const raw = readOption(args, "--max-deadline-hours");
+        return raw ? Number.parseInt(raw, 10) : undefined;
+      })(),
+    });
+    const validation = validateStrategyProfile(strategy);
+    if (asJson) {
+      logger.info(JSON.stringify({ strategy, validation }, null, 2));
+      return;
+    }
+    logger.info(JSON.stringify({ strategy, validation }, null, 2));
   } finally {
     db.close();
   }

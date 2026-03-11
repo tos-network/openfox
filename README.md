@@ -793,6 +793,9 @@ OpenFox also includes an MVP opportunity scout surface:
 
 ```bash
 openfox scout list
+openfox scout rank
+openfox strategy show
+openfox strategy set --min-margin-bps 1500 --opportunity-kinds bounty,campaign
 ```
 
 For a concrete host/solver walkthrough, see:

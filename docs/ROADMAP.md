@@ -1055,7 +1055,7 @@ Acceptance criteria:
 
 ### Phase 19: Strategy Profiles and Opportunity Ranking
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -1069,6 +1069,9 @@ Delivered surface:
 - `openfox scout rank`
 - persisted strategy profiles
 - scored opportunity snapshots
+- local strategy persistence in OpenFox state
+- normalized opportunity scoring across campaigns, bounties, and provider surfaces
+- strategy-fit flags and ranking breakdowns in `scout rank --json`
 
 Implementation tasks:
 
