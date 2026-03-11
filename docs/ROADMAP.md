@@ -2,16 +2,28 @@
 
 ## 1. Goal
 
-The goal is not merely to make `openfox` "support another chain." The goal is to make an `openfox` agent/operator able to:
+The goal is not merely to make `openfox` "support another chain."
 
+OpenFox is not a chat tool.
+
+The goal is to make `openfox` into an agent platform on `TOS.network` whose
+agents and operators can:
+
+- discover real opportunities
 - hold and use a `TOS` wallet
 - sign and send transactions on the `TOS` network
-- pay for real services through `x402`
-- take jobs, perform oracle and observation work, and earn revenue on `TOS`
+- take jobs and perform oracle and observation work
+- get paid for real services through `x402` and native `TOS` flows
+- issue rewards and payouts to other agents
+- call, hire, and coordinate other agents through discovery and provider
+  surfaces
+- store result bundles, publish proofs, and settle work on and off chain
 
 In one sentence:
 
-`openfox` should become a payable, executable, revenue-generating agent runtime on `TOS`.
+`openfox` should become an agent platform on `TOS.network` that can discover
+opportunities, take work, get paid, issue rewards, call other agents, and
+complete proof and settlement flows.
 
 ## 2. What Is Already Done ✅
 
@@ -778,14 +790,21 @@ The latest completed slice under this next stage is:
 - reusable fleet dashboard snapshots and HTML exports for public operator fleets
 - reusable `tosdk` signer-provider and paymaster-provider requester clients for
   third-party builders
+- `openfox wallet report` and `openfox finance report`
+- `openfox fleet wallet --manifest ...` and `openfox fleet finance --manifest ...`
+- wallet and finance sections in operator dashboards and fleet exports
 
 The next operator-focused design target is documented in:
 
 - `docs/OpenFox-Operator-Box-Design.md`
 
+The next owner-focused design target is documented in:
+
+- `docs/OpenFox-Strategy-Opportunity-Reporting-Design.md`
+
 ### Phase 14: Operator Wallet and Finance Snapshots
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -821,6 +840,13 @@ Acceptance criteria:
 - operators can inspect pending receivables, pending payables, and retryable
   failed items per node
 - wallet and finance data are available in human-readable and JSON form
+
+Delivered so far:
+
+- authenticated operator API endpoints for wallet and finance snapshots
+- `openfox wallet report` and `openfox finance report`
+- `openfox fleet wallet` and `openfox fleet finance`
+- wallet and finance sections in fleet dashboard snapshots and exports
 
 ### Phase 15: Fleet FinOps and Profit Attribution
 
@@ -977,3 +1003,132 @@ Acceptance criteria:
   response
 - opportunity scouting can see campaign-level work surfaces in addition to
   one-off bounties
+
+### Phase 19: Strategy Profiles and Opportunity Ranking
+
+Status: planned
+
+Goal:
+
+- let the owner define a bounded earning strategy and see ranked
+  `TOS.network` opportunities that fit it
+
+Delivered surface:
+
+- `openfox strategy show|set|validate`
+- `openfox scout list`
+- `openfox scout rank`
+- persisted strategy profiles
+- scored opportunity snapshots
+
+Implementation tasks:
+
+- define a strategy schema for revenue target, spend limits, margin threshold,
+  enabled opportunity classes, provider classes, automation level, and report cadence
+- persist strategy profiles in local state
+- extend scout ingestion to normalize bounties, paid providers, sponsored
+  execution, and subcontractable agent work into one opportunity model
+- add scoring and ranking based on payout, estimated cost, margin, deadline,
+  trust, and policy fit
+- add tests for strategy validation and opportunity ranking behavior
+
+Acceptance criteria:
+
+- owners can define a bounded strategy instead of relying on ad-hoc prompts
+- OpenFox can rank opportunities by expected economic value and policy fit
+- owners can distinguish between all discovered opportunities and strategy-matched opportunities
+
+### Phase 20: Owner Finance Ledger and Daily Snapshots
+
+Status: planned
+
+Goal:
+
+- turn OpenFox activity into a deterministic owner-facing earnings ledger with
+  daily and weekly finance snapshots
+
+Delivered surface:
+
+- owner finance snapshot schema
+- daily finance snapshot schema
+- weekly finance snapshot schema
+- `openfox report daily --json`
+- `openfox report weekly --json`
+
+Implementation tasks:
+
+- unify wallet balance, `x402` payments, rewards, provider costs, settlement,
+  receivables, payables, and on-chain spend into one owner ledger projection
+- compute daily and weekly totals for spend, revenue, net change, pending value,
+  and major cost categories
+- attribute gains and losses back to jobs, opportunities, providers, and rewards
+- persist daily and weekly snapshot records
+- add tests for finance projection correctness and snapshot generation
+
+Acceptance criteria:
+
+- owners can see how much `TOS` was spent and earned today
+- owners can separate realized value from pending or expected value
+- owners can identify the top profitable and top loss-making activities
+
+### Phase 21: LLM-Generated Reports and Recommendations
+
+Status: planned
+
+Goal:
+
+- use configured model providers such as OpenAI and Anthropic to turn
+  structured snapshots into readable owner reports and next-step recommendations
+
+Delivered surface:
+
+- generated daily and weekly report objects
+- opportunity digest summaries
+- anomaly and recommendation summaries
+- report-generation audit metadata
+
+Implementation tasks:
+
+- define a structured report input object that combines strategy, opportunity,
+  and finance snapshots
+- add report-generation pipelines that call configured LLM providers
+- keep machine-verifiable totals separate from generated prose
+- record model provider, model name, and generation timestamp for each report
+- add tests that verify report generation uses structured inputs and preserves deterministic totals
+
+Acceptance criteria:
+
+- owners receive readable daily and weekly summaries without reading raw tables
+- report prose explains gains, losses, and next opportunities without becoming
+  the source of financial truth
+- OpenFox can generate recommendations about what to pursue next under the current strategy
+
+### Phase 22: Owner Delivery Surfaces
+
+Status: planned
+
+Goal:
+
+- let the owner review reports and opportunity digests from a phone through web
+  and email delivery
+
+Delivered surface:
+
+- mobile-friendly owner web page
+- owner report email digest
+- report delivery logs
+- `openfox report send --channel <email|web>`
+
+Implementation tasks:
+
+- define a shared owner-report rendering schema for web and email
+- add a mobile-friendly web surface for daily finance, active work, and opportunity digests
+- add email rendering and delivery for scheduled daily and weekly reports
+- add scheduling hooks for morning, end-of-day, and anomaly-triggered report delivery
+- add tests for report rendering, delivery logging, and delivery scheduling
+
+Acceptance criteria:
+
+- owners can review finance and opportunity reports from a phone without opening the terminal
+- web and email views render from the same underlying report object
+- owners can receive routine and anomaly-driven report delivery

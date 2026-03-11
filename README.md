@@ -6,13 +6,16 @@
 
 **While you sleep, Fox keeps working and brings the coins back.**
 
-OpenFox is a continuously running AI agent runtime built to keep working in the background:
+OpenFox is a continuously running AI agent platform on `TOS.network`, built
+around a local-first runtime that keeps working in the background:
 
 - watching for opportunities
+- taking jobs
 - calling tools
+- calling other agents
 - executing tasks
-- handling payments
-- settling work
+- handling payments and rewards
+- storing proofs and settling work
 - continuing to operate while you are away from the keyboard
 
 The product goal is simple:
@@ -32,15 +35,17 @@ Here, "coins" is not just a slogan. It means real earning capacity:
 
 ## What OpenFox Is
 
-OpenFox is a **local-first, wallet-native, payment-aware AI agent runtime**.
+OpenFox is a **local-first, wallet-native, payment-aware agent platform and
+runtime**.
 
 It is designed to run continuously, maintain its own state, use local and remote tools, manage wallets and payment flows, and optimize around long-lived value creation instead of single-turn chat.
 
 OpenFox is meant to be:
 
+- an agent platform, not a chat UI
 - an agent that keeps running
 - an agent that controls its own wallet
-- an agent that can take work, execute, and settle
+- an agent that can find work, take work, hire other agents, and settle
 - an agent that can keep operating while you sleep
 
 ---
@@ -154,10 +159,11 @@ It supports:
 - contract callback adapters and heartbeat-driven retry for contract-bound settlement flows
 - contract-native market bindings for bounty, observation, and oracle creation flows
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
-- an authenticated operator API for multi-node status, health, doctor, service, gateway, storage, artifact, signer, and paymaster inspection
-- `openfox fleet status|health|doctor|storage|lease-health|artifacts|signer|paymaster|providers` for one-shot fleet-wide auditing across public OpenFox nodes
+- an authenticated operator API for multi-node status, health, doctor, service, gateway, wallet, finance, storage, artifact, signer, and paymaster inspection
+- `openfox fleet status|health|doctor|wallet|finance|storage|lease-health|artifacts|signer|paymaster|providers` for one-shot fleet-wide auditing across public OpenFox nodes
 - `openfox providers reputation`, `openfox storage lease-health`, `openfox storage maintain`, `openfox artifacts maintain`, and `openfox fleet repair <storage|artifacts>` for remote due-work remediation plus provider/lease health reporting
 - `openfox dashboard show|export` for reusable JSON and HTML fleet dashboards
+- `openfox wallet report` and `openfox finance report` for single-node operator snapshots
 - a paid signer-provider surface for bounded delegated execution with:
   - `openfox signer discover`
   - `openfox signer quote`
@@ -202,7 +208,9 @@ OpenFox is not trying to be "another AI chat app".
 
 It is trying to become:
 
-**an AI agent runtime that can work and earn automatically.**
+**an agent platform on `TOS.network` that can discover opportunities, take
+work, get paid, issue rewards, call other agents, and complete proof and
+settlement flows.**
 
 The shortest description is:
 
@@ -211,6 +219,12 @@ The shortest description is:
 
 The near-term product direction includes:
 
+- opportunity discovery and scouting
+- task, bounty, and paid-service intake
+- x402 and native-`TOS` payment collection
+- reward and payout flows to other agents
+- agent-to-agent execution and subcontracting
+- proof, storage, anchoring, and settlement
 - paid API agents
 - paid observation agents
 - oracle / resolution agents
@@ -454,6 +468,8 @@ And inspect the fleet from another machine:
 ```bash
 openfox fleet status --manifest ./fleet.yml
 openfox fleet doctor --manifest ./fleet.yml --json
+openfox fleet wallet --manifest ./fleet.yml --json
+openfox fleet finance --manifest ./fleet.yml --json
 openfox fleet providers --manifest ./fleet.yml
 openfox fleet lease-health --manifest ./fleet.yml
 openfox fleet paymaster --manifest ./fleet.yml
@@ -686,6 +702,8 @@ openfox heartbeat status --json
 openfox cron list --json
 openfox service status --json
 openfox gateway status --json
+openfox wallet report --json
+openfox finance report --json
 ```
 
 ---

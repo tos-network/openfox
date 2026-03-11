@@ -1,4 +1,5 @@
 import { loadConfig, resolvePath } from "../config.js";
+import { createDatabase } from "../state/database.js";
 import {
   bootstrapWalletSigner,
   buildWalletStatusSnapshot,
@@ -8,6 +9,10 @@ import {
   fundWalletFromTestnet,
 } from "../wallet/operator.js";
 import { parseTOSAmount } from "../tos/client.js";
+import {
+  buildOperatorWalletReport,
+  buildOperatorWalletSnapshot,
+} from "../operator/wallet-finance.js";
 
 function readFlag(args: string[], name: string): string | undefined {
   const index = args.indexOf(name);
@@ -32,6 +37,7 @@ OpenFox wallet
 
 Usage:
   openfox wallet status [--json]
+  openfox wallet report [--json]
   openfox wallet fund local [--amount 5] [--amount-wei <wei>] [--from 0x...] [--password ...] [--wait]
   openfox wallet fund testnet [--amount 0.01] [--amount-wei <wei>] [--faucet-url <url>] [--reason "..."] [--wait]
   openfox wallet bootstrap-signer --type <ed25519|secp256r1|bls12-381|elgamal> [--generate] [--public-key 0x...] [--private-key 0x...] [--output <path>] [--overwrite] [--wait]
@@ -77,6 +83,25 @@ export async function runWalletCommand(args: string[]): Promise<void> {
       }
       console.log(formatWalletStatusReport(snapshot));
       return;
+    } catch (error) {
+      throw new Error(formatWalletOperationError(error));
+    }
+  }
+
+  if (args[0] === "report") {
+    try {
+      const db = createDatabase(resolvePath(config.dbPath));
+      try {
+        const snapshot = await buildOperatorWalletSnapshot(config, db);
+        if (hasFlag(args, "--json")) {
+          console.log(JSON.stringify(snapshot, null, 2));
+          return;
+        }
+        console.log(buildOperatorWalletReport(snapshot));
+        return;
+      } finally {
+        db.close();
+      }
     } catch (error) {
       throw new Error(formatWalletOperationError(error));
     }

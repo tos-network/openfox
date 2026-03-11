@@ -198,6 +198,10 @@ import {
   exportFleetDashboard,
 } from "./operator/dashboard.js";
 import {
+  buildOperatorFinanceReport,
+  buildOperatorFinanceSnapshot,
+} from "./operator/wallet-finance.js";
+import {
   runArtifactMaintenance,
   runStorageMaintenance,
 } from "./operator/maintenance.js";
@@ -325,6 +329,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "finance") {
+    await handleFinanceCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "templates") {
     await handleTemplatesCommand(args.slice(1));
     process.exit(0);
@@ -432,6 +441,7 @@ Usage:
   openfox models ...     Inspect model/provider readiness
   openfox onboard        Run setup and optionally install the managed service
   openfox wallet ...     Inspect, fund, and bootstrap the native wallet
+  openfox finance ...    Inspect operator finance snapshots
   openfox templates ...  Inspect and export bundled third-party templates
   openfox logs           Show recent OpenFox service logs
   openfox campaign ...   Create and inspect sponsor-facing task campaigns
@@ -1328,6 +1338,8 @@ Usage:
   openfox fleet doctor --manifest <path> [--json]
   openfox fleet service --manifest <path> [--json]
   openfox fleet gateway --manifest <path> [--json]
+  openfox fleet wallet --manifest <path> [--json]
+  openfox fleet finance --manifest <path> [--json]
   openfox fleet storage --manifest <path> [--json]
   openfox fleet lease-health --manifest <path> [--json]
   openfox fleet artifacts --manifest <path> [--json]
@@ -1380,6 +1392,8 @@ Usage:
     command === "doctor" ||
     command === "service" ||
     command === "gateway" ||
+    command === "wallet" ||
+    command === "finance" ||
     command === "storage" ||
     command === "lease-health" ||
     command === "artifacts" ||
@@ -1586,6 +1600,40 @@ Usage:
         ? "OpenFox onboarding complete. Wallet funding requested."
         : "OpenFox onboarding complete.",
   );
+}
+
+async function handleFinanceCommand(args: string[]): Promise<void> {
+  const command = args[0] || "report";
+  const asJson = args.includes("--json");
+  if (command === "--help" || command === "-h" || command === "help") {
+    logger.info(`
+OpenFox finance
+
+Usage:
+  openfox finance report [--json]
+`);
+    return;
+  }
+
+  if (command !== "report") {
+    throw new Error(`Unknown finance command: ${command}`);
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    const snapshot = await buildOperatorFinanceSnapshot(config, db);
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildOperatorFinanceReport(snapshot));
+  } finally {
+    db.close();
+  }
 }
 
 async function handleTemplatesCommand(args: string[]): Promise<void> {

@@ -195,6 +195,47 @@ describe("operator fleet", () => {
     expect(buildFleetReport(leaseHealthSnapshot)).toContain("3 leases, 1 critical, 1 warning");
   });
 
+  it("supports wallet and finance fleet endpoints", async () => {
+    const walletBaseUrl = await startEndpointServer("/operator/wallet/status", {
+      kind: "wallet",
+      address:
+        "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      summary:
+        "balance=5.000000 TOS reserved=1.000000 TOS available=4.000000 TOS, receivable=0.500000 TOS, payable=0.200000 TOS, runway=40.0d",
+    });
+    const financeBaseUrl = await startEndpointServer("/operator/finance/status", {
+      kind: "finance",
+      address:
+        "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
+      summary:
+        "30d revenue=8.000000 TOS, cost=3.000000 TOS, net=5.000000 TOS, operating=$12.50",
+    });
+
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          { name: "wallet-1", role: "host", baseUrl: walletBaseUrl },
+          { name: "finance-1", role: "gateway", baseUrl: financeBaseUrl },
+        ],
+      }),
+    );
+
+    const walletSnapshot = await buildFleetSnapshot({
+      manifestPath,
+      endpoint: "wallet",
+    });
+    expect(walletSnapshot.ok).toBe(1);
+    expect(buildFleetReport(walletSnapshot)).toContain("balance=5.000000 TOS");
+
+    const financeSnapshot = await buildFleetSnapshot({
+      manifestPath,
+      endpoint: "finance",
+    });
+    expect(financeSnapshot.ok).toBe(1);
+    expect(buildFleetReport(financeSnapshot)).toContain("30d revenue=8.000000 TOS");
+  });
+
   it("supports fleet repair actions for storage and artifacts", async () => {
     const storageBaseUrl = await startEndpointServer("/operator/storage/maintain", {
       kind: "storage",

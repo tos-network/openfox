@@ -273,6 +273,10 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Add a campaign layer above individual bounties so sponsors can group
     budgets, allowed task kinds, and progress reporting without introducing a
     second marketplace system.
+- [x] Task 58: Add operator wallet and finance snapshots
+  - Status: Complete
+  - Goal: Give every OpenFox node a standard wallet and finance report that can
+    be consumed locally, through the operator API, and across a fleet.
 
 ## Task 53 Breakdown
 
@@ -741,3 +745,14 @@ building OpenFox into a TOS-native agent platform.
 - [x] Document the operator flow for requester, sponsor principal, and paymaster-provider roles.
 - [x] Add a multi-node example showing signer-provider plus paymaster-provider composition.
 - [x] Link paymaster-provider docs back into the roadmap and operator-facing guides so sponsored execution becomes part of the main runtime narrative.
+
+## Task 58 Breakdown
+
+- [x] Add normalized operator wallet and finance snapshot builders.
+- [x] Expose `GET /operator/wallet/status` and `GET /operator/finance/status`.
+- [x] Add `openfox wallet report [--json]`.
+- [x] Add `openfox finance report [--json]`.
+- [x] Add `openfox fleet wallet --manifest <path> [--json]`.
+- [x] Add `openfox fleet finance --manifest <path> [--json]`.
+- [x] Add wallet and finance sections to fleet dashboard snapshots and exports.
+- [x] Add tests for wallet/finance snapshots, operator endpoints, fleet aggregation, and dashboard exports.

@@ -22,6 +22,10 @@ import {
 } from "./maintenance.js";
 import { buildProviderReputationSnapshot } from "./provider-reputation.js";
 import { buildStorageLeaseHealthSnapshot } from "./storage-health.js";
+import {
+  buildOperatorFinanceSnapshot,
+  buildOperatorWalletSnapshot,
+} from "./wallet-finance.js";
 
 const logger = createLogger("operator.api");
 
@@ -109,6 +113,8 @@ export async function startOperatorApiServer(
   const signerPath = `${pathPrefix}/signer/status`;
   const paymasterPath = `${pathPrefix}/paymaster/status`;
   const providersPath = `${pathPrefix}/providers/reputation`;
+  const walletPath = `${pathPrefix}/wallet/status`;
+  const financePath = `${pathPrefix}/finance/status`;
   const healthzPath = `${pathPrefix}/healthz`;
 
   const server = http.createServer(async (req, res) => {
@@ -264,6 +270,24 @@ export async function startOperatorApiServer(
             kind,
             limit,
           }),
+        );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === walletPath) {
+        json(
+          res,
+          200,
+          await buildOperatorWalletSnapshot(params.config, params.db),
+        );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === financePath) {
+        json(
+          res,
+          200,
+          await buildOperatorFinanceSnapshot(params.config, params.db),
         );
         return;
       }

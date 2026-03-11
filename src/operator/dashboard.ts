@@ -13,6 +13,8 @@ export const DEFAULT_DASHBOARD_ENDPOINTS: FleetEndpoint[] = [
   "health",
   "service",
   "gateway",
+  "wallet",
+  "finance",
   "storage",
   "lease-health",
   "artifacts",
@@ -167,7 +169,7 @@ export function buildFleetDashboardHtml(
         `<tr><td>${escapeHtml(entry.endpoint)}</td><td>${entry.ok}</td><td>${entry.failed}</td><td>${entry.total}</td></tr>`,
     )
     .join("");
-  const sections = DEFAULT_DASHBOARD_ENDPOINTS.map((endpoint) => {
+  const sections = snapshot.endpointSummaries.map(({ endpoint }) => {
     const section = snapshot.snapshots[endpoint];
     if (!section) return "";
     const rows = section.nodes

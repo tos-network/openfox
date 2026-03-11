@@ -259,6 +259,19 @@ describe("operator api", () => {
     expect(paymasterJson.kind).toBe("paymaster");
     expect(paymasterJson.enabled).toBe(true);
 
+    const wallet = await fetch(`${server.url}/wallet/status`, { headers });
+    expect(wallet.status).toBe(200);
+    const walletJson = (await wallet.json()) as { kind: string; address: string; summary: string };
+    expect(walletJson.kind).toBe("wallet");
+    expect(walletJson.address).toBe(config.walletAddress);
+
+    const finance = await fetch(`${server.url}/finance/status`, { headers });
+    expect(finance.status).toBe(200);
+    const financeJson = (await finance.json()) as { kind: string; address: string; summary: string };
+    expect(financeJson.kind).toBe("finance");
+    expect(financeJson.address).toBe(config.walletAddress);
+    expect(financeJson.summary).toContain("30d revenue=");
+
     db.close();
   });
 
