@@ -850,7 +850,7 @@ Delivered so far:
 
 ### Phase 15: Fleet FinOps and Profit Attribution
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -887,9 +887,23 @@ Acceptance criteria:
   revenue recognition
 - finance dashboards remain exportable as reusable audit artifacts
 
+Delivered so far:
+
+- `GET /operator/payments/status`
+- `GET /operator/settlement/status`
+- `GET /operator/market/status`
+- `openfox fleet payments --manifest <path>`
+- `openfox fleet settlement --manifest <path>`
+- `openfox fleet market --manifest <path>`
+- fleet dashboard JSON and HTML exports with:
+  - role margin breakdowns
+  - capability revenue and cost breakdowns
+  - counterparty summaries
+  - delayed settlement and market queue warnings
+
 ### Phase 16: Fleet Control and Queue Recovery
 
-Status: planned
+Status: completed
 
 Goal:
 
@@ -925,6 +939,24 @@ Acceptance criteria:
 - operators can recover eligible queues remotely through bounded authenticated APIs
 - every mutation action leaves an auditable control record
 - unsafe high-risk actions remain outside the automatic fleet-control surface
+
+Delivered so far:
+
+- `GET /operator/control/status`
+- `GET /operator/control/events`
+- `POST /operator/control/pause`
+- `POST /operator/control/resume`
+- `POST /operator/control/drain`
+- `POST /operator/control/retry/payments`
+- `POST /operator/control/retry/settlement`
+- `POST /operator/control/retry/market`
+- `POST /operator/control/retry/signer`
+- `POST /operator/control/retry/paymaster`
+- `openfox fleet control <pause|resume|drain> --manifest <path> [--node <name>]`
+- `openfox fleet retry <payments|settlement|market|signer|paymaster> --manifest <path> [--node <name>]`
+- runtime status reporting for paused and drained nodes
+- doctor warnings for drained operator nodes
+- persistent operator control event audit records
 
 ### Phase 17: Conservative Autopilot Policies
 
@@ -1078,7 +1110,9 @@ Status: planned
 Goal:
 
 - use configured model providers such as OpenAI and Anthropic to turn
-  structured snapshots into readable owner reports and next-step recommendations
+  deterministic system snapshots into readable owner reports and next-step
+  recommendations, while those same providers continue to support normal
+  OpenFox runtime work
 
 Delivered surface:
 
@@ -1091,6 +1125,7 @@ Implementation tasks:
 
 - define a structured report input object that combines strategy, opportunity,
   and finance snapshots
+- define deterministic system API and ledger inputs for report generation
 - add report-generation pipelines that call configured LLM providers
 - keep machine-verifiable totals separate from generated prose
 - record model provider, model name, and generation timestamp for each report
@@ -1101,6 +1136,8 @@ Acceptance criteria:
 - owners receive readable daily and weekly summaries without reading raw tables
 - report prose explains gains, losses, and next opportunities without becoming
   the source of financial truth
+- report generation consumes deterministic system data instead of free-form
+  model memory or prompt-only reconstruction
 - OpenFox can generate recommendations about what to pursue next under the current strategy
 
 ### Phase 22: Owner Delivery Surfaces

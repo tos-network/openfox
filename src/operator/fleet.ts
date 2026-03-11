@@ -32,6 +32,9 @@ export type FleetEndpoint =
   | "gateway"
   | "wallet"
   | "finance"
+  | "payments"
+  | "settlement"
+  | "market"
   | "storage"
   | "lease-health"
   | "artifacts"
@@ -53,6 +56,34 @@ export type FleetRepairComponent = "storage" | "artifacts";
 export interface FleetRepairSnapshot {
   manifestPath: string;
   component: FleetRepairComponent;
+  total: number;
+  ok: number;
+  failed: number;
+  nodes: FleetNodeResult[];
+}
+
+export type FleetControlAction = "pause" | "resume" | "drain";
+export type FleetRetryQueue =
+  | "payments"
+  | "settlement"
+  | "market"
+  | "signer"
+  | "paymaster";
+
+export interface FleetControlSnapshot {
+  manifestPath: string;
+  action: FleetControlAction;
+  targetNode: string | null;
+  total: number;
+  ok: number;
+  failed: number;
+  nodes: FleetNodeResult[];
+}
+
+export interface FleetQueueRetrySnapshot {
+  manifestPath: string;
+  queue: FleetRetryQueue;
+  targetNode: string | null;
   total: number;
   ok: number;
   failed: number;
@@ -96,6 +127,12 @@ function getEndpointPath(endpoint: FleetEndpoint): string {
       return "wallet/status";
     case "finance":
       return "finance/status";
+    case "payments":
+      return "payments/status";
+    case "settlement":
+      return "settlement/status";
+    case "market":
+      return "market/status";
     case "storage":
       return "storage/status";
     case "lease-health":
@@ -247,6 +284,52 @@ async function invokeNodeAction(
   }
 }
 
+async function invokeNodeControlAction(
+  node: FleetNodeManifest,
+  pathSuffix: string,
+  body: Record<string, unknown>,
+): Promise<FleetNodeResult> {
+  const url = `${node.baseUrl}/${pathSuffix}`;
+  try {
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(node.authToken
+          ? {
+              Authorization: `Bearer ${node.authToken}`,
+            }
+          : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    const text = await response.text();
+    let payload: unknown = text;
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      // keep text payload
+    }
+    return {
+      name: node.name,
+      role: node.role || null,
+      baseUrl: node.baseUrl,
+      ok: response.ok,
+      statusCode: response.status,
+      payload,
+      error: response.ok ? undefined : `HTTP ${response.status}`,
+    };
+  } catch (error) {
+    return {
+      name: node.name,
+      role: node.role || null,
+      baseUrl: node.baseUrl,
+      ok: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 export async function buildFleetSnapshot(params: {
   manifestPath: string;
   endpoint: FleetEndpoint;
@@ -285,6 +368,88 @@ export async function buildFleetRepairSnapshot(params: {
   return {
     manifestPath,
     component: params.component,
+    total: nodes.length,
+    ok,
+    failed: nodes.length - ok,
+    nodes,
+  };
+}
+
+export async function buildFleetControlSnapshot(params: {
+  manifestPath: string;
+  action: FleetControlAction;
+  nodeName?: string;
+  actor?: string;
+  reason?: string;
+}): Promise<FleetControlSnapshot> {
+  const manifestPath = path.resolve(params.manifestPath);
+  const manifest = loadFleetManifest(manifestPath);
+  const targetNodes = params.nodeName
+    ? manifest.nodes.filter((node) => node.name === params.nodeName)
+    : manifest.nodes;
+  if (targetNodes.length === 0) {
+    throw new Error(
+      params.nodeName
+        ? `Fleet manifest does not contain node: ${params.nodeName}`
+        : `Fleet manifest has no valid nodes: ${manifestPath}`,
+    );
+  }
+  const pathSuffix = `control/${params.action}`;
+  const nodes = await Promise.all(
+    targetNodes.map((node) =>
+      invokeNodeControlAction(node, pathSuffix, {
+        ...(params.actor ? { actor: params.actor } : {}),
+        ...(params.reason ? { reason: params.reason } : {}),
+      }),
+    ),
+  );
+  const ok = nodes.filter((node) => node.ok).length;
+  return {
+    manifestPath,
+    action: params.action,
+    targetNode: params.nodeName || null,
+    total: nodes.length,
+    ok,
+    failed: nodes.length - ok,
+    nodes,
+  };
+}
+
+export async function buildFleetQueueRetrySnapshot(params: {
+  manifestPath: string;
+  queue: FleetRetryQueue;
+  nodeName?: string;
+  actor?: string;
+  reason?: string;
+  limit?: number;
+}): Promise<FleetQueueRetrySnapshot> {
+  const manifestPath = path.resolve(params.manifestPath);
+  const manifest = loadFleetManifest(manifestPath);
+  const targetNodes = params.nodeName
+    ? manifest.nodes.filter((node) => node.name === params.nodeName)
+    : manifest.nodes;
+  if (targetNodes.length === 0) {
+    throw new Error(
+      params.nodeName
+        ? `Fleet manifest does not contain node: ${params.nodeName}`
+        : `Fleet manifest has no valid nodes: ${manifestPath}`,
+    );
+  }
+  const pathSuffix = `control/retry/${params.queue}`;
+  const nodes = await Promise.all(
+    targetNodes.map((node) =>
+      invokeNodeControlAction(node, pathSuffix, {
+        ...(params.actor ? { actor: params.actor } : {}),
+        ...(params.reason ? { reason: params.reason } : {}),
+        ...(typeof params.limit === "number" ? { limit: params.limit } : {}),
+      }),
+    ),
+  );
+  const ok = nodes.filter((node) => node.ok).length;
+  return {
+    manifestPath,
+    queue: params.queue,
+    targetNode: params.nodeName || null,
     total: nodes.length,
     ok,
     failed: nodes.length - ok,
@@ -346,6 +511,62 @@ export function buildFleetRepairReport(snapshot: FleetRepairSnapshot): string {
     if (summary) {
       lines.push(`  ${summary}`);
     }
+  }
+  return lines.join("\n");
+}
+
+export function buildFleetControlReport(snapshot: FleetControlSnapshot): string {
+  const lines = [
+    "=== OPENFOX FLEET CONTROL ===",
+    `Manifest:  ${snapshot.manifestPath}`,
+    `Action:    ${snapshot.action}`,
+    `Node:      ${snapshot.targetNode || "all"}`,
+    `Successful: ${snapshot.ok}/${snapshot.total}`,
+    "",
+  ];
+  for (const node of snapshot.nodes) {
+    const status = node.ok ? "ok" : "failed";
+    const suffix = node.error
+      ? ` (${node.error})`
+      : node.statusCode
+        ? ` (HTTP ${node.statusCode})`
+        : "";
+    const summary =
+      typeof node.payload === "object" &&
+      node.payload !== null &&
+      typeof (node.payload as { summary?: unknown }).summary === "string"
+        ? (node.payload as { summary: string }).summary
+        : null;
+    lines.push(`${node.name}${node.role ? ` [${node.role}]` : ""}: ${status} -> ${node.baseUrl}${suffix}`);
+    if (summary) lines.push(`  ${summary}`);
+  }
+  return lines.join("\n");
+}
+
+export function buildFleetQueueRetryReport(snapshot: FleetQueueRetrySnapshot): string {
+  const lines = [
+    "=== OPENFOX FLEET RETRY ===",
+    `Manifest:  ${snapshot.manifestPath}`,
+    `Queue:     ${snapshot.queue}`,
+    `Node:      ${snapshot.targetNode || "all"}`,
+    `Successful: ${snapshot.ok}/${snapshot.total}`,
+    "",
+  ];
+  for (const node of snapshot.nodes) {
+    const status = node.ok ? "ok" : "failed";
+    const suffix = node.error
+      ? ` (${node.error})`
+      : node.statusCode
+        ? ` (HTTP ${node.statusCode})`
+        : "";
+    const summary =
+      typeof node.payload === "object" &&
+      node.payload !== null &&
+      typeof (node.payload as { summary?: unknown }).summary === "string"
+        ? (node.payload as { summary: string }).summary
+        : null;
+    lines.push(`${node.name}${node.role ? ` [${node.role}]` : ""}: ${status} -> ${node.baseUrl}${suffix}`);
+    if (summary) lines.push(`  ${summary}`);
   }
   return lines.join("\n");
 }

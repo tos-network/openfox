@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { createTestConfig, createTestDb } from "./mocks.js";
 import { startOperatorApiServer } from "../operator/api.js";
+import { isHeartbeatPaused, isOperatorDrained } from "../state/database.js";
 
 const servers: Array<{ close(): Promise<void> }> = [];
 
@@ -272,6 +273,21 @@ describe("operator api", () => {
     expect(financeJson.address).toBe(config.walletAddress);
     expect(financeJson.summary).toContain("30d revenue=");
 
+    const payments = await fetch(`${server.url}/payments/status`, { headers });
+    expect(payments.status).toBe(200);
+    const paymentsJson = (await payments.json()) as { kind: string; summary: string };
+    expect(paymentsJson.kind).toBe("payments");
+
+    const settlement = await fetch(`${server.url}/settlement/status`, { headers });
+    expect(settlement.status).toBe(200);
+    const settlementJson = (await settlement.json()) as { kind: string; summary: string };
+    expect(settlementJson.kind).toBe("settlement");
+
+    const market = await fetch(`${server.url}/market/status`, { headers });
+    expect(market.status).toBe(200);
+    const marketJson = (await market.json()) as { kind: string; summary: string };
+    expect(marketJson.kind).toBe("market");
+
     db.close();
   });
 
@@ -406,6 +422,105 @@ describe("operator api", () => {
       summary: expect.any(String),
       entries: expect.any(Array),
     });
+
+    db.close();
+  });
+
+  it("supports bounded control actions and records control events", async () => {
+    const db = createTestDb();
+    const server = await startOperatorApiServer({
+      config: createTestConfig({
+        operatorApi: {
+          enabled: true,
+          bindHost: "127.0.0.1",
+          port: 0,
+          pathPrefix: "/operator",
+          authToken: "secret-token",
+          exposeDoctor: true,
+          exposeServiceStatus: true,
+        },
+      }),
+      db,
+    });
+    expect(server).not.toBeNull();
+    if (!server) {
+      db.close();
+      return;
+    }
+    servers.push(server);
+
+    const headers = {
+      Authorization: "Bearer secret-token",
+      "Content-Type": "application/json",
+    };
+
+    const pause = await fetch(`${server.url}/control/pause`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ actor: "test-suite", reason: "maintenance" }),
+    });
+    expect(pause.status).toBe(200);
+    const pauseJson = (await pause.json()) as { status: string; changed: boolean };
+    expect(pauseJson.status).toBe("applied");
+    expect(pauseJson.changed).toBe(true);
+    expect(isHeartbeatPaused(db.raw)).toBe(true);
+
+    const controlStatus = await fetch(`${server.url}/control/status`, {
+      headers: {
+        Authorization: "Bearer secret-token",
+      },
+    });
+    expect(controlStatus.status).toBe(200);
+    const controlStatusJson = (await controlStatus.json()) as {
+      heartbeatPaused: boolean;
+      drained: boolean;
+      recentEvents: Array<{ action: string; status: string }>;
+    };
+    expect(controlStatusJson.heartbeatPaused).toBe(true);
+    expect(controlStatusJson.drained).toBe(false);
+    expect(controlStatusJson.recentEvents[0]?.action).toBe("pause");
+
+    const drain = await fetch(`${server.url}/control/drain`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ actor: "test-suite", reason: "queue recovery" }),
+    });
+    expect(drain.status).toBe(200);
+    const drainJson = (await drain.json()) as { status: string };
+    expect(drainJson.status).toBe("applied");
+    expect(isHeartbeatPaused(db.raw)).toBe(true);
+    expect(isOperatorDrained(db.raw)).toBe(true);
+
+    const resume = await fetch(`${server.url}/control/resume`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ actor: "test-suite", reason: "done" }),
+    });
+    expect(resume.status).toBe(200);
+    expect(isHeartbeatPaused(db.raw)).toBe(false);
+    expect(isOperatorDrained(db.raw)).toBe(false);
+
+    const retryPayments = await fetch(`${server.url}/control/retry/payments`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ actor: "test-suite", reason: "recover" }),
+    });
+    expect(retryPayments.status).toBe(409);
+    const retryJson = (await retryPayments.json()) as { status: string };
+    expect(retryJson.status).toBe("failed");
+
+    const events = await fetch(`${server.url}/control/events?limit=10`, {
+      headers: {
+        Authorization: "Bearer secret-token",
+      },
+    });
+    expect(events.status).toBe(200);
+    const eventsJson = (await events.json()) as {
+      items: Array<{ action: string; status: string; actor: string }>;
+    };
+    expect(eventsJson.items.length).toBeGreaterThanOrEqual(4);
+    expect(eventsJson.items.some((item) => item.action === "retry_payments" && item.status === "failed")).toBe(true);
+    expect(eventsJson.items.some((item) => item.action === "drain" && item.actor === "test-suite")).toBe(true);
 
     db.close();
   });

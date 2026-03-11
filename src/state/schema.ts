@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 27;
+export const SCHEMA_VERSION = 28;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -147,6 +147,27 @@ export const CREATE_TABLES = `
   CREATE INDEX IF NOT EXISTS idx_tool_calls_turn ON tool_calls(turn_id);
   CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type);
   CREATE INDEX IF NOT EXISTS idx_modifications_type ON modifications(type);
+
+  -- Operator control audit log
+  CREATE TABLE IF NOT EXISTS operator_control_events (
+    event_id TEXT PRIMARY KEY,
+    action TEXT NOT NULL CHECK(action IN ('pause','resume','drain','retry_payments','retry_settlement','retry_market','retry_signer','retry_paymaster')),
+    status TEXT NOT NULL CHECK(status IN ('applied','noop','failed')),
+    actor TEXT NOT NULL,
+    reason TEXT,
+    summary TEXT,
+    result_json TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_operator_control_events_created
+    ON operator_control_events(created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_operator_control_events_action
+    ON operator_control_events(action, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_operator_control_events_status
+    ON operator_control_events(status, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_skills_enabled ON skills(enabled);
   CREATE INDEX IF NOT EXISTS idx_children_status ON children(status);
   CREATE INDEX IF NOT EXISTS idx_reputation_to ON reputation(to_agent);
@@ -1444,6 +1465,28 @@ export const MIGRATION_V27 = `
 
   CREATE INDEX IF NOT EXISTS idx_bounties_campaign
     ON bounties(campaign_id, created_at);
+`;
+
+export const MIGRATION_V28 = `
+  CREATE TABLE IF NOT EXISTS operator_control_events (
+    event_id TEXT PRIMARY KEY,
+    action TEXT NOT NULL CHECK(action IN ('pause','resume','drain','retry_payments','retry_settlement','retry_market','retry_signer','retry_paymaster')),
+    status TEXT NOT NULL CHECK(status IN ('applied','noop','failed')),
+    actor TEXT NOT NULL,
+    reason TEXT,
+    summary TEXT,
+    result_json TEXT,
+    created_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_operator_control_events_created
+    ON operator_control_events(created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_operator_control_events_action
+    ON operator_control_events(action, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_operator_control_events_status
+    ON operator_control_events(status, created_at DESC);
 `;
 
 export const MIGRATION_V3 = `

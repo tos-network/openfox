@@ -15,6 +15,9 @@ export const DEFAULT_DASHBOARD_ENDPOINTS: FleetEndpoint[] = [
   "gateway",
   "wallet",
   "finance",
+  "payments",
+  "settlement",
+  "market",
   "storage",
   "lease-health",
   "artifacts",
@@ -22,6 +25,64 @@ export const DEFAULT_DASHBOARD_ENDPOINTS: FleetEndpoint[] = [
   "paymaster",
   "providers",
 ];
+
+interface FleetFinanceNodeSummary {
+  name: string;
+  role: string | null;
+  revenueWei30d: string;
+  costWei30d: string;
+  netWei30d: string;
+  pendingReceivablesWei: string;
+  pendingPayablesWei: string;
+  negativeMargin: boolean;
+}
+
+interface FleetFinanceRoleSummary {
+  role: string;
+  nodes: number;
+  revenueWei30d: string;
+  costWei30d: string;
+  netWei30d: string;
+}
+
+interface FleetCapabilitySummary {
+  capability: string;
+  confirmedRevenueWei: string;
+  confirmedCostWei: string;
+  pendingRevenueWei: string;
+  pendingCostWei: string;
+}
+
+interface FleetCustomerSummary {
+  address: string;
+  kind: "customer" | "provider";
+  confirmedRevenueWei: string;
+  confirmedCostWei: string;
+  pendingRevenueWei: string;
+  pendingCostWei: string;
+  interactions: number;
+}
+
+export interface FleetFinanceSummary {
+  totals: {
+    revenueWei30d: string;
+    costWei30d: string;
+    netWei30d: string;
+    pendingReceivablesWei: string;
+    pendingPayablesWei: string;
+  };
+  roles: FleetFinanceRoleSummary[];
+  nodes: FleetFinanceNodeSummary[];
+  capabilities: FleetCapabilitySummary[];
+  customers: FleetCustomerSummary[];
+  delayedQueues: {
+    settlementPending: number;
+    settlementFailed: number;
+    marketPending: number;
+    marketFailed: number;
+  };
+  warnings: string[];
+}
 
 export interface FleetDashboardSnapshot {
   generatedAt: string;
@@ -36,6 +97,7 @@ export interface FleetDashboardSnapshot {
   }>;
   failingEndpoints: FleetEndpoint[];
   snapshots: Record<FleetEndpoint, FleetSnapshot>;
+  financeSummary: FleetFinanceSummary;
 }
 
 export interface FleetDashboardBundleResult {
@@ -87,6 +149,218 @@ function payloadSummary(payload: unknown): string {
   return JSON.stringify(payload);
 }
 
+function toBigInt(value: string | bigint | null | undefined): bigint {
+  if (typeof value === "bigint") return value;
+  if (!value) return 0n;
+  return BigInt(value);
+}
+
+function formatTOS(value: bigint): string {
+  const sign = value < 0n ? "-" : "";
+  const abs = value < 0n ? -value : value;
+  const whole = abs / 10n ** 18n;
+  const fraction = abs % 10n ** 18n;
+  if (fraction === 0n) return `${sign}${whole.toString()} TOS`;
+  const decimals = fraction.toString().padStart(18, "0").replace(/0+$/, "");
+  return `${sign}${whole.toString()}.${decimals.slice(0, 6)} TOS`;
+}
+
+function buildFleetFinanceSummary(
+  snapshots: Record<FleetEndpoint, FleetSnapshot>,
+): FleetFinanceSummary {
+  const roleMap = new Map<string, { nodes: number; revenueWei30d: bigint; costWei30d: bigint; netWei30d: bigint }>();
+  const capabilityMap = new Map<string, { confirmedRevenueWei: bigint; confirmedCostWei: bigint; pendingRevenueWei: bigint; pendingCostWei: bigint }>();
+  const customerMap = new Map<string, { address: string; kind: "customer" | "provider"; confirmedRevenueWei: bigint; confirmedCostWei: bigint; pendingRevenueWei: bigint; pendingCostWei: bigint; interactions: number }>();
+  const nodeSummaries: FleetFinanceNodeSummary[] = [];
+  const warnings: string[] = [];
+  let revenueWei30d = 0n;
+  let costWei30d = 0n;
+  let netWei30d = 0n;
+  let pendingReceivablesWei = 0n;
+  let pendingPayablesWei = 0n;
+  let settlementPending = 0;
+  let settlementFailed = 0;
+  let marketPending = 0;
+  let marketFailed = 0;
+
+  for (const node of snapshots.finance?.nodes ?? []) {
+    if (!node.ok || typeof node.payload !== "object" || node.payload === null) continue;
+    const payload = node.payload as {
+      periods?: { trailing30d?: { revenueWei?: string; costWei?: string; netWei?: string } };
+      pendingReceivablesWei?: string;
+      pendingPayablesWei?: string;
+    };
+    const period = payload.periods?.trailing30d;
+    const nodeRevenue = toBigInt(period?.revenueWei);
+    const nodeCost = toBigInt(period?.costWei);
+    const nodeNet = toBigInt(period?.netWei);
+    const nodeReceivables = toBigInt(payload.pendingReceivablesWei);
+    const nodePayables = toBigInt(payload.pendingPayablesWei);
+    revenueWei30d += nodeRevenue;
+    costWei30d += nodeCost;
+    netWei30d += nodeNet;
+    pendingReceivablesWei += nodeReceivables;
+    pendingPayablesWei += nodePayables;
+    nodeSummaries.push({
+      name: node.name,
+      role: node.role,
+      revenueWei30d: nodeRevenue.toString(),
+      costWei30d: nodeCost.toString(),
+      netWei30d: nodeNet.toString(),
+      pendingReceivablesWei: nodeReceivables.toString(),
+      pendingPayablesWei: nodePayables.toString(),
+      negativeMargin: nodeNet < 0n,
+    });
+    const roleKey = node.role || "unspecified";
+    const roleEntry = roleMap.get(roleKey) ?? {
+      nodes: 0,
+      revenueWei30d: 0n,
+      costWei30d: 0n,
+      netWei30d: 0n,
+    };
+    roleEntry.nodes += 1;
+    roleEntry.revenueWei30d += nodeRevenue;
+    roleEntry.costWei30d += nodeCost;
+    roleEntry.netWei30d += nodeNet;
+    roleMap.set(roleKey, roleEntry);
+    if (nodeNet < 0n) {
+      warnings.push(`${node.name}${node.role ? ` [${node.role}]` : ""} has negative 30d margin.`);
+    }
+  }
+
+  for (const node of snapshots.payments?.nodes ?? []) {
+    if (!node.ok || typeof node.payload !== "object" || node.payload === null) continue;
+    const payload = node.payload as {
+      capabilities?: Array<{
+        capability: string;
+        confirmedRevenueWei: string;
+        confirmedCostWei: string;
+        pendingRevenueWei: string;
+        pendingCostWei: string;
+      }>;
+      counterparties?: Array<{
+        address: string;
+        kind: "customer" | "provider";
+        confirmedRevenueWei: string;
+        confirmedCostWei: string;
+        pendingRevenueWei: string;
+        pendingCostWei: string;
+        confirmedCount: number;
+        pendingCount: number;
+      }>;
+    };
+    for (const entry of payload.capabilities ?? []) {
+      const current = capabilityMap.get(entry.capability) ?? {
+        confirmedRevenueWei: 0n,
+        confirmedCostWei: 0n,
+        pendingRevenueWei: 0n,
+        pendingCostWei: 0n,
+      };
+      current.confirmedRevenueWei += toBigInt(entry.confirmedRevenueWei);
+      current.confirmedCostWei += toBigInt(entry.confirmedCostWei);
+      current.pendingRevenueWei += toBigInt(entry.pendingRevenueWei);
+      current.pendingCostWei += toBigInt(entry.pendingCostWei);
+      capabilityMap.set(entry.capability, current);
+    }
+    for (const entry of payload.counterparties ?? []) {
+      const key = `${entry.kind}:${entry.address}`;
+      const current = customerMap.get(key) ?? {
+        address: entry.address,
+        kind: entry.kind,
+        confirmedRevenueWei: 0n,
+        confirmedCostWei: 0n,
+        pendingRevenueWei: 0n,
+        pendingCostWei: 0n,
+        interactions: 0,
+      };
+      current.confirmedRevenueWei += toBigInt(entry.confirmedRevenueWei);
+      current.confirmedCostWei += toBigInt(entry.confirmedCostWei);
+      current.pendingRevenueWei += toBigInt(entry.pendingRevenueWei);
+      current.pendingCostWei += toBigInt(entry.pendingCostWei);
+      current.interactions += (entry.confirmedCount ?? 0) + (entry.pendingCount ?? 0);
+      customerMap.set(key, current);
+    }
+  }
+
+  for (const node of snapshots.settlement?.nodes ?? []) {
+    if (!node.ok || typeof node.payload !== "object" || node.payload === null) continue;
+    const payload = node.payload as { callbackPending?: number; callbackFailed?: number };
+    settlementPending += payload.callbackPending ?? 0;
+    settlementFailed += payload.callbackFailed ?? 0;
+  }
+  for (const node of snapshots.market?.nodes ?? []) {
+    if (!node.ok || typeof node.payload !== "object" || node.payload === null) continue;
+    const payload = node.payload as { callbackPending?: number; callbackFailed?: number };
+    marketPending += payload.callbackPending ?? 0;
+    marketFailed += payload.callbackFailed ?? 0;
+  }
+  if (settlementPending > 0 || settlementFailed > 0) {
+    warnings.push(`Settlement callbacks are delaying revenue recognition (pending=${settlementPending}, failed=${settlementFailed}).`);
+  }
+  if (marketPending > 0 || marketFailed > 0) {
+    warnings.push(`Market callbacks are delaying contract binding visibility (pending=${marketPending}, failed=${marketFailed}).`);
+  }
+
+  return {
+    totals: {
+      revenueWei30d: revenueWei30d.toString(),
+      costWei30d: costWei30d.toString(),
+      netWei30d: netWei30d.toString(),
+      pendingReceivablesWei: pendingReceivablesWei.toString(),
+      pendingPayablesWei: pendingPayablesWei.toString(),
+    },
+    roles: Array.from(roleMap.entries())
+      .map(([role, entry]) => ({
+        role,
+        nodes: entry.nodes,
+        revenueWei30d: entry.revenueWei30d.toString(),
+        costWei30d: entry.costWei30d.toString(),
+        netWei30d: entry.netWei30d.toString(),
+      }))
+      .sort((a, b) => (toBigInt(b.netWei30d) > toBigInt(a.netWei30d) ? 1 : -1)),
+    nodes: nodeSummaries.sort((a, b) => (toBigInt(b.netWei30d) > toBigInt(a.netWei30d) ? 1 : -1)),
+    capabilities: Array.from(capabilityMap.entries())
+      .map(([capability, entry]) => ({
+        capability,
+        confirmedRevenueWei: entry.confirmedRevenueWei.toString(),
+        confirmedCostWei: entry.confirmedCostWei.toString(),
+        pendingRevenueWei: entry.pendingRevenueWei.toString(),
+        pendingCostWei: entry.pendingCostWei.toString(),
+      }))
+      .sort((a, b) =>
+        toBigInt(b.confirmedRevenueWei) + toBigInt(b.pendingRevenueWei) >
+        toBigInt(a.confirmedRevenueWei) + toBigInt(a.pendingRevenueWei)
+          ? 1
+          : -1,
+      )
+      .slice(0, 10),
+    customers: Array.from(customerMap.values())
+      .map((entry) => ({
+        address: entry.address,
+        kind: entry.kind,
+        confirmedRevenueWei: entry.confirmedRevenueWei.toString(),
+        confirmedCostWei: entry.confirmedCostWei.toString(),
+        pendingRevenueWei: entry.pendingRevenueWei.toString(),
+        pendingCostWei: entry.pendingCostWei.toString(),
+        interactions: entry.interactions,
+      }))
+      .sort((a, b) =>
+        toBigInt(b.confirmedRevenueWei) + toBigInt(b.pendingRevenueWei) + toBigInt(b.confirmedCostWei) + toBigInt(b.pendingCostWei) >
+        toBigInt(a.confirmedRevenueWei) + toBigInt(a.pendingRevenueWei) + toBigInt(a.confirmedCostWei) + toBigInt(a.pendingCostWei)
+          ? 1
+          : -1,
+      )
+      .slice(0, 10),
+    delayedQueues: {
+      settlementPending,
+      settlementFailed,
+      marketPending,
+      marketFailed,
+    },
+    warnings,
+  };
+}
+
 export async function buildFleetDashboardSnapshot(params: {
   manifestPath: string;
   endpoints?: FleetEndpoint[];
@@ -123,6 +397,7 @@ export async function buildFleetDashboardSnapshot(params: {
       .filter((entry) => entry.failed > 0)
       .map((entry) => entry.endpoint),
     snapshots,
+    financeSummary: buildFleetFinanceSummary(snapshots),
   };
 }
 
@@ -151,6 +426,16 @@ export function buildFleetDashboardReport(
     lines.push("");
     lines.push(`Failing endpoints: ${snapshot.failingEndpoints.join(", ")}`);
   }
+  lines.push("");
+  lines.push(
+    `Fleet finance: 30d revenue=${formatTOS(toBigInt(snapshot.financeSummary.totals.revenueWei30d))}, cost=${formatTOS(toBigInt(snapshot.financeSummary.totals.costWei30d))}, net=${formatTOS(toBigInt(snapshot.financeSummary.totals.netWei30d))}`,
+  );
+  if (snapshot.financeSummary.warnings.length) {
+    lines.push("Warnings:");
+    for (const warning of snapshot.financeSummary.warnings) {
+      lines.push(`- ${warning}`);
+    }
+  }
   return lines.join("\n");
 }
 
@@ -168,6 +453,27 @@ export function buildFleetDashboardHtml(
       (entry) =>
         `<tr><td>${escapeHtml(entry.endpoint)}</td><td>${entry.ok}</td><td>${entry.failed}</td><td>${entry.total}</td></tr>`,
     )
+    .join("");
+  const financeRows = snapshot.financeSummary.roles
+    .map(
+      (entry) =>
+        `<tr><td>${escapeHtml(entry.role)}</td><td>${entry.nodes}</td><td>${escapeHtml(formatTOS(toBigInt(entry.revenueWei30d)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.costWei30d)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.netWei30d)))}</td></tr>`,
+    )
+    .join("");
+  const capabilityRows = snapshot.financeSummary.capabilities
+    .map(
+      (entry) =>
+        `<tr><td>${escapeHtml(entry.capability)}</td><td>${escapeHtml(formatTOS(toBigInt(entry.confirmedRevenueWei)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.confirmedCostWei)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.pendingRevenueWei)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.pendingCostWei)))}</td></tr>`,
+    )
+    .join("");
+  const customerRows = snapshot.financeSummary.customers
+    .map(
+      (entry) =>
+        `<tr><td>${escapeHtml(entry.kind)}</td><td>${escapeHtml(entry.address)}</td><td>${escapeHtml(formatTOS(toBigInt(entry.confirmedRevenueWei)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.confirmedCostWei)))}</td><td>${escapeHtml(formatTOS(toBigInt(entry.pendingRevenueWei) + toBigInt(entry.pendingCostWei)))}</td><td>${entry.interactions}</td></tr>`,
+    )
+    .join("");
+  const warningItems = snapshot.financeSummary.warnings
+    .map((warning) => `<li>${escapeHtml(warning)}</li>`)
     .join("");
   const sections = snapshot.endpointSummaries.map(({ endpoint }) => {
     const section = snapshot.snapshots[endpoint];
@@ -232,7 +538,47 @@ export function buildFleetDashboardHtml(
         <tbody>${endpointRows}</tbody>
       </table>
     </section>
+    <section>
+      <h2>Fleet Finance</h2>
+      <table>
+        <thead><tr><th>30d Revenue</th><th>30d Cost</th><th>30d Net</th><th>Pending Receivables</th><th>Pending Payables</th></tr></thead>
+        <tbody><tr>
+          <td>${escapeHtml(formatTOS(toBigInt(snapshot.financeSummary.totals.revenueWei30d)))}</td>
+          <td>${escapeHtml(formatTOS(toBigInt(snapshot.financeSummary.totals.costWei30d)))}</td>
+          <td>${escapeHtml(formatTOS(toBigInt(snapshot.financeSummary.totals.netWei30d)))}</td>
+          <td>${escapeHtml(formatTOS(toBigInt(snapshot.financeSummary.totals.pendingReceivablesWei)))}</td>
+          <td>${escapeHtml(formatTOS(toBigInt(snapshot.financeSummary.totals.pendingPayablesWei)))}</td>
+        </tr></tbody>
+      </table>
+      <div><strong>Delayed queues:</strong> settlement pending=${snapshot.financeSummary.delayedQueues.settlementPending}, settlement failed=${snapshot.financeSummary.delayedQueues.settlementFailed}, market pending=${snapshot.financeSummary.delayedQueues.marketPending}, market failed=${snapshot.financeSummary.delayedQueues.marketFailed}</div>
+      ${
+        warningItems
+          ? `<div><strong>Warnings</strong><ul>${warningItems}</ul></div>`
+          : ""
+      }
+    </section>
   </div>
+  <section>
+    <h2>Role Margin Breakdown</h2>
+    <table>
+      <thead><tr><th>Role</th><th>Nodes</th><th>30d Revenue</th><th>30d Cost</th><th>30d Net</th></tr></thead>
+      <tbody>${financeRows}</tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Capability Breakdown</h2>
+    <table>
+      <thead><tr><th>Capability</th><th>Confirmed Revenue</th><th>Confirmed Cost</th><th>Pending Revenue</th><th>Pending Cost</th></tr></thead>
+      <tbody>${capabilityRows}</tbody>
+    </table>
+  </section>
+  <section>
+    <h2>Top Counterparties</h2>
+    <table>
+      <thead><tr><th>Kind</th><th>Address</th><th>Confirmed Revenue</th><th>Confirmed Cost</th><th>Pending Exposure</th><th>Interactions</th></tr></thead>
+      <tbody>${customerRows}</tbody>
+    </table>
+  </section>
   ${sections}
 </body>
 </html>`;

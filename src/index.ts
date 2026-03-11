@@ -182,14 +182,20 @@ import {
   buildRuntimeStatusSnapshot,
 } from "./operator/status.js";
 import {
+  buildFleetControlReport,
+  buildFleetControlSnapshot,
   buildFleetReport,
   buildFleetLintReport,
   buildFleetLintSnapshot,
+  buildFleetQueueRetryReport,
+  buildFleetQueueRetrySnapshot,
   buildFleetRepairReport,
   buildFleetRepairSnapshot,
   buildFleetSnapshot,
+  type FleetControlAction,
   type FleetRepairComponent,
   type FleetEndpoint,
+  type FleetRetryQueue,
 } from "./operator/fleet.js";
 import {
   buildFleetDashboardReport,
@@ -1340,12 +1346,17 @@ Usage:
   openfox fleet gateway --manifest <path> [--json]
   openfox fleet wallet --manifest <path> [--json]
   openfox fleet finance --manifest <path> [--json]
+  openfox fleet payments --manifest <path> [--json]
+  openfox fleet settlement --manifest <path> [--json]
+  openfox fleet market --manifest <path> [--json]
   openfox fleet storage --manifest <path> [--json]
   openfox fleet lease-health --manifest <path> [--json]
   openfox fleet artifacts --manifest <path> [--json]
   openfox fleet signer --manifest <path> [--json]
   openfox fleet paymaster --manifest <path> [--json]
   openfox fleet providers --manifest <path> [--json]
+  openfox fleet control <pause|resume|drain> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--json]
+  openfox fleet retry <payments|settlement|market|signer|paymaster> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--limit N] [--json]
   openfox fleet repair <storage|artifacts> --manifest <path> [--limit N] [--json]
 `);
     if (!manifestPath && !helpRequested) {
@@ -1376,6 +1387,63 @@ Usage:
     return;
   }
 
+  if (command === "control") {
+    const action = args[1];
+    const normalizedAction =
+      action === "pause" || action === "resume" || action === "drain"
+        ? (action as FleetControlAction)
+        : null;
+    if (!normalizedAction) {
+      throw new Error(
+        "Usage: openfox fleet control <pause|resume|drain> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--json]",
+      );
+    }
+    const snapshot = await buildFleetControlSnapshot({
+      manifestPath,
+      action: normalizedAction,
+      nodeName: readFlag(args, "--node"),
+      actor: readFlag(args, "--actor"),
+      reason: readFlag(args, "--reason"),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetControlReport(snapshot));
+    return;
+  }
+
+  if (command === "retry") {
+    const queue = args[1];
+    const normalizedQueue =
+      queue === "payments" ||
+      queue === "settlement" ||
+      queue === "market" ||
+      queue === "signer" ||
+      queue === "paymaster"
+        ? (queue as FleetRetryQueue)
+        : null;
+    if (!normalizedQueue) {
+      throw new Error(
+        "Usage: openfox fleet retry <payments|settlement|market|signer|paymaster> --manifest <path> [--node <name>] [--actor <id>] [--reason <text>] [--limit N] [--json]",
+      );
+    }
+    const snapshot = await buildFleetQueueRetrySnapshot({
+      manifestPath,
+      queue: normalizedQueue,
+      nodeName: readFlag(args, "--node"),
+      actor: readFlag(args, "--actor"),
+      reason: readFlag(args, "--reason"),
+      limit: readNumberOption(args, "--limit", 25),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetQueueRetryReport(snapshot));
+    return;
+  }
+
   if (command === "lint") {
     const snapshot = buildFleetLintSnapshot({ manifestPath });
     if (asJson) {
@@ -1394,6 +1462,9 @@ Usage:
     command === "gateway" ||
     command === "wallet" ||
     command === "finance" ||
+    command === "payments" ||
+    command === "settlement" ||
+    command === "market" ||
     command === "storage" ||
     command === "lease-health" ||
     command === "artifacts" ||

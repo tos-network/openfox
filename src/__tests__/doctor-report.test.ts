@@ -93,6 +93,7 @@ describe("doctor report formatting", () => {
         details: "service unit not installed",
       },
       heartbeatPaused: false,
+      operatorDrained: false,
       pendingWakes: 0,
       skillCount: 1,
       ineligibleEnabledSkills: ["test-skill"],

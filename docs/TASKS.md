@@ -277,6 +277,16 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Give every OpenFox node a standard wallet and finance report that can
     be consumed locally, through the operator API, and across a fleet.
+- [x] Task 59: Add fleet FinOps and profit attribution
+  - Status: Complete
+  - Goal: Turn operator wallet/finance snapshots plus payment, settlement, and
+    market queues into role-aware fleet economics with dashboard-visible margin
+    warnings and attribution summaries.
+- [x] Task 60: Add bounded fleet control and queue recovery
+  - Status: Complete
+  - Goal: Let operators pause, resume, drain, and selectively retry
+    revenue-affecting queues across a fleet through authenticated control
+    endpoints instead of logging into each node manually.
 
 ## Task 53 Breakdown
 
@@ -317,6 +327,22 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add HTTP `GET/POST /campaigns` and `GET /campaigns/:id`.
 - [x] Add campaign-aware opportunity scouting.
 - [x] Add tests for campaign CRUD, budget enforcement, and HTTP/scout surfaces.
+
+## Task 60 Breakdown
+
+- [x] Add authenticated operator API mutation endpoints for:
+  - `pause`
+  - `resume`
+  - `drain`
+  - `retry_payments`
+  - `retry_settlement`
+  - `retry_market`
+  - `retry_signer`
+  - `retry_paymaster`
+- [x] Persist operator control events for audit history.
+- [x] Add runtime and doctor visibility for paused and drained nodes.
+- [x] Add `openfox fleet control ...` and `openfox fleet retry ...`.
+- [x] Add API and fleet tests for authorization, idempotency, and queue retry surfaces.
 
 ## Task 1 Breakdown
 
@@ -756,3 +782,13 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add `openfox fleet finance --manifest <path> [--json]`.
 - [x] Add wallet and finance sections to fleet dashboard snapshots and exports.
 - [x] Add tests for wallet/finance snapshots, operator endpoints, fleet aggregation, and dashboard exports.
+
+## Task 59 Breakdown
+
+- [x] Add operator payment, settlement, and market status snapshots for local nodes.
+- [x] Expose `GET /operator/payments/status`, `GET /operator/settlement/status`, and `GET /operator/market/status`.
+- [x] Add `openfox fleet payments --manifest <path> [--json]`.
+- [x] Add `openfox fleet settlement --manifest <path> [--json]`.
+- [x] Add `openfox fleet market --manifest <path> [--json]`.
+- [x] Extend fleet dashboard snapshots and HTML exports with finance attribution, delayed-queue warnings, and role/capability/counterparty breakdowns.
+- [x] Add tests for finops attribution, operator endpoints, fleet reports, and dashboard exports.

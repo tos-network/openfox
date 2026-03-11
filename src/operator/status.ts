@@ -1,8 +1,13 @@
-import { isHeartbeatPaused, getUnconsumedWakeEvents } from "../state/database.js";
+import {
+  isHeartbeatPaused,
+  getUnconsumedWakeEvents,
+  isOperatorDrained,
+} from "../state/database.js";
 import type { OpenFoxConfig, OpenFoxDatabase } from "../types.js";
 import { getManagedServiceStatus, type ManagedServiceStatus } from "../service/daemon.js";
 import { buildProviderReputationSnapshot } from "./provider-reputation.js";
 import { buildStorageLeaseHealthSnapshot } from "./storage-health.js";
+import { buildOperatorControlSnapshot } from "./control.js";
 
 export interface RuntimeStatusSnapshot {
   configured: true;
@@ -40,7 +45,15 @@ export interface RuntimeStatusSnapshot {
   activeSkills: number;
   activeHeartbeats: number;
   heartbeatPaused: boolean;
+  operatorDrained: boolean;
   pendingWakes: number;
+  control: {
+    drained: boolean;
+    recentEvents: number;
+    latestAction: string | null;
+    latestStatus: string | null;
+    summary: string;
+  };
   children: {
     alive: number;
     total: number;
@@ -58,9 +71,11 @@ export function buildRuntimeStatusSnapshot(
   const tools = db.getInstalledTools();
   const heartbeats = db.getHeartbeatEntries();
   const heartbeatPaused = isHeartbeatPaused(db.raw);
+  const operatorDrained = isOperatorDrained(db.raw);
   const pendingWakes = getUnconsumedWakeEvents(db.raw);
   const skills = db.getSkills(true);
   const children = db.getChildren();
+  const control = buildOperatorControlSnapshot(config, db);
   const settlements = db.listSettlementReceipts(5);
   const settlementCallbacks = db.listSettlementCallbacks(5);
   const pendingSettlementCallbacks = db.listSettlementCallbacks(100, {
@@ -453,7 +468,15 @@ export function buildRuntimeStatusSnapshot(
     activeSkills: skills.length,
     activeHeartbeats: heartbeats.filter((h) => h.enabled).length,
     heartbeatPaused,
+    operatorDrained,
     pendingWakes: pendingWakes.length,
+    control: {
+      drained: control.drained,
+      recentEvents: control.recentEvents.length,
+      latestAction: control.recentEvents[0]?.action ?? null,
+      latestStatus: control.recentEvents[0]?.status ?? null,
+      summary: control.summary,
+    },
     children: {
       alive: children.filter((c) => c.status !== "dead").length,
       total: children.length,
@@ -534,7 +557,9 @@ Tools:      ${snapshot.toolsInstalled} installed
 Skills:     ${snapshot.activeSkills} active
 Heartbeats: ${snapshot.activeHeartbeats} active
 Heartbeat paused: ${snapshot.heartbeatPaused ? "yes" : "no"}
+Operator drained: ${snapshot.operatorDrained ? "yes" : "no"}
 Pending wakes: ${snapshot.pendingWakes}
+Control:    ${snapshot.control.summary}
 Children:   ${snapshot.children.alive} alive / ${snapshot.children.total} total
 Agent ID:   ${snapshot.discovery.agentId || "not configured"}
 Model:      ${snapshot.model}

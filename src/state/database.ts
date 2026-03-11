@@ -53,6 +53,9 @@ import type {
   X402PaymentRecord,
   X402PaymentServiceKind,
   X402PaymentStatus,
+  OperatorControlAction,
+  OperatorControlEventRecord,
+  OperatorControlEventStatus,
   StorageAnchorRecord,
   StorageAuditRecord,
   StorageAuditStatus,
@@ -103,6 +106,7 @@ import {
   MIGRATION_V24,
   MIGRATION_V26,
   MIGRATION_V27,
+  MIGRATION_V28,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -371,6 +375,62 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
       )
       .all(limit) as any[];
     return rows.map(deserializeModification).reverse();
+  };
+
+  // ─── Operator Control Audit ──────────────────────────────────
+
+  const insertOperatorControlEvent = (
+    event: OperatorControlEventRecord,
+  ): void => {
+    db.prepare(
+      `INSERT OR REPLACE INTO operator_control_events (
+        event_id, action, status, actor, reason, summary, result_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      event.eventId,
+      event.action,
+      event.status,
+      event.actor,
+      event.reason ?? null,
+      event.summary ?? null,
+      event.result ? stringifyJsonSafe(event.result) : null,
+      event.createdAt,
+    );
+  };
+
+  const getOperatorControlEvent = (
+    eventId: string,
+  ): OperatorControlEventRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM operator_control_events WHERE event_id = ?")
+      .get(eventId) as any | undefined;
+    return row ? deserializeOperatorControlEvent(row) : undefined;
+  };
+
+  const listOperatorControlEvents = (
+    limit: number,
+    filters?: {
+      action?: OperatorControlAction;
+      status?: OperatorControlEventStatus;
+    },
+  ): OperatorControlEventRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.action) {
+      clauses.push("action = ?");
+      params.push(filters.action);
+    }
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(
+        `SELECT * FROM operator_control_events ${where} ORDER BY created_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as any[];
+    return rows.map(deserializeOperatorControlEvent);
   };
 
   // ─── Key-Value Store ─────────────────────────────────────────
@@ -2355,6 +2415,9 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     removeTool,
     insertModification,
     getRecentModifications,
+    insertOperatorControlEvent,
+    getOperatorControlEvent,
+    listOperatorControlEvents,
     getKV,
     setKV,
     deleteKV,
@@ -2711,6 +2774,10 @@ function applyMigrations(db: DatabaseType): void {
           `);
         }
       },
+    },
+    {
+      version: 28,
+      apply: () => db.exec(MIGRATION_V28),
     },
   ];
 
@@ -3470,6 +3537,23 @@ export function isHeartbeatPaused(db: DatabaseType): boolean {
   return row?.value === "1";
 }
 
+export function setOperatorDrained(db: DatabaseType, drained: boolean): void {
+  if (drained) {
+    db.prepare(
+      "INSERT OR REPLACE INTO kv (key, value, updated_at) VALUES ('operator.drained', '1', datetime('now'))",
+    ).run();
+    return;
+  }
+  db.prepare("DELETE FROM kv WHERE key = 'operator.drained'").run();
+}
+
+export function isOperatorDrained(db: DatabaseType): boolean {
+  const row = db
+    .prepare("SELECT value FROM kv WHERE key = 'operator.drained'")
+    .get() as { value?: string } | undefined;
+  return row?.value === "1";
+}
+
 export function deleteHeartbeatTask(db: DatabaseType, taskName: string): void {
   db.prepare("DELETE FROM heartbeat_schedule WHERE task_name = ?").run(taskName);
 }
@@ -3699,6 +3783,19 @@ function deserializeModification(row: any): ModificationEntry {
     filePath: row.file_path ?? undefined,
     diff: row.diff ?? undefined,
     reversible: !!row.reversible,
+  };
+}
+
+function deserializeOperatorControlEvent(row: any): OperatorControlEventRecord {
+  return {
+    eventId: row.event_id,
+    action: row.action,
+    status: row.status,
+    actor: row.actor,
+    reason: row.reason ?? null,
+    summary: row.summary ?? null,
+    result: parseJsonSafe(row.result_json ?? "null", null, "deserializeOperatorControlEvent.result_json"),
+    createdAt: row.created_at,
   };
 }
 

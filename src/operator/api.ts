@@ -26,6 +26,15 @@ import {
   buildOperatorFinanceSnapshot,
   buildOperatorWalletSnapshot,
 } from "./wallet-finance.js";
+import {
+  buildOperatorMarketSnapshot,
+  buildOperatorPaymentsSnapshot,
+  buildOperatorSettlementSnapshot,
+} from "./finops.js";
+import {
+  applyOperatorControlAction,
+  buildOperatorControlSnapshot,
+} from "./control.js";
 
 const logger = createLogger("operator.api");
 
@@ -115,6 +124,19 @@ export async function startOperatorApiServer(
   const providersPath = `${pathPrefix}/providers/reputation`;
   const walletPath = `${pathPrefix}/wallet/status`;
   const financePath = `${pathPrefix}/finance/status`;
+  const paymentsPath = `${pathPrefix}/payments/status`;
+  const settlementPath = `${pathPrefix}/settlement/status`;
+  const marketPath = `${pathPrefix}/market/status`;
+  const controlStatusPath = `${pathPrefix}/control/status`;
+  const controlEventsPath = `${pathPrefix}/control/events`;
+  const controlPausePath = `${pathPrefix}/control/pause`;
+  const controlResumePath = `${pathPrefix}/control/resume`;
+  const controlDrainPath = `${pathPrefix}/control/drain`;
+  const controlRetryPaymentsPath = `${pathPrefix}/control/retry/payments`;
+  const controlRetrySettlementPath = `${pathPrefix}/control/retry/settlement`;
+  const controlRetryMarketPath = `${pathPrefix}/control/retry/market`;
+  const controlRetrySignerPath = `${pathPrefix}/control/retry/signer`;
+  const controlRetryPaymasterPath = `${pathPrefix}/control/retry/paymaster`;
   const healthzPath = `${pathPrefix}/healthz`;
 
   const server = http.createServer(async (req, res) => {
@@ -289,6 +311,97 @@ export async function startOperatorApiServer(
           200,
           await buildOperatorFinanceSnapshot(params.config, params.db),
         );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === paymentsPath) {
+        json(
+          res,
+          200,
+          await buildOperatorPaymentsSnapshot(params.config, params.db),
+        );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === settlementPath) {
+        json(
+          res,
+          200,
+          await buildOperatorSettlementSnapshot(params.config, params.db),
+        );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === marketPath) {
+        json(
+          res,
+          200,
+          await buildOperatorMarketSnapshot(params.config, params.db),
+        );
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === controlStatusPath) {
+        json(res, 200, buildOperatorControlSnapshot(params.config, params.db));
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === controlEventsPath) {
+        const limitParam = url.searchParams.get("limit");
+        const limit =
+          limitParam && Number.isFinite(Number(limitParam))
+            ? Number(limitParam)
+            : 50;
+        json(res, 200, { items: params.db.listOperatorControlEvents(limit) });
+        return;
+      }
+
+      if (
+        req.method === "POST" &&
+        (url.pathname === controlPausePath ||
+          url.pathname === controlResumePath ||
+          url.pathname === controlDrainPath ||
+          url.pathname === controlRetryPaymentsPath ||
+          url.pathname === controlRetrySettlementPath ||
+          url.pathname === controlRetryMarketPath ||
+          url.pathname === controlRetrySignerPath ||
+          url.pathname === controlRetryPaymasterPath)
+      ) {
+        const body = await readJsonBody(req);
+        const action =
+          url.pathname === controlPausePath
+            ? "pause"
+            : url.pathname === controlResumePath
+              ? "resume"
+              : url.pathname === controlDrainPath
+                ? "drain"
+                : url.pathname === controlRetryPaymentsPath
+                  ? "retry_payments"
+                  : url.pathname === controlRetrySettlementPath
+                    ? "retry_settlement"
+                    : url.pathname === controlRetryMarketPath
+                      ? "retry_market"
+                      : url.pathname === controlRetrySignerPath
+                        ? "retry_signer"
+                        : "retry_paymaster";
+        const result = await applyOperatorControlAction({
+          config: params.config,
+          db: params.db,
+          action,
+          actor:
+            typeof body.actor === "string" && body.actor.trim()
+              ? body.actor.trim()
+              : "operator-api",
+          reason:
+            typeof body.reason === "string" && body.reason.trim()
+              ? body.reason.trim()
+              : undefined,
+          limit:
+            typeof body.limit === "number" && Number.isFinite(body.limit)
+              ? body.limit
+              : undefined,
+        });
+        json(res, result.status === "failed" ? 409 : 200, result);
         return;
       }
 

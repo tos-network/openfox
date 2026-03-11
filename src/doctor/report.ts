@@ -16,7 +16,12 @@ import {
   buildManagedServiceStatusReport,
   type ManagedServiceStatus,
 } from "../service/daemon.js";
-import { createDatabase, getUnconsumedWakeEvents, isHeartbeatPaused } from "../state/database.js";
+import {
+  createDatabase,
+  getUnconsumedWakeEvents,
+  isHeartbeatPaused,
+  isOperatorDrained,
+} from "../state/database.js";
 import { buildProviderReputationSnapshot } from "../operator/provider-reputation.js";
 import { buildStorageLeaseHealthSnapshot } from "../operator/storage-health.js";
 
@@ -102,6 +107,7 @@ export interface HealthSnapshot {
   opportunityScoutEnabled: boolean;
   managedService: ManagedServiceStatus;
   heartbeatPaused: boolean;
+  operatorDrained: boolean;
   pendingWakes: number;
   skillCount: number;
   ineligibleEnabledSkills: string[];
@@ -213,6 +219,7 @@ async function buildConfigSnapshot(
   skillCount: number;
   ineligibleEnabledSkills: string[];
   heartbeatPaused: boolean;
+  operatorDrained: boolean;
   pendingWakes: number;
   serviceStatusReport: string;
   gatewayStatusReport: string;
@@ -449,6 +456,7 @@ async function buildConfigSnapshot(
     skillCount: enabledSkills.length,
     ineligibleEnabledSkills,
     heartbeatPaused: isHeartbeatPaused(db.raw),
+    operatorDrained: isOperatorDrained(db.raw),
     pendingWakes: getUnconsumedWakeEvents(db.raw).length,
     serviceStatusReport: buildServiceStatusReport(config, db.raw),
     gatewayStatusReport: await buildGatewayStatusReport(config, db.raw),
@@ -585,6 +593,16 @@ function collectFindings(
       id: "heartbeat-running",
       severity: "ok",
       summary: "Heartbeat is enabled.",
+    });
+  }
+
+  if (snapshot.operatorDrained) {
+    findings.push({
+      id: "operator-drained",
+      severity: "warn",
+      summary: "Operator node is drained and will not accept new work automatically.",
+      recommendation:
+        "Run `openfox heartbeat enable` or `openfox service status` locally, or use the operator control surface to resume the node when maintenance is complete.",
     });
   }
 
@@ -1023,6 +1041,7 @@ export async function buildHealthSnapshot(
       opportunityScoutEnabled: false,
       managedService,
       heartbeatPaused: false,
+      operatorDrained: false,
       pendingWakes: 0,
       skillCount: 0,
       ineligibleEnabledSkills: [],
@@ -1086,6 +1105,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Market bindings: ${yesNo(snapshot.marketContractsEnabled)}${snapshot.marketContractsEnabled ? ` (${snapshot.marketBindingsRecentCount} recent, ${snapshot.marketPendingCallbacks} pending callbacks)` : ""}`,
     `Opportunity scout: ${yesNo(snapshot.opportunityScoutEnabled)}`,
     `Heartbeat paused: ${yesNo(snapshot.heartbeatPaused)}`,
+    `Operator drained: ${yesNo(snapshot.operatorDrained)}`,
     `Pending wakes: ${snapshot.pendingWakes}`,
     `Enabled skills: ${snapshot.skillCount}`,
     "",

@@ -60,8 +60,57 @@ describe("operator dashboard", () => {
       "/operator/health": { ok: true, summary: "health ok" },
       "/operator/service/status": { summary: "service ready" },
       "/operator/gateway/status": { summary: "gateway ready" },
-      "/operator/wallet/status": { summary: "balance=5.000000 TOS reserved=1.000000 TOS" },
-      "/operator/finance/status": { summary: "30d revenue=8.000000 TOS, cost=3.000000 TOS" },
+      "/operator/wallet/status": {
+        summary: "balance=5.000000 TOS reserved=1.000000 TOS",
+        pendingReceivablesWei: "1000000000000000000",
+        pendingPayablesWei: "500000000000000000",
+      },
+      "/operator/finance/status": {
+        summary: "30d revenue=8.000000 TOS, cost=3.000000 TOS",
+        periods: {
+          trailing30d: {
+            revenueWei: "8000000000000000000",
+            costWei: "3000000000000000000",
+            netWei: "5000000000000000000",
+          },
+        },
+        pendingReceivablesWei: "1000000000000000000",
+        pendingPayablesWei: "500000000000000000",
+      },
+      "/operator/payments/status": {
+        summary: "confirmed revenue=8.000000 TOS, confirmed cost=3.000000 TOS, pending receivables=1.000000 TOS, pending liabilities=0.500000 TOS, failed=0",
+        capabilities: [
+          {
+            capability: "oracle",
+            confirmedRevenueWei: "8000000000000000000",
+            confirmedCostWei: "0",
+            pendingRevenueWei: "1000000000000000000",
+            pendingCostWei: "0",
+          },
+        ],
+        counterparties: [
+          {
+            address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            kind: "customer",
+            confirmedRevenueWei: "8000000000000000000",
+            confirmedCostWei: "0",
+            pendingRevenueWei: "1000000000000000000",
+            pendingCostWei: "0",
+            confirmedCount: 1,
+            pendingCount: 1,
+          },
+        ],
+      },
+      "/operator/settlement/status": {
+        summary: "2 receipts, callbacks pending=1, failed=0",
+        callbackPending: 1,
+        callbackFailed: 0,
+      },
+      "/operator/market/status": {
+        summary: "1 bindings, callbacks pending=0, failed=1",
+        callbackPending: 0,
+        callbackFailed: 1,
+      },
       "/operator/storage/status": { summary: "2 active leases" },
       "/operator/storage/lease-health": { summary: "2 leases, 0 critical" },
       "/operator/artifacts/status": { summary: "3 artifacts" },
@@ -79,17 +128,26 @@ describe("operator dashboard", () => {
     const snapshot = await buildFleetDashboardSnapshot({ manifestPath });
     expect(snapshot.nodeCount).toBe(1);
     expect(snapshot.roles.storage).toBe(1);
-    expect(snapshot.endpointSummaries).toHaveLength(12);
+    expect(snapshot.endpointSummaries).toHaveLength(15);
     expect(snapshot.failingEndpoints).toHaveLength(0);
+    expect(snapshot.financeSummary.roles[0]?.role).toBe("storage");
+    expect(snapshot.financeSummary.capabilities[0]?.capability).toBe("oracle");
+    expect(snapshot.financeSummary.warnings).toContain(
+      "Market callbacks are delaying contract binding visibility (pending=0, failed=1).",
+    );
 
     const report = buildFleetDashboardReport(snapshot);
     expect(report).toContain("=== OPENFOX DASHBOARD ===");
     expect(report).toContain("status: 1/1 healthy");
+    expect(report).toContain("Fleet finance: 30d revenue=8 TOS, cost=3 TOS, net=5 TOS");
 
     const html = buildFleetDashboardHtml(snapshot);
     expect(html).toContain("<title>OpenFox Fleet Dashboard</title>");
     expect(html).toContain("balance=5.000000 TOS reserved=1.000000 TOS");
     expect(html).toContain("30d revenue=8.000000 TOS, cost=3.000000 TOS");
+    expect(html).toContain("Role Margin Breakdown");
+    expect(html).toContain("Capability Breakdown");
+    expect(html).toContain("Top Counterparties");
     expect(html).toContain("2 active leases");
     expect(html).toContain("2 providers tracked, 0 weak");
   });
@@ -101,7 +159,15 @@ describe("operator dashboard", () => {
       "/operator/service/status": { summary: "service ready" },
       "/operator/gateway/status": { summary: "gateway ready" },
       "/operator/wallet/status": { summary: "wallet ready" },
-      "/operator/finance/status": { summary: "finance ready" },
+      "/operator/finance/status": {
+        summary: "finance ready",
+        periods: { trailing30d: { revenueWei: "0", costWei: "0", netWei: "0" } },
+        pendingReceivablesWei: "0",
+        pendingPayablesWei: "0",
+      },
+      "/operator/payments/status": { summary: "payments ready", capabilities: [], counterparties: [] },
+      "/operator/settlement/status": { summary: "settlement ready", callbackPending: 0, callbackFailed: 0 },
+      "/operator/market/status": { summary: "market ready", callbackPending: 0, callbackFailed: 0 },
       "/operator/storage/status": { summary: "storage ready" },
       "/operator/storage/lease-health": { summary: "lease health ok" },
       "/operator/artifacts/status": { summary: "artifacts ready" },
@@ -144,7 +210,15 @@ describe("operator dashboard", () => {
       "/operator/service/status": { summary: "service ready" },
       "/operator/gateway/status": { summary: "gateway ready" },
       "/operator/wallet/status": { summary: "wallet ready" },
-      "/operator/finance/status": { summary: "finance ready" },
+      "/operator/finance/status": {
+        summary: "finance ready",
+        periods: { trailing30d: { revenueWei: "0", costWei: "0", netWei: "0" } },
+        pendingReceivablesWei: "0",
+        pendingPayablesWei: "0",
+      },
+      "/operator/payments/status": { summary: "payments ready", capabilities: [], counterparties: [] },
+      "/operator/settlement/status": { summary: "settlement ready", callbackPending: 0, callbackFailed: 0 },
+      "/operator/market/status": { summary: "market ready", callbackPending: 0, callbackFailed: 0 },
       "/operator/storage/status": { summary: "storage ready" },
       "/operator/storage/lease-health": { summary: "lease health ok" },
       "/operator/artifacts/status": { summary: "artifacts ready" },

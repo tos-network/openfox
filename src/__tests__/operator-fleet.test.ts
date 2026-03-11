@@ -4,9 +4,13 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  buildFleetControlReport,
+  buildFleetControlSnapshot,
   buildFleetReport,
   buildFleetLintReport,
   buildFleetLintSnapshot,
+  buildFleetQueueRetryReport,
+  buildFleetQueueRetrySnapshot,
   buildFleetRepairReport,
   buildFleetRepairSnapshot,
   buildFleetSnapshot,
@@ -236,6 +240,58 @@ describe("operator fleet", () => {
     expect(buildFleetReport(financeSnapshot)).toContain("30d revenue=8.000000 TOS");
   });
 
+  it("supports payments, settlement, and market fleet endpoints", async () => {
+    const paymentsBaseUrl = await startEndpointServer("/operator/payments/status", {
+      kind: "payments",
+      summary:
+        "confirmed revenue=8.000000 TOS, confirmed cost=3.000000 TOS, pending receivables=1.000000 TOS, pending liabilities=0.500000 TOS, failed=1",
+    });
+    const settlementBaseUrl = await startEndpointServer("/operator/settlement/status", {
+      kind: "settlement",
+      callbackPending: 2,
+      callbackFailed: 1,
+      summary: "4 receipts, callbacks pending=2, failed=1",
+    });
+    const marketBaseUrl = await startEndpointServer("/operator/market/status", {
+      kind: "market",
+      callbackPending: 1,
+      callbackFailed: 0,
+      summary: "3 bindings, callbacks pending=1, failed=0",
+    });
+
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          { name: "payments-1", role: "gateway", baseUrl: paymentsBaseUrl },
+          { name: "settlement-1", role: "host", baseUrl: settlementBaseUrl },
+          { name: "market-1", role: "oracle", baseUrl: marketBaseUrl },
+        ],
+      }),
+    );
+
+    const paymentsSnapshot = await buildFleetSnapshot({
+      manifestPath,
+      endpoint: "payments",
+    });
+    expect(paymentsSnapshot.ok).toBe(1);
+    expect(buildFleetReport(paymentsSnapshot)).toContain("confirmed revenue=8.000000 TOS");
+
+    const settlementSnapshot = await buildFleetSnapshot({
+      manifestPath,
+      endpoint: "settlement",
+    });
+    expect(settlementSnapshot.ok).toBe(1);
+    expect(buildFleetReport(settlementSnapshot)).toContain("callbacks pending=2");
+
+    const marketSnapshot = await buildFleetSnapshot({
+      manifestPath,
+      endpoint: "market",
+    });
+    expect(marketSnapshot.ok).toBe(1);
+    expect(buildFleetReport(marketSnapshot)).toContain("3 bindings, callbacks pending=1");
+  });
+
   it("supports fleet repair actions for storage and artifacts", async () => {
     const storageBaseUrl = await startEndpointServer("/operator/storage/maintain", {
       kind: "storage",
@@ -282,6 +338,68 @@ describe("operator fleet", () => {
     expect((artifactSnapshot.nodes[1]?.payload as { anchored?: number })?.anchored).toBe(1);
     const artifactReport = buildFleetRepairReport(artifactSnapshot);
     expect(artifactReport).toContain("Component: artifacts");
+  });
+
+  it("supports fleet control actions and queue retries", async () => {
+    const controlBaseUrl = await startEndpointServer("/operator/control/pause", {
+      action: "pause",
+      status: "applied",
+      summary: "heartbeat paused",
+    });
+    const resumeBaseUrl = await startEndpointServer("/operator/control/resume", {
+      action: "resume",
+      status: "applied",
+      summary: "node resumed",
+    });
+    const retryBaseUrl = await startEndpointServer("/operator/control/retry/payments", {
+      action: "retry_payments",
+      status: "applied",
+      summary: "retried x402 payments: processed=3, failed=0",
+    });
+
+    const manifestPath = createManifest(
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          { name: "control-1", role: "gateway", baseUrl: controlBaseUrl },
+          { name: "resume-1", role: "host", baseUrl: resumeBaseUrl },
+          { name: "retry-1", role: "payments", baseUrl: retryBaseUrl },
+        ],
+      }),
+    );
+
+    const controlSnapshot = await buildFleetControlSnapshot({
+      manifestPath,
+      action: "pause",
+      nodeName: "control-1",
+      actor: "test-suite",
+      reason: "maintenance",
+    });
+    expect(controlSnapshot.ok).toBe(1);
+    expect(controlSnapshot.failed).toBe(0);
+    expect(controlSnapshot.targetNode).toBe("control-1");
+    expect(buildFleetControlReport(controlSnapshot)).toContain("Action:    pause");
+
+    const resumeSnapshot = await buildFleetControlSnapshot({
+      manifestPath,
+      action: "resume",
+      nodeName: "resume-1",
+    });
+    expect(resumeSnapshot.ok).toBe(1);
+    expect(buildFleetControlReport(resumeSnapshot)).toContain("node resumed");
+
+    const retrySnapshot = await buildFleetQueueRetrySnapshot({
+      manifestPath,
+      queue: "payments",
+      nodeName: "retry-1",
+      actor: "test-suite",
+      reason: "recover",
+      limit: 5,
+    });
+    expect(retrySnapshot.ok).toBe(1);
+    expect(retrySnapshot.failed).toBe(0);
+    expect(buildFleetQueueRetryReport(retrySnapshot)).toContain("Queue:     payments");
+    expect(buildFleetQueueRetryReport(retrySnapshot)).toContain("processed=3");
   });
 
   it("lint-detects placeholder urls, tokens, and duplicates", () => {

@@ -159,10 +159,15 @@ It supports:
 - contract callback adapters and heartbeat-driven retry for contract-bound settlement flows
 - contract-native market bindings for bounty, observation, and oracle creation flows
 - `openfox market list|get|callbacks` for operator-visible binding and callback state
-- an authenticated operator API for multi-node status, health, doctor, service, gateway, wallet, finance, storage, artifact, signer, and paymaster inspection
-- `openfox fleet status|health|doctor|wallet|finance|storage|lease-health|artifacts|signer|paymaster|providers` for one-shot fleet-wide auditing across public OpenFox nodes
+- an authenticated operator API for multi-node status, health, doctor, service, gateway, wallet, finance, payments, settlement, market, storage, artifact, signer, and paymaster inspection
+- `openfox fleet status|health|doctor|wallet|finance|payments|settlement|market|storage|lease-health|artifacts|signer|paymaster|providers` for one-shot fleet-wide auditing across public OpenFox nodes
 - `openfox providers reputation`, `openfox storage lease-health`, `openfox storage maintain`, `openfox artifacts maintain`, and `openfox fleet repair <storage|artifacts>` for remote due-work remediation plus provider/lease health reporting
-- `openfox dashboard show|export` for reusable JSON and HTML fleet dashboards
+- bounded fleet control and queue recovery with:
+  - `POST /operator/control/pause|resume|drain`
+  - `POST /operator/control/retry/payments|settlement|market|signer|paymaster`
+  - `openfox fleet control <pause|resume|drain>`
+  - `openfox fleet retry <payments|settlement|market|signer|paymaster>`
+- `openfox dashboard show|export` for reusable JSON and HTML fleet dashboards with role margin, capability, counterparty, and delayed-queue finance sections
 - `openfox wallet report` and `openfox finance report` for single-node operator snapshots
 - a paid signer-provider surface for bounded delegated execution with:
   - `openfox signer discover`
@@ -250,6 +255,11 @@ pnpm openfox templates list
 pnpm openfox payments list
 pnpm openfox settlement list
 pnpm openfox market list
+pnpm openfox fleet payments --manifest ./fleet.yml
+pnpm openfox fleet settlement --manifest ./fleet.yml
+pnpm openfox fleet market --manifest ./fleet.yml
+pnpm openfox fleet control pause --manifest ./fleet.yml --node gateway-1
+pnpm openfox fleet retry payments --manifest ./fleet.yml --node gateway-1
 pnpm openfox storage list
 pnpm openfox storage renew --help
 pnpm openfox artifacts list
@@ -269,6 +279,11 @@ openfox templates list
 openfox payments list
 openfox settlement list
 openfox market list
+openfox fleet payments --manifest ./fleet.yml
+openfox fleet settlement --manifest ./fleet.yml
+openfox fleet market --manifest ./fleet.yml
+openfox fleet control drain --manifest ./fleet.yml --node storage-1
+openfox fleet retry settlement --manifest ./fleet.yml
 openfox storage list
 openfox storage renew --help
 openfox artifacts list
@@ -312,6 +327,11 @@ openfox onboard --fund-testnet
 openfox wallet bootstrap-signer --type ed25519 --generate
 openfox payments list
 openfox settlement list
+openfox fleet payments --manifest ./fleet.yml
+openfox fleet settlement --manifest ./fleet.yml
+openfox fleet market --manifest ./fleet.yml
+openfox fleet control resume --manifest ./fleet.yml --node storage-1
+openfox fleet retry paymaster --manifest ./fleet.yml --node signer-1
 openfox storage list
 openfox trails list --json
 openfox dashboard show --manifest ./fleet.yml

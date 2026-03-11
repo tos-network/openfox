@@ -634,6 +634,29 @@ export interface OperatorApiConfig {
   exposeServiceStatus: boolean;
 }
 
+export type OperatorControlAction =
+  | "pause"
+  | "resume"
+  | "drain"
+  | "retry_payments"
+  | "retry_settlement"
+  | "retry_market"
+  | "retry_signer"
+  | "retry_paymaster";
+
+export type OperatorControlEventStatus = "applied" | "noop" | "failed";
+
+export interface OperatorControlEventRecord {
+  eventId: string;
+  action: OperatorControlAction;
+  status: OperatorControlEventStatus;
+  actor: string;
+  reason?: string | null;
+  summary?: string | null;
+  result?: unknown;
+  createdAt: string;
+}
+
 export type SignerProviderTrustTier =
   | "self_hosted"
   | "org_trusted"
@@ -2150,6 +2173,17 @@ export interface OpenFoxDatabase {
   // Modifications
   insertModification(mod: ModificationEntry): void;
   getRecentModifications(limit: number): ModificationEntry[];
+
+  // Operator control audit
+  insertOperatorControlEvent(event: OperatorControlEventRecord): void;
+  getOperatorControlEvent(eventId: string): OperatorControlEventRecord | undefined;
+  listOperatorControlEvents(
+    limit: number,
+    filters?: {
+      action?: OperatorControlAction;
+      status?: OperatorControlEventStatus;
+    },
+  ): OperatorControlEventRecord[];
 
   // Key-value store
   getKV(key: string): string | undefined;
