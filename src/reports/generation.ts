@@ -25,6 +25,8 @@ import {
   buildOwnerFinanceSnapshot,
   persistOwnerFinanceSnapshot,
 } from "./finance.js";
+import { buildEvidenceWorkflowSummary } from "../evidence-workflow/summary.js";
+import { buildOracleSummary } from "../agent-discovery/oracle-summary.js";
 
 function inferProviderName(config: OpenFoxConfig): string | null {
   const modelRef = config.inferenceModelRef || config.inferenceModel;
@@ -177,6 +179,8 @@ export async function buildOwnerReportInput(params: {
       maxFollowUpsPerRun: actionExecution?.maxFollowUpsPerRun ?? 0,
     },
   });
+  const evidence = buildEvidenceWorkflowSummary({ db: params.db, limit: 20 });
+  const oracle = buildOracleSummary({ db: params.db, limit: 20 });
 
   return {
     financeSnapshot,
@@ -186,6 +190,28 @@ export async function buildOwnerReportInput(params: {
       finance: financeSnapshot.payload,
       strategy: strategy ?? null,
       strategyExecution,
+      evidenceOracle: {
+        evidence: {
+          totalRuns: evidence.totalRuns,
+          completedRuns: evidence.completedRuns,
+          failedRuns: evidence.failedRuns,
+          validSources: evidence.validSources,
+          attemptedSources: evidence.attemptedSources,
+          aggregatePublished: evidence.aggregatePublished,
+          estimatedCostWei: evidence.estimatedCostWei,
+          summary: evidence.summary,
+        },
+        oracle: {
+          totalResults: oracle.totalResults,
+          queryKinds: oracle.queryKinds,
+          settledResults: oracle.settledResults,
+          marketBoundResults: oracle.marketBoundResults,
+          averageConfidence: oracle.averageConfidence,
+          estimatedCostWei: oracle.estimatedCostWei,
+          summary: oracle.summary,
+        },
+        summary: `${evidence.summary} ${oracle.summary}`.trim(),
+      },
       opportunities,
     },
   };

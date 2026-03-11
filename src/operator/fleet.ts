@@ -228,6 +228,7 @@ export interface FleetBundleSnapshot {
   controlEventsPath: string | null;
   autopilotPath: string | null;
   approvalsPath: string | null;
+  incidentsPath: string | null;
   manifest: {
     version: number | null;
     nodeCount: number;
@@ -241,6 +242,11 @@ export interface FleetBundleSnapshot {
   lint: {
     errors: number;
     warnings: number;
+  } | null;
+  incidents: {
+    total: number;
+    critical: number;
+    warning: number;
   } | null;
 }
 
@@ -903,10 +909,14 @@ export function buildFleetBundleSnapshot(params: {
   const controlEventsPath = exists ? path.join(bundlePath, "control-events.json") : null;
   const autopilotPath = exists ? path.join(bundlePath, "autopilot.json") : null;
   const approvalsPath = exists ? path.join(bundlePath, "approvals.json") : null;
+  const incidentsPath = exists ? path.join(bundlePath, "incidents.json") : null;
 
   const manifest = manifestPath ? loadFleetManifest(manifestPath) : null;
   const dashboard = dashboardPath ? readOptionalJson<{ generatedAt?: string; nodeCount?: number; failingEndpoints?: string[] }>(dashboardPath) : null;
   const lint = lintPath ? readOptionalJson<{ errors?: number; warnings?: number }>(lintPath) : null;
+  const incidents = incidentsPath
+    ? readOptionalJson<{ total?: number; critical?: number; warning?: number }>(incidentsPath)
+    : null;
 
   const roleCounts: Record<string, number> = {};
   for (const node of manifest?.nodes ?? []) {
@@ -924,6 +934,7 @@ export function buildFleetBundleSnapshot(params: {
       controlEventsPath && fs.existsSync(controlEventsPath) ? controlEventsPath : null,
     autopilotPath: autopilotPath && fs.existsSync(autopilotPath) ? autopilotPath : null,
     approvalsPath: approvalsPath && fs.existsSync(approvalsPath) ? approvalsPath : null,
+    incidentsPath: incidentsPath && fs.existsSync(incidentsPath) ? incidentsPath : null,
     manifest: manifest
       ? {
           version: manifest.version,
@@ -946,6 +957,13 @@ export function buildFleetBundleSnapshot(params: {
           warnings: Number.isFinite(lint.warnings) ? Number(lint.warnings) : 0,
         }
       : null,
+    incidents: incidents
+      ? {
+          total: Number.isFinite(incidents.total) ? Number(incidents.total) : 0,
+          critical: Number.isFinite(incidents.critical) ? Number(incidents.critical) : 0,
+          warning: Number.isFinite(incidents.warning) ? Number(incidents.warning) : 0,
+        }
+      : null,
   };
 }
 
@@ -964,6 +982,7 @@ export function buildFleetBundleReport(snapshot: FleetBundleSnapshot): string {
   lines.push(`Controls:  ${snapshot.controlEventsPath ? "present" : "missing"}`);
   lines.push(`Autopilot: ${snapshot.autopilotPath ? "present" : "missing"}`);
   lines.push(`Approvals: ${snapshot.approvalsPath ? "present" : "missing"}`);
+  lines.push(`Incidents: ${snapshot.incidentsPath ? "present" : "missing"}`);
   if (snapshot.manifest) {
     lines.push(
       `Roles:     ${Object.entries(snapshot.manifest.roles)
@@ -978,6 +997,11 @@ export function buildFleetBundleReport(snapshot: FleetBundleSnapshot): string {
   }
   if (snapshot.lint) {
     lines.push(`Lint sum:  ${snapshot.lint.errors} error(s), ${snapshot.lint.warnings} warning(s)`);
+  }
+  if (snapshot.incidents) {
+    lines.push(
+      `Incident sum: ${snapshot.incidents.total} total, critical=${snapshot.incidents.critical}, warning=${snapshot.incidents.warning}`,
+    );
   }
   return lines.join("\n");
 }

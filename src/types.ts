@@ -915,6 +915,30 @@ export interface OwnerReportInput {
   finance: OwnerFinanceSnapshotData;
   strategy: OpportunityStrategyProfile | null;
   strategyExecution: OwnerStrategyExecutionSummary;
+  evidenceOracle:
+    | {
+        evidence: {
+          totalRuns: number;
+          completedRuns: number;
+          failedRuns: number;
+          validSources: number;
+          attemptedSources: number;
+          aggregatePublished: number;
+          estimatedCostWei: string;
+          summary: string;
+        };
+        oracle: {
+          totalResults: number;
+          queryKinds: Record<string, number>;
+          settledResults: number;
+          marketBoundResults: number;
+          averageConfidence: number;
+          estimatedCostWei: string;
+          summary: string;
+        };
+        summary: string;
+      }
+    | null;
   opportunities: Array<Record<string, unknown>>;
 }
 

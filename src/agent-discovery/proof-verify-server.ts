@@ -517,6 +517,7 @@ export async function startAgentDiscoveryProofVerifyServer(
         status: "ok",
         result_id: resultId,
         result_url: buildProofVerifyResultPath(resultId),
+        price_wei: proofVerifyConfig.priceWei,
         payment_tx_hash: paid.txHash,
         verified_at: verifiedAt,
         verdict: verification.verdict,

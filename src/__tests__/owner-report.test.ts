@@ -17,6 +17,7 @@ import {
 } from "./mocks.js";
 import { upsertStrategyProfile } from "../opportunity/strategy.js";
 import * as scoutModule from "../opportunity/scout.js";
+import { renderOwnerReportHtml, renderOwnerReportText } from "../reports/render.js";
 
 function createTickContext(db: ReturnType<typeof createTestDb>): TickContext {
   return {
@@ -196,6 +197,107 @@ describe("owner reports", () => {
       expect(input.strategyExecution.maxFollowUpDepth).toBe(2);
       expect(input.strategyExecution.queuedFollowUpActions).toBe(1);
       expect(input.strategyExecution.recentFollowUpExecutions).toBe(1);
+    } finally {
+      db.close();
+    }
+  });
+
+  it("includes evidence and oracle summaries in owner report input and rendered report", async () => {
+    const db = createTestDb();
+    try {
+      db.setKV(
+        "evidence_workflow:run:run-1",
+        JSON.stringify({
+          runId: "run-1",
+          title: "Election evidence bundle",
+          question: "Did both sources confirm the same event?",
+          quorumM: 2,
+          quorumN: 2,
+          status: "completed",
+          attemptedCount: 2,
+          validCount: 2,
+          aggregateObjectId: "artifact-1",
+          aggregateResultUrl: "https://storage.example/evidence/run-1",
+          aggregateResponse: {
+            status: "ok",
+            object_id: "artifact-1",
+            result_url: "https://storage.example/evidence/run-1",
+            price_wei: "100",
+            stored_at: 1760000000,
+            expires_at: 1760003600,
+            idempotent: false,
+          },
+          sourceRecords: [
+            {
+              sourceUrl: "https://news.example/1",
+              status: "verified",
+              fetchResponse: { price_wei: "10" },
+              verifyResponse: { price_wei: "20", verdict: "valid" },
+            },
+            {
+              sourceUrl: "https://news.example/2",
+              status: "verified",
+              fetchResponse: { price_wei: "10" },
+              verifyResponse: { price_wei: "20", verdict: "valid" },
+            },
+          ],
+          payments: [],
+          createdAt: "2026-03-11T00:00:00.000Z",
+          updatedAt: "2026-03-11T00:05:00.000Z",
+        }),
+      );
+      db.setKV("evidence_workflow:index:2026-03-11T00:00:00.000Z:run-1", "run-1");
+      db.setKV(
+        "agent_discovery:oracle:job:oracle-1",
+        JSON.stringify({
+          resultId: "oracle-1",
+          request: {
+            query: "Will the event happen?",
+            query_kind: "binary",
+          },
+          response: {
+            status: "ok",
+            resolved_at: 1760000100,
+            query: "Will the event happen?",
+            query_kind: "binary",
+            canonical_result: "yes",
+            confidence: 0.93,
+            summary: "Resolved to yes.",
+            price_wei: "40",
+            settlement_tx_hash:
+              "0x3333333333333333333333333333333333333333333333333333333333333333",
+            market_callback_tx_hash:
+              "0x4444444444444444444444444444444444444444444444444444444444444444",
+            binding_hash:
+              "0x5555555555555555555555555555555555555555555555555555555555555555",
+          },
+          createdAt: "2026-03-11T00:10:00.000Z",
+        }),
+      );
+
+      const config = createTestConfig({
+        ownerReports: {
+          ...DEFAULT_OWNER_REPORTS_CONFIG,
+          enabled: true,
+          generateWithInference: false,
+        },
+      });
+
+      const report = await generateOwnerReport({
+        config,
+        db,
+        periodKind: "daily",
+        nowMs: Date.parse("2026-03-11T18:00:00.000Z"),
+      });
+
+      expect(report.payload.input.evidenceOracle).not.toBeNull();
+      expect(report.payload.input.evidenceOracle?.evidence.totalRuns).toBe(1);
+      expect(report.payload.input.evidenceOracle?.oracle.totalResults).toBe(1);
+      expect(report.payload.input.evidenceOracle?.evidence.estimatedCostWei).toBe("160");
+      expect(report.payload.input.evidenceOracle?.oracle.estimatedCostWei).toBe("40");
+      expect(renderOwnerReportText(report)).toContain("Evidence Workflows");
+      expect(renderOwnerReportText(report)).toContain("Oracle Results");
+      expect(renderOwnerReportHtml(report)).toContain("Evidence and Oracle");
     } finally {
       db.close();
     }

@@ -1,0 +1,11 @@
+{
+  "name": "market-binding-callback",
+  "path": "/contracts/market/binding/callback",
+  "method": "POST",
+  "body": {
+    "subject_kind": "oracle_result",
+    "subject_id": "oracle-result-1",
+    "binding_hash": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "tx_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  }
+}

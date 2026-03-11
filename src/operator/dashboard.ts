@@ -1,6 +1,10 @@
 import fs from "fs";
 import path from "path";
 import {
+  buildFleetIncidentSnapshot,
+  type FleetIncidentSnapshot,
+} from "./incidents.js";
+import {
   buildFleetLintSnapshot,
   buildFleetSnapshot,
   loadFleetManifest,
@@ -102,6 +106,7 @@ export interface FleetDashboardSnapshot {
   failingEndpoints: FleetEndpoint[];
   snapshots: Record<FleetEndpoint, FleetSnapshot>;
   financeSummary: FleetFinanceSummary;
+  incidents: FleetIncidentSnapshot;
 }
 
 export interface FleetDashboardBundleResult {
@@ -113,6 +118,7 @@ export interface FleetDashboardBundleResult {
   controlEventsPath: string;
   autopilotPath: string;
   approvalsPath: string;
+  incidentsPath: string;
   snapshot: FleetDashboardSnapshot;
 }
 
@@ -482,6 +488,7 @@ export async function buildFleetDashboardSnapshot(params: {
     FleetEndpoint,
     FleetSnapshot
   >;
+  const incidents = await buildFleetIncidentSnapshot({ manifestPath });
   const endpointSummaries = endpoints.map((endpoint) => ({
     endpoint,
     total: snapshots[endpoint].total,
@@ -499,6 +506,7 @@ export async function buildFleetDashboardSnapshot(params: {
       .map((entry) => entry.endpoint),
     snapshots,
     financeSummary: buildFleetFinanceSummary(snapshots),
+    incidents,
   };
 }
 
@@ -537,6 +545,10 @@ export function buildFleetDashboardReport(
       lines.push(`- ${warning}`);
     }
   }
+  lines.push("");
+  lines.push(
+    `Incidents: ${snapshot.incidents.total} total (${snapshot.incidents.critical} critical, ${snapshot.incidents.warning} warning)`,
+  );
   return lines.join("\n");
 }
 
@@ -575,6 +587,13 @@ export function buildFleetDashboardHtml(
     .join("");
   const warningItems = snapshot.financeSummary.warnings
     .map((warning) => `<li>${escapeHtml(warning)}</li>`)
+    .join("");
+  const incidentItems = snapshot.incidents.entries
+    .slice(0, 10)
+    .map(
+      (entry) =>
+        `<li><strong>${escapeHtml(entry.severity)}</strong> ${escapeHtml(entry.node)}: ${escapeHtml(entry.summary)}</li>`,
+    )
     .join("");
   const sections = snapshot.endpointSummaries.map(({ endpoint }) => {
     const section = snapshot.snapshots[endpoint];
@@ -655,6 +674,12 @@ export function buildFleetDashboardHtml(
       ${
         warningItems
           ? `<div><strong>Warnings</strong><ul>${warningItems}</ul></div>`
+          : ""
+      }
+      <div><strong>Incidents:</strong> ${snapshot.incidents.total} total (${snapshot.incidents.critical} critical, ${snapshot.incidents.warning} warning)</div>
+      ${
+        incidentItems
+          ? `<div><strong>Top Incidents</strong><ul>${incidentItems}</ul></div>`
           : ""
       }
     </section>
@@ -743,6 +768,7 @@ export async function exportFleetDashboardBundle(params: {
   const controlEventsPath = path.join(outputPath, "control-events.json");
   const autopilotPath = path.join(outputPath, "autopilot.json");
   const approvalsPath = path.join(outputPath, "approvals.json");
+  const incidentsPath = path.join(outputPath, "incidents.json");
 
   fs.writeFileSync(jsonPath, JSON.stringify(snapshot, null, 2), "utf8");
   fs.writeFileSync(htmlPath, buildFleetDashboardHtml(snapshot), "utf8");
@@ -754,6 +780,7 @@ export async function exportFleetDashboardBundle(params: {
   );
   fs.writeFileSync(autopilotPath, JSON.stringify(autopilot, null, 2), "utf8");
   fs.writeFileSync(approvalsPath, JSON.stringify(approvals, null, 2), "utf8");
+  fs.writeFileSync(incidentsPath, JSON.stringify(snapshot.incidents, null, 2), "utf8");
 
   return {
     outputPath,
@@ -764,6 +791,7 @@ export async function exportFleetDashboardBundle(params: {
     controlEventsPath,
     autopilotPath,
     approvalsPath,
+    incidentsPath,
     snapshot,
   };
 }

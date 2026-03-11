@@ -1804,3 +1804,143 @@ Acceptance criteria:
 - operators can launch new OpenFox work surfaces by composing existing runtime,
   marketplace, payment, settlement, and skill primitives rather than adding new
   one-off protocol paths
+
+### Phase 39: Public Fleet Observability and Incident Automation
+
+Status: completed
+
+Goal:
+
+- turn public OpenFox fleets from merely recoverable systems into observable,
+  alertable, and partially self-healing operator estates
+
+Delivered surface:
+
+- fleet-wide incident views for:
+  - provider outages
+  - callback backlog growth
+  - replication drift
+  - sponsor/signer degradation
+- structured alert policies and delivery surfaces for public operators
+- incident timeline exports and bounded auto-remediation runs
+- one operator-facing incident bundle that can be attached to support and audit
+  workflows
+
+Implementation tasks:
+
+- add fleet incident snapshots that summarize degraded nodes, failing routes,
+  queue backlogs, and replication drift in one canonical view
+- add operator alert policies and delivery channels for critical fleet health
+  transitions
+- add bounded auto-remediation tasks for the most common incident classes
+- add incident timeline/history exports and dashboard surfaces for audits and
+  postmortems
+
+Acceptance criteria:
+
+- a public operator can detect, alert on, inspect, and run bounded remediation
+  for common fleet incidents without assembling ad-hoc reports by hand
+
+Delivered so far:
+
+- canonical fleet incident snapshots spanning degraded nodes, failing routes,
+  callback backlog growth, and replication drift
+- `openfox fleet incidents`
+- `openfox fleet incident-history`
+- `openfox fleet incident-alerts`
+- `openfox fleet incident-remediate`
+- dashboard bundle incident exports and incident summaries in fleet bundle
+  inspection
+
+### Phase 40: Contract and Operator Control-Plane Packs
+
+Status: completed
+
+Goal:
+
+- make OpenFox easier to embed into external control planes, market contracts,
+  and operator consoles without requiring runtime-internal coupling
+
+Delivered surface:
+
+- versioned control-plane packs for:
+  - fleet automation
+  - market/task operators
+  - settlement/callback consumers
+- reusable contract/operator manifests and invocation bundles
+- more explicit policy-pack surfaces for signer, paymaster, storage, and
+  marketplace roles
+- documented integration patterns for external automation systems
+
+Implementation tasks:
+
+- add versioned control-plane bundles for external fleet automation and market
+  operations
+- expand policy-pack exports so operators can reuse signer/paymaster/storage
+  rules without copying runtime config by hand
+- add clearer contract-facing callback/invocation examples and manifests
+- add validation tooling for control-plane packs and exported operator bundles
+
+Acceptance criteria:
+
+- an external operator or market/control-plane integrator can consume one
+  documented OpenFox pack and automate a real workflow without patching the
+  runtime
+
+Delivered so far:
+
+- versioned control-plane packs:
+  - `fleet-automation-v1`
+  - `market-operations-v1`
+- reusable policy exports for signer, paymaster, storage, and marketplace
+  roles
+- contract-facing callback and invocation example manifests
+- `openfox packs list|show|export|lint`
+
+### Phase 41: Evidence and Oracle Market Productization
+
+Status: completed
+
+Goal:
+
+- turn the completed evidence/oracle primitives into operator-ready market and
+  provider products rather than isolated technical surfaces
+
+Delivered surface:
+
+- packaged evidence-market workflows with:
+  - query templates
+  - provider selection defaults
+  - storage/anchor policies
+  - result delivery surfaces
+- more reusable oracle/evidence work surfaces for public operators
+- clearer owner/operator reporting for evidence costs, outcomes, and durability
+- stronger integration between evidence capture, artifact publication, and
+  owner opportunity loops
+
+Implementation tasks:
+
+- package evidence/oracle flows into reusable templates, skills, and operator
+  commands
+- add operator-facing result summaries for evidence cost, quorum, verification,
+  and publication state
+- connect evidence/oracle outcomes into owner-facing action loops and reporting
+- add end-to-end validations for packaged evidence/oracle market deployments
+
+Acceptance criteria:
+
+- an operator can launch a reusable evidence/oracle market flow from packaged
+  OpenFox components and inspect durable cost, verification, and publication
+  outcomes without writing custom orchestration code
+
+Delivered so far:
+
+- reusable packaged templates:
+  - `evidence-market-flow`
+  - `oracle-market-flow`
+- bundled operator skills:
+  - `evidence-market-operator`
+  - `oracle-market-operator`
+- `openfox evidence summary`
+- `openfox oracle list|get|summary`
+- owner reports now include evidence/oracle cost and outcome summaries

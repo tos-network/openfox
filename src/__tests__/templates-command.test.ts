@@ -23,6 +23,8 @@ describe("bundled templates", () => {
     expect(items.some((item) => item.name === "third-party-quickstart")).toBe(true);
     expect(items.some((item) => item.name === "local-marketplace")).toBe(true);
     expect(items.some((item) => item.name === "public-fleet-operator")).toBe(true);
+    expect(items.some((item) => item.name === "evidence-market-flow")).toBe(true);
+    expect(items.some((item) => item.name === "oracle-market-flow")).toBe(true);
   });
 
   it("reads bundled template readmes", () => {
@@ -56,5 +58,23 @@ describe("bundled templates", () => {
     expect(
       fs.existsSync(path.join(outputPath, "dashboard", "export-dashboard.sh")),
     ).toBe(true);
+  });
+
+  it("exports packaged evidence and oracle market templates", () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-template-"));
+
+    const evidenceOutput = path.join(tempDir, "evidence-market-flow");
+    exportBundledTemplate({
+      name: "evidence-market-flow",
+      outputPath: evidenceOutput,
+    });
+    expect(fs.existsSync(path.join(evidenceOutput, "operator.openfox.json"))).toBe(true);
+
+    const oracleOutput = path.join(tempDir, "oracle-market-flow");
+    exportBundledTemplate({
+      name: "oracle-market-flow",
+      outputPath: oracleOutput,
+    });
+    expect(fs.existsSync(path.join(oracleOutput, "operator.openfox.json"))).toBe(true);
   });
 });

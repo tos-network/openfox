@@ -1,0 +1,11 @@
+{
+  "name": "settlement-callback",
+  "path": "/contracts/market/settlement/callback",
+  "method": "POST",
+  "body": {
+    "subject_kind": "bounty_result",
+    "subject_id": "bounty-1",
+    "receipt_hash": "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "tx_hash": "0xdddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  }
+}

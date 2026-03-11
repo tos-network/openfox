@@ -119,6 +119,46 @@ function buildFinanceSections(finance: OwnerFinanceSnapshotData): OwnerRenderedS
   ];
 }
 
+function buildEvidenceOracleSections(
+  input: OwnerReportData["input"],
+): OwnerRenderedSection[] {
+  if (!input.evidenceOracle) return [];
+  const evidence = input.evidenceOracle.evidence;
+  const oracle = input.evidenceOracle.oracle;
+  return [
+    {
+      title: "Evidence Workflows",
+      lines: [
+        `Runs: ${evidence.totalRuns}`,
+        `Completed: ${evidence.completedRuns}`,
+        `Failed: ${evidence.failedRuns}`,
+        `Valid sources: ${evidence.validSources}/${evidence.attemptedSources}`,
+        `Aggregates published: ${evidence.aggregatePublished}`,
+        `Estimated cost: ${formatTOS(toBigInt(evidence.estimatedCostWei))}`,
+        evidence.summary,
+      ],
+    },
+    {
+      title: "Oracle Results",
+      lines: [
+        `Results: ${oracle.totalResults}`,
+        `Settled: ${oracle.settledResults}`,
+        `Market bound: ${oracle.marketBoundResults}`,
+        `Average confidence: ${oracle.averageConfidence.toFixed(4)}`,
+        `Estimated cost: ${formatTOS(toBigInt(oracle.estimatedCostWei))}`,
+        `Kinds: ${
+          Object.keys(oracle.queryKinds).length === 0
+            ? "(none)"
+            : Object.entries(oracle.queryKinds)
+                .map(([kind, count]) => `${kind}=${count}`)
+                .join(", ")
+        }`,
+        oracle.summary,
+      ],
+    },
+  ];
+}
+
 export function buildOwnerRenderedReport(record: OwnerReportRecord): OwnerRenderedReport {
   const finance = record.payload.input.finance;
   const narrativeSections = buildNarrativeSections(record.payload.narrative);
@@ -136,7 +176,7 @@ export function buildOwnerRenderedReport(record: OwnerReportRecord): OwnerRender
       operatingCost: formatCents(finance.operatingCostCents),
       eventCounts: `revenue=${finance.revenueEvents}, cost=${finance.costEvents}`,
     },
-    sections: [...narrativeSections, ...financeSections],
+    sections: [...narrativeSections, ...buildEvidenceOracleSections(record.payload.input), ...financeSections],
   };
 }
 
@@ -258,6 +298,15 @@ export function renderOwnerReportHtml(record: OwnerReportRecord): string {
         <strong>Summary</strong>
         <p>${escapeHtml(rendered.summary)}</p>
       </div>
+      ${
+        record.payload.input.evidenceOracle
+          ? `<div class="card">
+        <h2>Evidence and Oracle</h2>
+        <div><strong>Evidence:</strong> ${escapeHtml(record.payload.input.evidenceOracle.evidence.summary)}</div>
+        <div><strong>Oracle:</strong> ${escapeHtml(record.payload.input.evidenceOracle.oracle.summary)}</div>
+      </div>`
+          : ""
+      }
       <div class="card grid">
         <div><div class="metric-label">Revenue</div><div class="metric-value">${escapeHtml(rendered.financeSummary.revenue)}</div></div>
         <div><div class="metric-label">Cost</div><div class="metric-value">${escapeHtml(rendered.financeSummary.cost)}</div></div>

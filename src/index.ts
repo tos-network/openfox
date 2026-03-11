@@ -126,6 +126,12 @@ import {
   listBundledTemplates,
   readBundledTemplateReadme,
 } from "./commands/templates.js";
+import {
+  exportBundledPack,
+  lintBundledPack,
+  listBundledPacks,
+  readBundledPackReadme,
+} from "./commands/packs.js";
 import { createBountyEngine } from "./bounty/engine.js";
 import { startBountyHttpServer } from "./bounty/http.js";
 import { createNativeBountyPayoutSender } from "./bounty/payout.js";
@@ -172,6 +178,10 @@ import { createArtifactManager } from "./artifacts/manager.js";
 import { createNativeArtifactAnchorPublisher } from "./artifacts/publisher.js";
 import { startArtifactCaptureServer } from "./artifacts/server.js";
 import { createEvidenceWorkflowCoordinator } from "./evidence-workflow/coordinator.js";
+import {
+  buildEvidenceWorkflowSummary,
+  buildEvidenceWorkflowSummaryReport,
+} from "./evidence-workflow/summary.js";
 import { startSignerProviderServer } from "./signer/http.js";
 import {
   fetchSignerExecutionReceipt,
@@ -229,6 +239,17 @@ import {
   type FleetRecoveryKind,
 } from "./operator/fleet.js";
 import {
+  appendFleetIncidentHistory,
+  buildFleetIncidentAlertReport,
+  buildFleetIncidentRemediationReport,
+  buildFleetIncidentReport,
+  buildFleetIncidentSnapshot,
+  deliverFleetIncidentAlerts,
+  evaluateFleetIncidentAlerts,
+  readFleetIncidentHistory,
+  runFleetIncidentRemediation,
+} from "./operator/incidents.js";
+import {
   buildFleetDashboardReport,
   buildFleetDashboardSnapshot,
   exportFleetDashboardBundle,
@@ -270,6 +291,12 @@ import {
   type ProviderReputationKind,
 } from "./operator/provider-reputation.js";
 import { buildStorageLeaseHealthSnapshot } from "./operator/storage-health.js";
+import {
+  buildOracleSummary,
+  buildOracleSummaryReport,
+  getStoredOracleJob,
+  listStoredOracleJobs,
+} from "./agent-discovery/oracle-summary.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -441,6 +468,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "packs") {
+    await handlePacksCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "logs") {
     await handleLogsCommand(args.slice(1));
     process.exit(0);
@@ -498,6 +530,11 @@ async function main(): Promise<void> {
 
   if (args[0] === "evidence") {
     await handleEvidenceCommand(args.slice(1));
+    process.exit(0);
+  }
+
+  if (args[0] === "oracle") {
+    await handleOracleCommand(args.slice(1));
     process.exit(0);
   }
 
@@ -561,6 +598,7 @@ Usage:
   openfox finance ...    Inspect operator finance snapshots
   openfox report ...     Generate, inspect, and deliver owner reports
   openfox templates ...  Inspect and export bundled third-party templates
+  openfox packs ...      Inspect and export bundled control-plane packs
   openfox logs           Show recent OpenFox service logs
   openfox campaign ...   Create and inspect sponsor-facing task campaigns
   openfox bounty ...     Open, inspect, and solve task bounties
@@ -573,6 +611,7 @@ Usage:
   openfox providers ...  Inspect provider reputation snapshots
   openfox artifacts ...  Build and verify public news and oracle bundles
   openfox evidence ...   Run coordinator-side M-of-N evidence workflows
+  openfox oracle ...     Inspect paid oracle results and summaries
   openfox signer ...     Use delegated signer-provider execution
   openfox paymaster ...  Use native sponsored execution through a paymaster-provider
   openfox fleet ...      Inspect multiple OpenFox nodes through operator APIs
@@ -1596,7 +1635,7 @@ async function handleFleetCommand(args: string[]): Promise<void> {
   const helpRequested =
     command === "--help" || command === "-h" || command === "help" || args.includes("--help") || args.includes("-h");
 
-  if (helpRequested || (!manifestPath && command !== "bundle")) {
+  if (helpRequested || (!manifestPath && command !== "bundle" && command !== "incident-history")) {
     logger.info(`
 OpenFox fleet
 
@@ -1625,8 +1664,12 @@ Usage:
   openfox fleet reconciliation --manifest <path> [--json]
   openfox fleet provider-liveness --manifest <path> [--json]
   openfox fleet recover <replication|provider_route|callback_queue> --manifest <path> [--limit N] [--json]
+  openfox fleet incidents --manifest <path> [--history-file <path>] [--record-history] [--json]
+  openfox fleet incident-history --history-file <path> [--limit N] [--json]
+  openfox fleet incident-alerts --manifest <path> [--history-file <path>] [--record-history] [--channel <stdout|json-file|webhook>] [--output <path>] [--webhook-url <url>] [--json]
+  openfox fleet incident-remediate --manifest <path> [--limit N] [--json]
 `);
-    if (!manifestPath && command !== "bundle" && !helpRequested) {
+    if (!manifestPath && command !== "bundle" && command !== "incident-history" && !helpRequested) {
       throw new Error("A fleet manifest is required. Use --manifest <path>.");
     }
     return;
@@ -1761,6 +1804,103 @@ Usage:
       return;
     }
     logger.info(buildFleetProviderLivenessReport(snapshot));
+    return;
+  }
+
+  if (command === "incidents") {
+    const snapshot = await buildFleetIncidentSnapshot({
+      manifestPath: resolvedManifestPath,
+    });
+    if (args.includes("--record-history")) {
+      const historyPath = readFlag(args, "--history-file");
+      if (!historyPath) {
+        throw new Error("Use --history-file <path> when --record-history is set.");
+      }
+      appendFleetIncidentHistory({ historyPath, snapshot });
+    }
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetIncidentReport(snapshot));
+    return;
+  }
+
+  if (command === "incident-history") {
+    const historyPath = readFlag(args, "--history-file");
+    if (!historyPath) {
+      throw new Error("Usage: openfox fleet incident-history --history-file <path> [--limit N] [--json]");
+    }
+    const items = readFleetIncidentHistory({
+      historyPath,
+      limit: readNumberOption(args, "--limit", 20),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify({ items }, null, 2));
+      return;
+    }
+    logger.info(
+      [
+        "=== OPENFOX FLEET INCIDENT HISTORY ===",
+        `Entries: ${items.length}`,
+        ...items.map(
+          (item) =>
+            `${item.recordedAt}  ${item.snapshot.summary}`,
+        ),
+      ].join("\n"),
+    );
+    return;
+  }
+
+  if (command === "incident-alerts") {
+    const snapshot = await buildFleetIncidentSnapshot({
+      manifestPath: resolvedManifestPath,
+    });
+    const historyPath = readFlag(args, "--history-file");
+    const previous = historyPath
+      ? readFleetIncidentHistory({ historyPath, limit: 1 })[0]?.snapshot ?? null
+      : null;
+    const evaluation = evaluateFleetIncidentAlerts({
+      current: snapshot,
+      previous,
+    });
+    const channelRaw = readOption(args, "--channel") || "stdout";
+    if (!["stdout", "json-file", "webhook"].includes(channelRaw)) {
+      throw new Error("Invalid --channel value. Expected stdout, json-file, or webhook.");
+    }
+    if (args.includes("--record-history")) {
+      if (!historyPath) {
+        throw new Error("Use --history-file <path> when --record-history is set.");
+      }
+      appendFleetIncidentHistory({ historyPath, snapshot });
+    }
+    const delivery = await deliverFleetIncidentAlerts({
+      evaluation,
+      channel: channelRaw as "stdout" | "json-file" | "webhook",
+      outputPath: readFlag(args, "--output"),
+      webhookUrl: readFlag(args, "--webhook-url"),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify({ evaluation, delivery }, null, 2));
+      return;
+    }
+    logger.info(buildFleetIncidentAlertReport(evaluation));
+    if (delivery.target) {
+      logger.info(`Delivered ${delivery.delivered} alert(s) via ${delivery.channel} -> ${delivery.target}`);
+    }
+    return;
+  }
+
+  if (command === "incident-remediate") {
+    const snapshot = await runFleetIncidentRemediation({
+      manifestPath: resolvedManifestPath,
+      limit: readNumberOption(args, "--limit", 25),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(snapshot, null, 2));
+      return;
+    }
+    logger.info(buildFleetIncidentRemediationReport(snapshot));
     return;
   }
 
@@ -2585,6 +2725,95 @@ Usage:
   }
 
   throw new Error(`Unknown templates command: ${command}`);
+}
+
+async function handlePacksCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox packs
+
+Usage:
+  openfox packs list [--json]
+  openfox packs show <name>
+  openfox packs export <name> --output <path> [--force] [--json]
+  openfox packs lint --path <dir> [--json]
+`);
+    return;
+  }
+
+  if (command === "list") {
+    const items = listBundledPacks();
+    if (asJson) {
+      logger.info(JSON.stringify({ items }, null, 2));
+      return;
+    }
+    if (items.length === 0) {
+      logger.info("No bundled packs found.");
+      return;
+    }
+    logger.info("=== OPENFOX PACKS ===");
+    for (const item of items) {
+      logger.info(`${item.name}${item.version ? `  v${item.version}` : ""}`);
+      if (item.description) logger.info(`  ${item.description}`);
+    }
+    return;
+  }
+
+  if (command === "show") {
+    const name = args[1];
+    if (!name) throw new Error("Usage: openfox packs show <name>");
+    logger.info(readBundledPackReadme(name));
+    return;
+  }
+
+  if (command === "export") {
+    const name = args[1];
+    const outputPath = readOption(args, "--output");
+    if (!name || !outputPath) {
+      throw new Error("Usage: openfox packs export <name> --output <path> [--force] [--json]");
+    }
+    const result = exportBundledPack({
+      name,
+      outputPath,
+      force: args.includes("--force"),
+    });
+    if (asJson) {
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+    logger.info(
+      ["Pack exported.", `Name: ${result.name}`, `Source: ${result.sourcePath}`, `Output: ${result.outputPath}`].join("\n"),
+    );
+    return;
+  }
+
+  if (command === "lint") {
+    const packPath = readOption(args, "--path");
+    if (!packPath) {
+      throw new Error("Usage: openfox packs lint --path <dir> [--json]");
+    }
+    const result = lintBundledPack(packPath);
+    if (asJson) {
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+    logger.info(
+      [
+        "=== OPENFOX PACK LINT ===",
+        `Root: ${result.rootPath}`,
+        `Manifest: ${result.manifestPath || "(missing)"}`,
+        `Errors: ${result.errors.length}`,
+        `Warnings: ${result.warnings.length}`,
+        ...result.errors.map((value) => `ERROR: ${value}`),
+        ...result.warnings.map((value) => `WARN: ${value}`),
+      ].join("\n"),
+    );
+    return;
+  }
+
+  throw new Error(`Unknown packs command: ${command}`);
 }
 
 async function handleLogsCommand(args: string[]): Promise<void> {
@@ -4093,6 +4322,7 @@ OpenFox evidence
 Usage:
   openfox evidence list [--limit N] [--json]
   openfox evidence get --run-id <id> [--json]
+  openfox evidence summary [--limit N] [--json]
   openfox evidence run --title "<text>" --question "<text>" --source-url <url>... --news-fetch-url <base-url> --proof-verify-url <base-url> --quorum-m N [--quorum-n N] [--storage-url <base-url>] [--ttl-seconds N] [--json]
 `);
     return;
@@ -4166,6 +4396,19 @@ Usage:
       return;
     }
 
+    if (command === "summary") {
+      const snapshot = buildEvidenceWorkflowSummary({
+        db,
+        limit: readNumberOption(args, "--limit", 20),
+      });
+      if (asJson) {
+        logger.info(JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      logger.info(buildEvidenceWorkflowSummaryReport(snapshot));
+      return;
+    }
+
     if (command === "run") {
       const title = readOption(args, "--title");
       const question = readOption(args, "--question");
@@ -4220,6 +4463,75 @@ Usage:
     }
 
     throw new Error(`Unknown evidence command: ${command}`);
+  } finally {
+    db.close();
+  }
+}
+
+async function handleOracleCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox oracle
+
+Usage:
+  openfox oracle list [--limit N] [--json]
+  openfox oracle get --result-id <id> [--json]
+  openfox oracle summary [--limit N] [--json]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    if (command === "list") {
+      const items = listStoredOracleJobs(db, readNumberOption(args, "--limit", 20));
+      if (asJson) {
+        logger.info(JSON.stringify({ items }, null, 2));
+        return;
+      }
+      if (!items.length) {
+        logger.info("No oracle results found.");
+        return;
+      }
+      logger.info("=== OPENFOX ORACLE RESULTS ===");
+      for (const item of items) {
+        logger.info(
+          `${item.resultId}  kind=${item.response.query_kind}  confidence=${item.response.confidence.toFixed(4)}  settled=${item.response.settlement_tx_hash ? "yes" : "no"}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "get") {
+      const resultId = readOption(args, "--result-id");
+      if (!resultId) throw new Error("Usage: openfox oracle get --result-id <id> [--json]");
+      const item = getStoredOracleJob(db, resultId);
+      if (!item) throw new Error(`Oracle result not found: ${resultId}`);
+      logger.info(JSON.stringify(item, null, 2));
+      return;
+    }
+
+    if (command === "summary") {
+      const snapshot = buildOracleSummary({
+        db,
+        limit: readNumberOption(args, "--limit", 20),
+      });
+      if (asJson) {
+        logger.info(JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      logger.info(buildOracleSummaryReport(snapshot));
+      return;
+    }
+
+    throw new Error(`Unknown oracle command: ${command}`);
   } finally {
     db.close();
   }

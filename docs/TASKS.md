@@ -387,6 +387,21 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Add new reusable work surfaces across bounty/task (data_labeling),
     provider-service (sentiment.analyze), and owner-opportunity categories,
     packaged with skills, templates, docs, and operator commands.
+- [x] Task 83: Add fleet incident observability and bounded remediation
+  - Status: Complete
+  - Goal: Add canonical public-fleet incident snapshots, alert delivery,
+    bounded remediation, and incident-history exports for audits and
+    postmortems.
+- [x] Task 84: Add contract and operator control-plane packs
+  - Status: Complete
+  - Goal: Publish versioned control-plane bundles, reusable policy packs,
+    clearer contract-facing manifests, and validation tooling for external
+    automation systems.
+- [x] Task 85: Productize evidence and oracle market flows
+  - Status: Complete
+  - Goal: Package reusable evidence/oracle flows with templates, skills,
+    operator commands, owner-facing summaries, and end-to-end packaged
+    validation.
 
 ## Task 53 Breakdown
 
@@ -1113,3 +1128,24 @@ building OpenFox into a TOS-native agent platform.
 - [x] Package each new surface with bundled skills, templates, docs, and operator commands.
 - [x] Reuse the existing marketplace, payment, settlement, artifact, and discovery foundations instead of introducing parallel engines.
 - [x] Add end-to-end tests showing operators can launch and run each new surface with bounded configuration changes.
+
+## Task 83 Breakdown
+
+- [x] Add canonical fleet incident snapshots covering degraded nodes, failing routes, callback backlog growth, and replication drift.
+- [x] Add operator alert policies and delivery channels for critical public-fleet health transitions.
+- [x] Add bounded auto-remediation runs for common incident classes.
+- [x] Add incident timeline/history exports and dashboard views for audits and postmortems.
+
+## Task 84 Breakdown
+
+- [x] Add versioned control-plane packs for external fleet automation and market operations.
+- [x] Expand reusable policy-pack exports for signer, paymaster, storage, and marketplace roles.
+- [x] Add clearer contract-facing callback/invocation examples and manifests.
+- [x] Add validation tooling for control-plane packs and exported operator bundles.
+
+## Task 85 Breakdown
+
+- [x] Package reusable evidence/oracle market flows with templates, skills, operator commands, and provider defaults.
+- [x] Add operator-facing result summaries for evidence cost, quorum, verification, and publication state.
+- [x] Connect evidence/oracle outcomes into owner-facing action loops and reporting.
+- [x] Add end-to-end validation for packaged evidence/oracle market deployments.

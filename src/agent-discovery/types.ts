@@ -218,6 +218,7 @@ export interface OracleResolutionResponse {
   status: "ok" | "pending";
   result_id?: string;
   result_url?: string;
+  price_wei?: string;
   payment_tx_hash?: string;
   payment_status?: string;
   reason?: string;
@@ -282,6 +283,7 @@ export interface NewsFetchInvocationResponse {
   status: "ok" | "integration_required";
   job_id?: string;
   result_url?: string;
+  price_wei?: string;
   payment_tx_hash?: string;
   idempotent?: boolean;
   fetched_at: number;
@@ -320,6 +322,7 @@ export interface ProofVerifyInvocationResponse {
   status: "ok" | "integration_required";
   result_id?: string;
   result_url?: string;
+  price_wei?: string;
   payment_tx_hash?: string;
   idempotent?: boolean;
   verified_at: number;
@@ -355,6 +358,7 @@ export interface StoragePutInvocationResponse {
   status: "ok";
   object_id?: string;
   result_url?: string;
+  price_wei?: string;
   payment_tx_hash?: string;
   idempotent?: boolean;
   stored_at: number;

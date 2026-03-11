@@ -581,6 +581,7 @@ export async function startAgentDiscoveryNewsFetchServer(
         status: "ok",
         job_id: jobId,
         result_url: buildNewsFetchResultPath(jobId),
+        price_wei: newsFetchConfig.priceWei,
         payment_tx_hash: paid.txHash,
         fetched_at: fetchedAt,
         source_url: sourceUrl.toString(),

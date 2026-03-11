@@ -183,6 +183,8 @@ It supports:
 - `openfox dashboard show|export` for reusable JSON and HTML fleet dashboards with role margin, capability, counterparty, and delayed-queue finance sections
   plus bundle-ready `control-events.json`, `autopilot.json`, and `approvals.json` audit exports
 - `openfox dashboard bundle --manifest <path> --output <dir>` for exporting one reusable control-plane bundle with manifest, dashboard, lint, control, autopilot, and approvals artifacts
+- `openfox fleet incidents|incident-history|incident-alerts|incident-remediate` for canonical public-fleet incident snapshots, alert delivery, bounded auto-remediation, and postmortem history exports
+- `openfox packs list|show|export|lint` for versioned external control-plane packs and policy-pack validation
 - `openfox wallet report` and `openfox finance report` for single-node operator snapshots
 - `openfox report daily|weekly|list|get|deliveries|send` for owner-facing
   daily and weekly finance, opportunity, and recommendation reports
@@ -199,6 +201,11 @@ It supports:
 - execution-capable opportunity templates and bounded follow-up loops for owner
   campaign/oracle work, visible through owner reports, status, health, and
   doctor surfaces
+- packaged evidence/oracle operator flows with:
+  - `openfox evidence summary`
+  - `openfox oracle list|get|summary`
+  - bundled `evidence-market-flow` and `oracle-market-flow` templates
+  - bundled `evidence-market-operator` and `oracle-market-operator` skills
 - a built-in owner report web surface for mobile-friendly review of the latest
   daily and weekly reports, owner opportunity alerts, queued owner actions,
   execution history, and persisted web/email delivery logs
