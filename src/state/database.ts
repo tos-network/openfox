@@ -54,6 +54,8 @@ import type {
   OwnerReportChannel,
   OwnerReportDeliveryRecord,
   OwnerReportDeliveryStatus,
+  OwnerOpportunityAlertRecord,
+  OwnerOpportunityAlertStatus,
   OwnerReportPeriodKind,
   OwnerReportRecord,
   X402PaymentRecord,
@@ -118,6 +120,7 @@ import {
   MIGRATION_V28,
   MIGRATION_V29,
   MIGRATION_V30,
+  MIGRATION_V31,
 } from "./schema.js";
 import type {
   RiskLevel,
@@ -1559,6 +1562,137 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     return rows.map(deserializeOwnerReportDeliveryRecord);
   };
 
+  const upsertOwnerOpportunityAlert = (
+    record: OwnerOpportunityAlertRecord,
+  ): void => {
+    db.prepare(
+      `INSERT INTO owner_opportunity_alerts (
+        alert_id, opportunity_hash, kind, provider_class, trust_tier,
+        title, summary, suggested_action, capability, base_url, reward_wei,
+        estimated_cost_wei, margin_wei, margin_bps, strategy_score,
+        strategy_matched, strategy_reasons_json, payload_json, status,
+        read_at, dismissed_at, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(alert_id) DO UPDATE SET
+        opportunity_hash = excluded.opportunity_hash,
+        kind = excluded.kind,
+        provider_class = excluded.provider_class,
+        trust_tier = excluded.trust_tier,
+        title = excluded.title,
+        summary = excluded.summary,
+        suggested_action = excluded.suggested_action,
+        capability = excluded.capability,
+        base_url = excluded.base_url,
+        reward_wei = excluded.reward_wei,
+        estimated_cost_wei = excluded.estimated_cost_wei,
+        margin_wei = excluded.margin_wei,
+        margin_bps = excluded.margin_bps,
+        strategy_score = excluded.strategy_score,
+        strategy_matched = excluded.strategy_matched,
+        strategy_reasons_json = excluded.strategy_reasons_json,
+        payload_json = excluded.payload_json,
+        status = excluded.status,
+        read_at = excluded.read_at,
+        dismissed_at = excluded.dismissed_at,
+        updated_at = excluded.updated_at`,
+    ).run(
+      record.alertId,
+      record.opportunityHash,
+      record.kind,
+      record.providerClass,
+      record.trustTier,
+      record.title,
+      record.summary,
+      record.suggestedAction,
+      record.capability ?? null,
+      record.baseUrl ?? null,
+      record.rewardWei ?? null,
+      record.estimatedCostWei,
+      record.marginWei,
+      record.marginBps,
+      record.strategyScore ?? null,
+      record.strategyMatched ? 1 : 0,
+      JSON.stringify(record.strategyReasons ?? []),
+      JSON.stringify(record.payload ?? {}),
+      record.status,
+      record.readAt ?? null,
+      record.dismissedAt ?? null,
+      record.createdAt,
+      record.updatedAt,
+    );
+  };
+
+  const getOwnerOpportunityAlert = (
+    alertId: string,
+  ): OwnerOpportunityAlertRecord | undefined => {
+    const row = db
+      .prepare("SELECT * FROM owner_opportunity_alerts WHERE alert_id = ?")
+      .get(alertId) as any | undefined;
+    return row ? deserializeOwnerOpportunityAlertRecord(row) : undefined;
+  };
+
+  const getLatestOwnerOpportunityAlertByOpportunityHash = (
+    opportunityHash: Hex,
+  ): OwnerOpportunityAlertRecord | undefined => {
+    const row = db
+      .prepare(
+        `SELECT * FROM owner_opportunity_alerts
+         WHERE opportunity_hash = ?
+         ORDER BY created_at DESC, updated_at DESC
+         LIMIT 1`,
+      )
+      .get(opportunityHash) as any | undefined;
+    return row ? deserializeOwnerOpportunityAlertRecord(row) : undefined;
+  };
+
+  const listOwnerOpportunityAlerts = (
+    limit: number,
+    filters?: {
+      status?: OwnerOpportunityAlertStatus;
+      kind?: OwnerOpportunityAlertRecord["kind"];
+    },
+  ): OwnerOpportunityAlertRecord[] => {
+    const clauses: string[] = [];
+    const params: unknown[] = [];
+    if (filters?.status) {
+      clauses.push("status = ?");
+      params.push(filters.status);
+    }
+    if (filters?.kind) {
+      clauses.push("kind = ?");
+      params.push(filters.kind);
+    }
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const rows = db
+      .prepare(
+        `SELECT * FROM owner_opportunity_alerts ${where} ORDER BY created_at DESC, updated_at DESC LIMIT ?`,
+      )
+      .all(...params, limit) as any[];
+    return rows.map(deserializeOwnerOpportunityAlertRecord);
+  };
+
+  const updateOwnerOpportunityAlertStatus = (
+    alertId: string,
+    status: OwnerOpportunityAlertStatus,
+    decidedAt?: string,
+  ): OwnerOpportunityAlertRecord | undefined => {
+    const existing = getOwnerOpportunityAlert(alertId);
+    if (!existing) return undefined;
+    const nowIso = decidedAt || new Date().toISOString();
+    db.prepare(
+      `UPDATE owner_opportunity_alerts
+       SET status = ?, read_at = ?, dismissed_at = ?, updated_at = ?
+       WHERE alert_id = ?`,
+    ).run(
+      status,
+      status === "read" ? nowIso : existing.readAt ?? null,
+      status === "dismissed" ? nowIso : existing.dismissedAt ?? null,
+      nowIso,
+      alertId,
+    );
+    return getOwnerOpportunityAlert(alertId);
+  };
+
   const upsertSignerQuote = (record: SignerQuoteRecord): void => {
     db.prepare(
       `INSERT INTO signer_quotes (
@@ -2787,6 +2921,11 @@ export function createDatabase(dbPath: string): OpenFoxDatabase {
     upsertOwnerReportDelivery,
     getOwnerReportDelivery,
     listOwnerReportDeliveries,
+    upsertOwnerOpportunityAlert,
+    getOwnerOpportunityAlert,
+    getLatestOwnerOpportunityAlertByOpportunityHash,
+    listOwnerOpportunityAlerts,
+    updateOwnerOpportunityAlertStatus,
     upsertSignerQuote,
     getSignerQuote,
     listSignerQuotes,
@@ -3099,6 +3238,10 @@ function applyMigrations(db: DatabaseType): void {
     {
       version: 30,
       apply: () => db.exec(MIGRATION_V30),
+    },
+    {
+      version: 31,
+      apply: () => db.exec(MIGRATION_V31),
     },
   ];
 
@@ -4448,6 +4591,39 @@ function deserializeOwnerReportDeliveryRecord(
     metadata: row.metadata_json ? JSON.parse(row.metadata_json) : null,
     lastError: row.last_error ?? null,
     deliveredAt: row.delivered_at ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function deserializeOwnerOpportunityAlertRecord(
+  row: any,
+): OwnerOpportunityAlertRecord {
+  return {
+    alertId: row.alert_id,
+    opportunityHash: row.opportunity_hash,
+    kind: row.kind,
+    providerClass: row.provider_class,
+    trustTier: row.trust_tier,
+    title: row.title,
+    summary: row.summary,
+    suggestedAction: row.suggested_action,
+    capability: row.capability ?? null,
+    baseUrl: row.base_url ?? null,
+    rewardWei: row.reward_wei ?? null,
+    estimatedCostWei: row.estimated_cost_wei,
+    marginWei: row.margin_wei,
+    marginBps: Number(row.margin_bps || 0),
+    strategyScore:
+      row.strategy_score == null ? null : Number(row.strategy_score),
+    strategyMatched: Number(row.strategy_matched || 0) === 1,
+    strategyReasons: row.strategy_reasons_json
+      ? JSON.parse(row.strategy_reasons_json)
+      : [],
+    payload: row.payload_json ? JSON.parse(row.payload_json) : {},
+    status: row.status,
+    readAt: row.read_at ?? null,
+    dismissedAt: row.dismissed_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };

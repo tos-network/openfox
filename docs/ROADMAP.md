@@ -1227,3 +1227,42 @@ Acceptance criteria:
 - owners can see pending approval requests from a phone
 - owners can approve or reject a request without using the autopilot CLI directly
 - owner approval decisions persist into the same approval records already used by operator autopilot
+
+### Phase 24: Owner Opportunity Alerts and Action Queue
+
+Status: completed
+
+Goal:
+
+- let the owner receive bounded, deduplicated opportunity alerts and act on
+  them from the same CLI, web, and operator surfaces used for reports
+
+Delivered surface:
+
+- persistent owner opportunity alert records
+- `openfox report alerts`
+- `openfox report alerts-generate`
+- `openfox report alert-read <alert-id>`
+- `openfox report alert-dismiss <alert-id>`
+- owner web `/owner/alerts` inbox with read and dismiss actions
+- operator API `GET /operator/owner/alerts`
+- heartbeat-driven owner opportunity alert generation
+- owner-alert visibility in `openfox status`, `openfox health`, and
+  `openfox doctor`
+
+Implementation tasks:
+
+- rank scout and strategy opportunities into a bounded owner-alert queue
+- persist deterministic alert records with stable hashes and dedupe windows
+- add owner-facing CLI review and read/dismiss commands under `openfox report`
+- add owner-web alert inbox routes with read and dismiss actions
+- add operator API alert listing for dashboards and control planes
+- add heartbeat-driven generation hooks so alert creation keeps running in
+  managed-service mode
+
+Acceptance criteria:
+
+- owners can review unread opportunity alerts without opening the terminal
+- repeated scout runs do not produce duplicate alert spam inside the dedupe window
+- owners can mark alerts as read or dismissed from CLI and web
+- operator dashboards can fetch owner alerts through the authenticated operator API

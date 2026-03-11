@@ -672,6 +672,7 @@ export type OwnerReportDeliveryStatus =
   | "pending"
   | "delivered"
   | "failed";
+export type OwnerOpportunityAlertStatus = "unread" | "read" | "dismissed";
 export type OwnerFinanceAttributionKind =
   | "x402_revenue"
   | "x402_cost"
@@ -791,6 +792,32 @@ export interface OwnerReportDeliveryRecord {
   updatedAt: string;
 }
 
+export interface OwnerOpportunityAlertRecord {
+  alertId: string;
+  opportunityHash: Hex;
+  kind: OpportunityKind;
+  providerClass: OpportunityProviderClass;
+  trustTier: OpportunityTrustTier;
+  title: string;
+  summary: string;
+  suggestedAction: string;
+  capability?: string | null;
+  baseUrl?: string | null;
+  rewardWei?: string | null;
+  estimatedCostWei: string;
+  marginWei: string;
+  marginBps: number;
+  strategyScore?: number | null;
+  strategyMatched: boolean;
+  strategyReasons: string[];
+  payload: Record<string, unknown>;
+  status: OwnerOpportunityAlertStatus;
+  createdAt: string;
+  updatedAt: string;
+  readAt?: string | null;
+  dismissedAt?: string | null;
+}
+
 export interface OwnerReportWebConfig {
   enabled: boolean;
   bindHost: string;
@@ -818,6 +845,15 @@ export interface OwnerReportScheduleConfig {
   anomalyDeliveryEnabled: boolean;
 }
 
+export interface OwnerOpportunityAlertsConfig {
+  enabled: boolean;
+  minStrategyScore: number;
+  minMarginBps: number;
+  maxItemsPerRun: number;
+  requireStrategyMatched: boolean;
+  dedupeHours: number;
+}
+
 export interface OwnerReportsConfig {
   enabled: boolean;
   generateWithInference: boolean;
@@ -826,6 +862,7 @@ export interface OwnerReportsConfig {
   web: OwnerReportWebConfig;
   email: OwnerReportEmailConfig;
   schedule: OwnerReportScheduleConfig;
+  alerts?: OwnerOpportunityAlertsConfig;
 }
 
 export interface OperatorApiConfig {
@@ -1707,6 +1744,14 @@ export const DEFAULT_OWNER_REPORTS_CONFIG: OwnerReportsConfig = {
     weeklyDayUtc: 1,
     weeklyHourUtc: 8,
     anomalyDeliveryEnabled: true,
+  },
+  alerts: {
+    enabled: false,
+    minStrategyScore: 1000,
+    minMarginBps: 500,
+    maxItemsPerRun: 5,
+    requireStrategyMatched: true,
+    dedupeHours: 24,
   },
 };
 
@@ -2705,6 +2750,25 @@ export interface OpenFoxDatabase {
       reportId?: string;
     },
   ): OwnerReportDeliveryRecord[];
+  upsertOwnerOpportunityAlert(record: OwnerOpportunityAlertRecord): void;
+  getOwnerOpportunityAlert(
+    alertId: string,
+  ): OwnerOpportunityAlertRecord | undefined;
+  getLatestOwnerOpportunityAlertByOpportunityHash(
+    opportunityHash: Hex,
+  ): OwnerOpportunityAlertRecord | undefined;
+  listOwnerOpportunityAlerts(
+    limit: number,
+    filters?: {
+      status?: OwnerOpportunityAlertStatus;
+      kind?: OpportunityKind;
+    },
+  ): OwnerOpportunityAlertRecord[];
+  updateOwnerOpportunityAlertStatus(
+    alertId: string,
+    status: OwnerOpportunityAlertStatus,
+    decidedAt?: string,
+  ): OwnerOpportunityAlertRecord | undefined;
 
   // Signer provider
   upsertSignerQuote(record: SignerQuoteRecord): void;

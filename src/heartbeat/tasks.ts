@@ -36,6 +36,7 @@ import {
 import {
   generateOwnerReport,
 } from "../reports/generation.js";
+import { generateOwnerOpportunityAlerts } from "../reports/alerts.js";
 import {
   auditLocalStorageLease,
   replicateTrackedLease,
@@ -862,6 +863,34 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       logger.error("refresh_models failed", error instanceof Error ? error : undefined);
     }
     return { shouldWake: false };
+  },
+
+  generate_owner_opportunity_alerts: async (
+    _ctx: TickContext,
+    taskCtx: HeartbeatLegacyContext,
+  ) => {
+    if (!taskCtx.config.ownerReports?.enabled || !taskCtx.config.ownerReports.alerts?.enabled) {
+      return { shouldWake: false };
+    }
+    const result = await generateOwnerOpportunityAlerts({
+      config: taskCtx.config,
+      db: taskCtx.db,
+    });
+    taskCtx.db.setKV(
+      "last_owner_opportunity_alert_generation",
+      JSON.stringify({
+        created: result.created,
+        skipped: result.skipped,
+        at: new Date().toISOString(),
+      }),
+    );
+    return {
+      shouldWake: result.created > 0,
+      message:
+        result.created > 0
+          ? `Generated ${result.created} new owner opportunity alert(s).`
+          : undefined,
+    };
   },
 
   // === Phase 3.1: Child Health Check ===

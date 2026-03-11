@@ -133,6 +133,7 @@ export async function startOperatorApiServer(
   const ownerReportsPath = `${pathPrefix}/owner/reports`;
   const ownerReportLatestPath = `${pathPrefix}/owner/reports/latest`;
   const ownerReportDeliveriesPath = `${pathPrefix}/owner/report-deliveries`;
+  const ownerAlertsPath = `${pathPrefix}/owner/alerts`;
   const paymentsPath = `${pathPrefix}/payments/status`;
   const settlementPath = `${pathPrefix}/settlement/status`;
   const marketPath = `${pathPrefix}/market/status`;
@@ -380,6 +381,34 @@ export async function startOperatorApiServer(
               statusParam === "failed"
                 ? statusParam
                 : undefined,
+          }),
+        });
+        return;
+      }
+
+      if (req.method === "GET" && url.pathname === ownerAlertsPath) {
+        const limitParam = url.searchParams.get("limit");
+        const limit =
+          limitParam && Number.isFinite(Number(limitParam))
+            ? Number(limitParam)
+            : 20;
+        const statusParam = url.searchParams.get("status");
+        const kindParam = url.searchParams.get("kind");
+        const kind =
+          kindParam === "bounty" ||
+          kindParam === "campaign" ||
+          kindParam === "provider"
+            ? kindParam
+            : undefined;
+        json(res, 200, {
+          items: params.db.listOwnerOpportunityAlerts(limit, {
+            status:
+              statusParam === "unread" ||
+              statusParam === "read" ||
+              statusParam === "dismissed"
+                ? statusParam
+                : undefined,
+            kind,
           }),
         });
         return;

@@ -113,6 +113,12 @@ const DEFAULT_HEARTBEAT_CONFIG: HeartbeatConfig = {
       task: "deliver_owner_reports",
       enabled: true,
     },
+    {
+      name: "generate_owner_opportunity_alerts",
+      schedule: "20 * * * *",
+      task: "generate_owner_opportunity_alerts",
+      enabled: true,
+    },
   ],
   defaultIntervalMs: 60_000,
   lowComputeMultiplier: 4,

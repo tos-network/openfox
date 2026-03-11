@@ -4,6 +4,7 @@ import path from "path";
 import { describe, expect, it } from "vitest";
 import { createOperatorApprovalRequest } from "../operator/autopilot.js";
 import { deliverOwnerReportChannels } from "../reports/delivery.js";
+import type { OwnerOpportunityAlertRecord } from "../types.js";
 import { generateOwnerReport } from "../reports/generation.js";
 import { startOwnerReportServer } from "../reports/server.js";
 import { DEFAULT_OWNER_REPORTS_CONFIG } from "../types.js";
@@ -15,6 +16,36 @@ import {
 } from "./mocks.js";
 
 describe("owner report delivery", () => {
+  function createAlert(alertId: string): OwnerOpportunityAlertRecord {
+    const now = new Date().toISOString();
+    return {
+      alertId,
+      opportunityHash:
+        "0x1111111111111111111111111111111111111111111111111111111111111111",
+      kind: "bounty",
+      providerClass: "task_market",
+      trustTier: "org_trusted",
+      title: "Translate a bounded task",
+      summary: "reward=100 margin=90 score=1500 trust=org_trusted",
+      suggestedAction: "Review and submit a bounded response.",
+      capability: "task.submit",
+      baseUrl: "https://host.example.com",
+      rewardWei: "100",
+      estimatedCostWei: "10",
+      marginWei: "90",
+      marginBps: 9000,
+      strategyScore: 1500,
+      strategyMatched: true,
+      strategyReasons: [],
+      payload: { bountyId: "bounty-1" },
+      status: "unread",
+      createdAt: now,
+      updatedAt: now,
+      readAt: null,
+      dismissedAt: null,
+    };
+  }
+
   it("renders and records web and email owner report deliveries", async () => {
     const db = createTestDb();
     const rootDir = await fs.mkdtemp(path.join(os.tmpdir(), "openfox-owner-report-"));
@@ -189,6 +220,68 @@ describe("owner report delivery", () => {
       expect(approvePayload.requestId).toBe(request.requestId);
       expect(approvePayload.status).toBe("approved");
       expect(approvePayload.decisionNote).toBe("approved from phone");
+    } finally {
+      await server?.close?.();
+      db.close();
+    }
+  });
+
+  it("serves and updates owner opportunity alerts over the owner report web surface", async () => {
+    const db = createTestDb();
+    let server: Awaited<ReturnType<typeof startOwnerReportServer>> | null = null;
+    try {
+      const config = createTestConfig({
+        ownerReports: {
+          ...DEFAULT_OWNER_REPORTS_CONFIG,
+          enabled: true,
+          web: {
+            ...DEFAULT_OWNER_REPORTS_CONFIG.web,
+            enabled: true,
+            bindHost: "127.0.0.1",
+            port: 0,
+            pathPrefix: "/owner",
+            authToken: "owner-secret",
+          },
+        },
+      });
+
+      const alert = createAlert("alert-1");
+      db.upsertOwnerOpportunityAlert(alert);
+
+      server = await startOwnerReportServer({ config, db });
+      expect(server).not.toBeNull();
+
+      const alertsJson = await fetch(`${server!.url}/alerts?format=json`, {
+        headers: {
+          Authorization: "Bearer owner-secret",
+        },
+      });
+      expect(alertsJson.status).toBe(200);
+      const alertsPayload = (await alertsJson.json()) as {
+        items: Array<{ alertId: string; status: string }>;
+      };
+      expect(alertsPayload.items[0]?.alertId).toBe(alert.alertId);
+
+      const alertsHtml = await fetch(`${server!.url}/alerts?token=owner-secret`);
+      expect(alertsHtml.status).toBe(200);
+      expect(await alertsHtml.text()).toContain("OpenFox Opportunity Alerts");
+
+      const markRead = await fetch(
+        `${server!.url}/alerts/${encodeURIComponent(alert.alertId)}/read?format=json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer owner-secret",
+          },
+        },
+      );
+      expect(markRead.status).toBe(200);
+      const readPayload = (await markRead.json()) as {
+        alertId: string;
+        status: string;
+      };
+      expect(readPayload.alertId).toBe(alert.alertId);
+      expect(readPayload.status).toBe("read");
     } finally {
       await server?.close?.();
       db.close();

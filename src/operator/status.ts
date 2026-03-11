@@ -118,6 +118,10 @@ export function buildRuntimeStatusSnapshot(
   const pendingOwnerReportDeliveries = db.listOwnerReportDeliveries(100, {
     status: "pending",
   }).length;
+  const ownerOpportunityAlerts = db.listOwnerOpportunityAlerts(5);
+  const unreadOwnerOpportunityAlerts = db.listOwnerOpportunityAlerts(100, {
+    status: "unread",
+  }).length;
   const storageLeases = db.listStorageLeases(5);
   const storageRenewals = db.listStorageRenewals(5);
   const activeStorageLeaseCount = db.listStorageLeases(100, { status: "active" }).length;
@@ -323,6 +327,16 @@ export function buildRuntimeStatusSnapshot(
             deliveredAt: item.deliveredAt,
           })),
           pendingDeliveries: pendingOwnerReportDeliveries,
+          alertsEnabled: config.ownerReports.alerts?.enabled === true,
+          recentAlerts: ownerOpportunityAlerts.map((item) => ({
+            alertId: item.alertId,
+            status: item.status,
+            kind: item.kind,
+            title: item.title,
+            strategyScore: item.strategyScore,
+            createdAt: item.createdAt,
+          })),
+          unreadAlerts: unreadOwnerOpportunityAlerts,
         }
       : null,
     providerReputation: {

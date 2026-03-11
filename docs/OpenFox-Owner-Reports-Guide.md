@@ -10,6 +10,7 @@ It turns deterministic local runtime state into:
 
 - daily and weekly finance snapshots
 - readable owner reports
+- actionable owner opportunity alerts
 - web and email delivery artifacts
 - delivery logs and audit metadata
 - owner approval inbox actions
@@ -64,6 +65,14 @@ Example `openfox.json` fragment:
       "weeklyDayUtc": 1,
       "weeklyHourUtc": 9,
       "anomalyDeliveryEnabled": true
+    },
+    "alerts": {
+      "enabled": true,
+      "minStrategyScore": 1000,
+      "minMarginBps": 500,
+      "maxItemsPerRun": 5,
+      "requireStrategyMatched": true,
+      "dedupeHours": 24
     }
   }
 }
@@ -91,6 +100,10 @@ Inspect stored reports:
 ```bash
 openfox report list --period daily
 openfox report get --report-id <report-id> --json
+openfox report alerts --status unread --json
+openfox report alerts-generate --json
+openfox report alert-read <alert-id>
+openfox report alert-dismiss <alert-id>
 openfox report deliveries --channel web --json
 openfox report approvals --status pending --json
 openfox report approve <request-id>
@@ -149,12 +162,15 @@ Routes:
 
 - `GET /owner/healthz`
 - `GET /owner/`
+- `GET /owner/alerts`
 - `GET /owner/reports`
 - `GET /owner/reports/latest/daily`
 - `GET /owner/reports/latest/weekly`
 - `GET /owner/reports/:reportId`
 - `GET /owner/deliveries`
 - `GET /owner/approvals`
+- `POST /owner/alerts/:alertId/read`
+- `POST /owner/alerts/:alertId/dismiss`
 - `POST /owner/approvals/:requestId/approve`
 - `POST /owner/approvals/:requestId/reject`
 
@@ -193,7 +209,53 @@ The approval inbox uses the same underlying approval records as:
 So owner-facing approval actions and operator-facing approval actions stay in
 sync.
 
-## 7. Email Delivery
+## 7. Owner Opportunity Alerts
+
+OpenFox also exposes a bounded owner opportunity alert queue built from:
+
+- ranked scout results
+- the current strategy profile
+- local dedupe windows
+- bounded per-run alert limits
+
+This turns opportunity discovery into an owner-facing action queue instead of
+an unbounded stream of notifications.
+
+CLI surface:
+
+```bash
+openfox report alerts --status unread --json
+openfox report alerts-generate --json
+openfox report alert-read <alert-id>
+openfox report alert-dismiss <alert-id>
+```
+
+Owner-web routes:
+
+- `GET /owner/alerts`
+- `POST /owner/alerts/:alertId/read`
+- `POST /owner/alerts/:alertId/dismiss`
+
+Operator API route:
+
+- `GET /operator/owner/alerts`
+
+Each alert includes:
+
+- opportunity kind
+- bounded summary
+- suggested action
+- stable opportunity hash
+- alert status: `unread`, `read`, or `dismissed`
+
+When enabled, OpenFox runs the built-in heartbeat task:
+
+- `generate_owner_opportunity_alerts`
+
+This keeps the owner alert queue updated while OpenFox runs as a managed
+service.
+
+## 8. Email Delivery
 
 Email delivery supports two modes:
 
@@ -214,12 +276,13 @@ before wiring a real mail pipeline.
 In `sendmail` mode, OpenFox writes those artifacts and then invokes the
 configured sendmail binary.
 
-## 8. Scheduled Generation and Delivery
+## 9. Scheduled Generation and Delivery
 
 OpenFox includes built-in heartbeat tasks for owner reporting:
 
 - `generate_owner_reports`
 - `deliver_owner_reports`
+- `generate_owner_opportunity_alerts`
 
 These can generate or deliver:
 
@@ -231,17 +294,18 @@ These can generate or deliver:
 This means owner reports can keep flowing while OpenFox runs as a managed
 service.
 
-## 9. Operator API
+## 10. Operator API
 
 The authenticated operator API also exposes owner-report data:
 
 - `GET /operator/owner/reports`
 - `GET /operator/owner/reports/latest?period=daily|weekly`
 - `GET /operator/owner/report-deliveries`
+- `GET /operator/owner/alerts`
 
 These routes are useful for dashboards, control planes, and fleet tooling.
 
-## 10. Practical Guidance
+## 11. Practical Guidance
 
 Start with this sequence:
 
@@ -249,11 +313,14 @@ Start with this sequence:
 2. Keep `email.enabled = false` or `mode = "outbox"`.
 3. Run:
    - `openfox report daily --json`
+   - `openfox report alerts-generate --json`
+   - `openfox report alerts --status unread --json`
    - `openfox report send --channel web --period daily`
    - `openfox report approvals --status pending --json`
 4. Verify:
    - `openfox doctor`
    - `openfox status --json`
+   - `GET /owner/alerts`
    - `GET /owner/reports/latest/daily`
    - `GET /owner/approvals`
 5. Only then enable scheduled delivery and optional email delivery.

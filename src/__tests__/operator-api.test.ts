@@ -5,6 +5,7 @@ import { isHeartbeatPaused, isOperatorDrained } from "../state/database.js";
 import {
   DEFAULT_OPERATOR_AUTOPILOT_CONFIG,
   type OwnerFinanceSnapshotRecord,
+  type OwnerOpportunityAlertRecord,
   type OwnerReportDeliveryRecord,
   type OwnerReportRecord,
   type PaymasterAuthorizationRecord,
@@ -189,6 +190,37 @@ describe("operator api", () => {
       deliveredAt: now,
       createdAt: now,
       updatedAt: now,
+    };
+  }
+
+  function createOwnerOpportunityAlertRecord(
+    alertId: string,
+  ): OwnerOpportunityAlertRecord {
+    const now = new Date().toISOString();
+    return {
+      alertId,
+      opportunityHash: toHexId(`opportunity:${alertId}`),
+      kind: "bounty",
+      providerClass: "task_market",
+      trustTier: "org_trusted",
+      title: "Bounded translation bounty",
+      summary: "reward=100 margin=90 score=1200 trust=org_trusted",
+      suggestedAction: "Review the host and submit one bounded result.",
+      capability: "task.submit",
+      baseUrl: "https://host.example.com",
+      rewardWei: "100",
+      estimatedCostWei: "10",
+      marginWei: "90",
+      marginBps: 9000,
+      strategyScore: 1200,
+      strategyMatched: true,
+      strategyReasons: [],
+      payload: { bountyId: "bounty-1" },
+      status: "unread",
+      createdAt: now,
+      updatedAt: now,
+      readAt: null,
+      dismissedAt: null,
     };
   }
 
@@ -687,14 +719,24 @@ describe("operator api", () => {
           weeklyHourUtc: 9,
           anomalyDeliveryEnabled: true,
         },
+        alerts: {
+          enabled: true,
+          minStrategyScore: 1000,
+          minMarginBps: 500,
+          maxItemsPerRun: 5,
+          requireStrategyMatched: true,
+          dedupeHours: 24,
+        },
       },
     });
     const snapshot = createOwnerFinanceSnapshotRecord("snapshot-1");
     const report = createOwnerReportRecord("report-1", snapshot.snapshotId);
     const delivery = createOwnerReportDeliveryRecord("delivery-1", report.reportId);
+    const alert = createOwnerOpportunityAlertRecord("alert-1");
     db.upsertOwnerFinanceSnapshot(snapshot);
     db.upsertOwnerReport(report);
     db.upsertOwnerReportDelivery(delivery);
+    db.upsertOwnerOpportunityAlert(alert);
 
     const server = await startOperatorApiServer({ config, db });
     expect(server).not.toBeNull();
@@ -735,6 +777,17 @@ describe("operator api", () => {
     };
     expect(deliveriesJson.items).toHaveLength(1);
     expect(deliveriesJson.items[0]?.deliveryId).toBe(delivery.deliveryId);
+
+    const alertsResponse = await fetch(
+      `${server.url}/owner/alerts?status=unread&limit=5`,
+      { headers },
+    );
+    expect(alertsResponse.status).toBe(200);
+    const alertsJson = (await alertsResponse.json()) as {
+      items: OwnerOpportunityAlertRecord[];
+    };
+    expect(alertsJson.items).toHaveLength(1);
+    expect(alertsJson.items[0]?.alertId).toBe(alert.alertId);
 
     db.close();
   });

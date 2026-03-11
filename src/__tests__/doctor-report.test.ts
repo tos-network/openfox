@@ -56,6 +56,9 @@ describe("doctor report formatting", () => {
       ownerReportsRecentReports: 2,
       ownerReportsRecentDeliveries: 1,
       ownerReportsPendingDeliveries: 1,
+      ownerAlertsEnabled: true,
+      ownerRecentAlerts: 3,
+      ownerUnreadAlerts: 2,
       ownerReportsWebReady: true,
       ownerReportsEmailReady: true,
       storageEnabled: true,
@@ -151,7 +154,7 @@ describe("doctor report formatting", () => {
     );
     expect(health).toContain("Bounty enabled: yes (host)");
     expect(health).toContain(
-      "Owner reports enabled: yes (2 recent, 1 deliveries, 1 pending, web=on, email=off)",
+      "Owner reports enabled: yes (2 recent, 1 deliveries, 1 pending, alerts=3 recent/2 unread, web=on, email=off)",
     );
     expect(health).toContain(
       "Storage enabled: yes (1 active, 1 renewals, 1 audits, 1 anchors, 0 under-replicated)",
@@ -166,6 +169,7 @@ describe("doctor report formatting", () => {
     expect(doctor).toContain("Warnings: 2");
     expect(doctor).toContain("Run `openfox service install`.");
     expect(doctor).toContain("Artifact pipeline is enabled (2 recent artifacts, 1 anchored).");
+    expect(health).toContain("alerts=3 recent/2 unread");
 
     db.close();
     void config;
@@ -277,6 +281,64 @@ describe("doctor report formatting", () => {
       snapshot.findings.some(
         (finding) =>
           finding.id === "owner-reports-enabled" && finding.severity === "error",
+      ),
+    ).toBe(true);
+  });
+
+  it("flags owner opportunity alerts when scouting is disabled", async () => {
+    const snapshot = await buildHealthSnapshot(
+      createTestConfig({
+        ownerReports: {
+          enabled: true,
+          generateWithInference: false,
+          persistSnapshots: true,
+          autoDeliverChannels: ["web"],
+          web: {
+            enabled: true,
+            bindHost: "127.0.0.1",
+            port: 4904,
+            pathPrefix: "/owner",
+            outputDir: "/tmp/openfox-owner-reports",
+          },
+          email: {
+            enabled: false,
+            mode: "outbox",
+            from: "openfox@localhost",
+            to: "owner@localhost",
+            outboxDir: "/tmp/openfox-owner-outbox",
+            sendmailPath: "/usr/sbin/sendmail",
+          },
+          schedule: {
+            enabled: false,
+            morningHourUtc: 8,
+            endOfDayHourUtc: 18,
+            weeklyDayUtc: 1,
+            weeklyHourUtc: 8,
+            anomalyDeliveryEnabled: true,
+          },
+          alerts: {
+            enabled: true,
+            minStrategyScore: 1000,
+            minMarginBps: 500,
+            maxItemsPerRun: 5,
+            requireStrategyMatched: true,
+            dedupeHours: 24,
+          },
+        },
+        opportunityScout: {
+          enabled: false,
+          discoveryCapabilities: [],
+          remoteBaseUrls: [],
+          maxItems: 10,
+          minRewardWei: "0",
+        },
+      }),
+    );
+
+    expect(
+      snapshot.findings.some(
+        (finding) =>
+          finding.id === "owner-alerts-no-scout" && finding.severity === "error",
       ),
     ).toBe(true);
   });

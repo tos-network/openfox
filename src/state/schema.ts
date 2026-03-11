@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 30;
+export const SCHEMA_VERSION = 31;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -446,6 +446,38 @@ export const CREATE_TABLES = `
 
   CREATE INDEX IF NOT EXISTS idx_owner_report_deliveries_channel
     ON owner_report_deliveries(channel, status, created_at DESC);
+
+  CREATE TABLE IF NOT EXISTS owner_opportunity_alerts (
+    alert_id TEXT PRIMARY KEY,
+    opportunity_hash TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    provider_class TEXT NOT NULL,
+    trust_tier TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    suggested_action TEXT NOT NULL,
+    capability TEXT,
+    base_url TEXT,
+    reward_wei TEXT,
+    estimated_cost_wei TEXT NOT NULL,
+    margin_wei TEXT NOT NULL,
+    margin_bps INTEGER NOT NULL,
+    strategy_score REAL,
+    strategy_matched INTEGER NOT NULL DEFAULT 0,
+    strategy_reasons_json TEXT NOT NULL DEFAULT '[]',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('unread','read','dismissed')),
+    read_at TEXT,
+    dismissed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_status
+    ON owner_opportunity_alerts(status, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_hash
+    ON owner_opportunity_alerts(opportunity_hash, created_at DESC);
 
   CREATE TABLE IF NOT EXISTS signer_quotes (
     quote_id TEXT PRIMARY KEY,
@@ -1668,6 +1700,40 @@ export const MIGRATION_V30 = `
 
   CREATE INDEX IF NOT EXISTS idx_owner_report_deliveries_channel
     ON owner_report_deliveries(channel, status, created_at DESC);
+`;
+
+export const MIGRATION_V31 = `
+  CREATE TABLE IF NOT EXISTS owner_opportunity_alerts (
+    alert_id TEXT PRIMARY KEY,
+    opportunity_hash TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    provider_class TEXT NOT NULL,
+    trust_tier TEXT NOT NULL,
+    title TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    suggested_action TEXT NOT NULL,
+    capability TEXT,
+    base_url TEXT,
+    reward_wei TEXT,
+    estimated_cost_wei TEXT NOT NULL,
+    margin_wei TEXT NOT NULL,
+    margin_bps INTEGER NOT NULL,
+    strategy_score REAL,
+    strategy_matched INTEGER NOT NULL DEFAULT 0,
+    strategy_reasons_json TEXT NOT NULL DEFAULT '[]',
+    payload_json TEXT NOT NULL DEFAULT '{}',
+    status TEXT NOT NULL CHECK(status IN ('unread','read','dismissed')),
+    read_at TEXT,
+    dismissed_at TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_status
+    ON owner_opportunity_alerts(status, created_at DESC);
+
+  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_hash
+    ON owner_opportunity_alerts(opportunity_hash, created_at DESC);
 `;
 
 export const MIGRATION_V3 = `

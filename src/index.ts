@@ -232,6 +232,9 @@ import {
   generateOwnerReport,
 } from "./reports/generation.js";
 import {
+  generateOwnerOpportunityAlerts,
+} from "./reports/alerts.js";
+import {
   renderOwnerReportText,
 } from "./reports/render.js";
 import {
@@ -1945,6 +1948,10 @@ Usage:
   openfox report weekly [--json]
   openfox report list [--period <daily|weekly>] [--limit <n>] [--json]
   openfox report get --report-id <id> [--json]
+  openfox report alerts [--status <unread|read|dismissed>] [--limit <n>] [--json]
+  openfox report alerts-generate [--json]
+  openfox report alert-read <alert-id> [--json]
+  openfox report alert-dismiss <alert-id> [--json]
   openfox report approvals [--status <pending|approved|rejected|expired>] [--limit <n>] [--json]
   openfox report approve <request-id> [--note <text>] [--json]
   openfox report reject <request-id> [--note <text>] [--json]
@@ -2058,6 +2065,72 @@ Usage:
           `${item.requestId}  [${item.status}]  ${item.kind}  scope=${item.scope}  requested_by=${item.requestedBy}`,
         );
       }
+      return;
+    }
+
+    if (command === "alerts") {
+      const statusRaw = readOption(args, "--status");
+      const status =
+        statusRaw === "unread" ||
+        statusRaw === "read" ||
+        statusRaw === "dismissed"
+          ? statusRaw
+          : undefined;
+      const limit = readNumberOption(args, "--limit", 20);
+      const items = db.listOwnerOpportunityAlerts(limit, { status });
+      if (asJson) {
+        logger.info(JSON.stringify({ items }, null, 2));
+        return;
+      }
+      if (!items.length) {
+        logger.info("No owner opportunity alerts found.");
+        return;
+      }
+      logger.info("=== OPENFOX OWNER OPPORTUNITY ALERTS ===");
+      for (const item of items) {
+        logger.info(
+          `${item.alertId}  [${item.status}]  ${item.kind}  score=${item.strategyScore ?? "n/a"}  ${item.title}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "alerts-generate") {
+      const result = await generateOwnerOpportunityAlerts({
+        config,
+        db,
+      });
+      if (asJson) {
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      logger.info(
+        `Generated ${result.created} new owner opportunity alert(s); skipped ${result.skipped}.`,
+      );
+      return;
+    }
+
+    if (command === "alert-read" || command === "alert-dismiss") {
+      const alertId = args[1]?.trim();
+      if (!alertId) {
+        throw new Error(
+          `Usage: openfox report ${command} <alert-id> [--json]`,
+        );
+      }
+      const record = db.updateOwnerOpportunityAlertStatus(
+        alertId,
+        command === "alert-read" ? "read" : "dismissed",
+      );
+      if (!record) {
+        throw new Error(`Owner opportunity alert not found: ${alertId}`);
+      }
+      if (asJson) {
+        logger.info(JSON.stringify(record, null, 2));
+        return;
+      }
+      logger.info(
+        `${command === "alert-read" ? "Marked read" : "Dismissed"} ${record.alertId}`,
+      );
       return;
     }
 

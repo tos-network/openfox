@@ -2,6 +2,7 @@ import http, { type IncomingMessage, type ServerResponse } from "http";
 import type {
   OpenFoxConfig,
   OpenFoxDatabase,
+  OwnerOpportunityAlertRecord,
   OperatorApprovalRequestRecord,
   OwnerReportPeriodKind,
 } from "../types.js";
@@ -148,6 +149,66 @@ function renderOwnerApprovalsHtml(params: {
 </html>`;
 }
 
+function renderOwnerAlertsHtml(params: {
+  alerts: OwnerOpportunityAlertRecord[];
+  pathPrefix: string;
+  token?: string;
+  status?: string | null;
+}): string {
+  const tokenQuery = params.token ? `?token=${encodeURIComponent(params.token)}` : "";
+  const statusLabel = params.status?.trim() || "all";
+  const rows = params.alerts
+    .map((alert) => {
+      const readAction = `${params.pathPrefix}/alerts/${encodeURIComponent(alert.alertId)}/read${tokenQuery}`;
+      const dismissAction = `${params.pathPrefix}/alerts/${encodeURIComponent(alert.alertId)}/dismiss${tokenQuery}`;
+      const metadata = [
+        `<p><strong>Status:</strong> ${alert.status}</p>`,
+        `<p><strong>Kind:</strong> ${alert.kind}</p>`,
+        `<p><strong>Provider class:</strong> ${alert.providerClass}</p>`,
+        `<p><strong>Trust tier:</strong> ${alert.trustTier}</p>`,
+        `<p><strong>Margin:</strong> ${alert.marginWei} (${alert.marginBps} bps)</p>`,
+        alert.strategyScore == null
+          ? ""
+          : `<p><strong>Strategy score:</strong> ${alert.strategyScore}</p>`,
+        alert.capability ? `<p><strong>Capability:</strong> ${alert.capability}</p>` : "",
+        alert.baseUrl ? `<p><strong>Base URL:</strong> ${alert.baseUrl}</p>` : "",
+      ].join("");
+      const actions =
+        alert.status === "unread"
+          ? `
+        <form method="post" action="${readAction}" style="display:inline-block;margin-right:8px;">
+          <button type="submit">Mark read</button>
+        </form>
+        <form method="post" action="${dismissAction}" style="display:inline-block;">
+          <button type="submit">Dismiss</button>
+        </form>`
+          : `<p><strong>Decision:</strong> ${alert.status}</p>`;
+      return `
+      <article style="border:1px solid #d0d7de;border-radius:12px;padding:16px;margin:16px 0;">
+        <h2 style="margin:0 0 8px 0;">${alert.title}</h2>
+        <p>${alert.summary}</p>
+        ${metadata}
+        <p><strong>Suggested action:</strong> ${alert.suggestedAction}</p>
+        <div style="margin-top:12px;">${actions}</div>
+      </article>`;
+    })
+    .join("\n");
+  return `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenFox Opportunity Alerts</title>
+  </head>
+  <body style="font-family:ui-sans-serif,system-ui,sans-serif;max-width:840px;margin:0 auto;padding:24px;">
+    <h1>OpenFox Opportunity Alerts</h1>
+    <p>Showing <strong>${params.alerts.length}</strong> ${statusLabel} alert(s).</p>
+    <p><a href="${params.pathPrefix}${tokenQuery}">Back to latest report</a></p>
+    ${rows || "<p>No opportunity alerts found.</p>"}
+  </body>
+</html>`;
+}
+
 export async function startOwnerReportServer(params: {
   config: OpenFoxConfig;
   db: OpenFoxDatabase;
@@ -179,7 +240,7 @@ export async function startOwnerReportServer(params: {
             html(
               res,
               200,
-              `<!doctype html><html><body><h1>No owner reports yet.</h1><p><a href="${pathPrefix}/approvals${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open approval inbox</a></p></body></html>`,
+              `<!doctype html><html><body><h1>No owner reports yet.</h1><p><a href="${pathPrefix}/approvals${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open approval inbox</a></p><p><a href="${pathPrefix}/alerts${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}">Open opportunity alerts</a></p></body></html>`,
             );
             return;
           }
@@ -193,6 +254,61 @@ export async function startOwnerReportServer(params: {
           const periodKind = isPeriodKind(periodRaw) ? periodRaw : undefined;
           const items = params.db.listOwnerReports(limit, { periodKind });
           json(res, 200, { items });
+          return;
+        }
+
+        if (req.method === "GET" && url.pathname === `${pathPrefix}/alerts`) {
+          const limit = Number.parseInt(url.searchParams.get("limit") || "20", 10);
+          const statusRaw = url.searchParams.get("status");
+          const status =
+            statusRaw === "unread" ||
+            statusRaw === "read" ||
+            statusRaw === "dismissed"
+              ? statusRaw
+              : undefined;
+          const items = params.db.listOwnerOpportunityAlerts(limit, { status });
+          const format = url.searchParams.get("format");
+          if (format === "json") {
+            json(res, 200, { items });
+            return;
+          }
+          html(
+            res,
+            200,
+            renderOwnerAlertsHtml({
+              alerts: items,
+              pathPrefix,
+              token: webConfig.authToken,
+              status: statusRaw,
+            }),
+          );
+          return;
+        }
+
+        if (
+          req.method === "POST" &&
+          /^\/?.*\/alerts\/[^/]+\/(read|dismiss)$/.test(url.pathname)
+        ) {
+          const match = url.pathname.match(/\/alerts\/([^/]+)\/(read|dismiss)$/);
+          const alertId = match?.[1] ? decodeURIComponent(match[1]) : undefined;
+          const action = match?.[2];
+          if (!alertId || !action) {
+            json(res, 404, { error: "alert action not found" });
+            return;
+          }
+          const record = params.db.updateOwnerOpportunityAlertStatus(
+            alertId,
+            action === "read" ? "read" : "dismissed",
+          );
+          if (!record) {
+            json(res, 404, { error: "alert not found" });
+            return;
+          }
+          if (url.searchParams.get("format") === "json") {
+            json(res, 200, record);
+            return;
+          }
+          redirect(res, `${pathPrefix}/alerts${webConfig.authToken ? `?token=${encodeURIComponent(webConfig.authToken)}` : ""}`);
           return;
         }
 

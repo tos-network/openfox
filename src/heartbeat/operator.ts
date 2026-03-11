@@ -79,6 +79,7 @@ const TASK_DESCRIPTIONS: Record<string, string> = {
   replicate_storage_leases: "Replicate tracked storage bundles to additional providers when policy requires more copies.",
   generate_owner_reports: "Generate daily and weekly owner finance reports from deterministic system state.",
   deliver_owner_reports: "Render and deliver owner reports to web and email surfaces on the configured schedule.",
+  generate_owner_opportunity_alerts: "Generate bounded owner opportunity alerts from strategy-ranked scout results.",
   check_social_inbox: "Poll the social inbox and wake the agent for new inbound messages.",
   check_for_updates: "Check for upstream/runtime updates.",
   health_check: "Run local health checks and wake on degraded status.",

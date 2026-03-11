@@ -314,6 +314,11 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Let owners review and decide bounded approval requests from the same
     owner-facing web and CLI surfaces used for reports.
+- [x] Task 67: Add owner opportunity alerts and action queue
+  - Status: Complete
+  - Goal: Let owners receive bounded, deduplicated opportunity alerts from
+    scout and strategy inputs, then review and triage them through CLI, web,
+    operator API, and heartbeat-driven generation flows.
 
 ## Task 53 Breakdown
 
@@ -441,6 +446,21 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add owner-web approval inbox routes.
 - [x] Add owner-web approve/reject action routes.
 - [x] Add tests for approval listing and owner-web approval decisions.
+
+## Task 67 Breakdown
+
+- [x] Add persistent owner opportunity alert records and database indexes.
+- [x] Generate owner alerts from scout and strategy-ranked opportunity inputs.
+- [x] Add dedupe windows and bounded generation limits.
+- [x] Add `openfox report alerts`.
+- [x] Add `openfox report alerts-generate`.
+- [x] Add `openfox report alert-read <alert-id>`.
+- [x] Add `openfox report alert-dismiss <alert-id>`.
+- [x] Add owner-web alert inbox routes plus read/dismiss actions.
+- [x] Add operator API alert listing.
+- [x] Add heartbeat-driven owner alert generation.
+- [x] Surface owner-alert counts through status, health, and doctor.
+- [x] Add targeted tests for generation, web delivery, operator API, and doctor visibility.
 
 ## Task 1 Breakdown
 

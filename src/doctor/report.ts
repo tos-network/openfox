@@ -77,6 +77,9 @@ export interface HealthSnapshot {
   ownerReportsRecentReports: number;
   ownerReportsRecentDeliveries: number;
   ownerReportsPendingDeliveries: number;
+  ownerAlertsEnabled: boolean;
+  ownerRecentAlerts: number;
+  ownerUnreadAlerts: number;
   ownerReportsWebReady: boolean;
   ownerReportsEmailReady: boolean;
   storageEnabled: boolean;
@@ -200,6 +203,9 @@ async function buildConfigSnapshot(
   ownerReportsRecentReports: number;
   ownerReportsRecentDeliveries: number;
   ownerReportsPendingDeliveries: number;
+  ownerAlertsEnabled: boolean;
+  ownerRecentAlerts: number;
+  ownerUnreadAlerts: number;
   ownerReportsWebReady: boolean;
   ownerReportsEmailReady: boolean;
   storageEnabled: boolean;
@@ -399,6 +405,15 @@ async function buildConfigSnapshot(
       : 0,
     ownerReportsPendingDeliveries: config.ownerReports?.enabled
       ? db.listOwnerReportDeliveries(100, { status: "pending" }).length
+      : 0,
+    ownerAlertsEnabled:
+      config.ownerReports?.enabled === true &&
+      config.ownerReports.alerts?.enabled === true,
+    ownerRecentAlerts: config.ownerReports?.enabled
+      ? db.listOwnerOpportunityAlerts(20).length
+      : 0,
+    ownerUnreadAlerts: config.ownerReports?.enabled
+      ? db.listOwnerOpportunityAlerts(100, { status: "unread" }).length
       : 0,
     ownerReportsWebReady: Boolean(
       !config.ownerReports?.enabled ||
@@ -887,6 +902,26 @@ function collectFindings(
                 ? "Run `openfox report deliveries --status pending --json` to inspect pending owner report deliveries."
                 : undefined,
     });
+    if (snapshot.ownerAlertsEnabled && !snapshot.opportunityScoutEnabled) {
+      findings.push({
+        id: "owner-alerts-no-scout",
+        severity: "error",
+        summary:
+          "Owner opportunity alerts are enabled but opportunity scouting is disabled.",
+        recommendation:
+          "Enable `opportunityScout.enabled` so OpenFox can discover ranked opportunities before generating alerts.",
+      });
+    } else if (snapshot.ownerAlertsEnabled) {
+      findings.push({
+        id: "owner-alerts-enabled",
+        severity: "ok",
+        summary: `Owner opportunity alerts are enabled (${snapshot.ownerRecentAlerts} recent alert${snapshot.ownerRecentAlerts === 1 ? "" : "s"}, ${snapshot.ownerUnreadAlerts} unread).`,
+        recommendation:
+          snapshot.ownerUnreadAlerts > 0
+            ? "Run `openfox report alerts --status unread --json` or open the owner alerts web inbox."
+            : undefined,
+      });
+    }
   }
 
   if (snapshot.storageEnabled) {
@@ -1128,6 +1163,9 @@ export async function buildHealthSnapshot(
       ownerReportsRecentReports: 0,
       ownerReportsRecentDeliveries: 0,
       ownerReportsPendingDeliveries: 0,
+      ownerAlertsEnabled: false,
+      ownerRecentAlerts: 0,
+      ownerUnreadAlerts: 0,
       ownerReportsWebReady: false,
       ownerReportsEmailReady: false,
       storageEnabled: false,
@@ -1228,7 +1266,7 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Gateway enabled: ${yesNo(snapshot.gatewayEnabled)}`,
     `Bounty enabled: ${yesNo(snapshot.bountyEnabled)}${snapshot.bountyRole ? ` (${snapshot.bountyRole})` : ""}`,
     `Bounty auto mode: ${yesNo(snapshot.bountyAutoEnabled)}`,
-    `Owner reports enabled: ${yesNo(snapshot.ownerReportsEnabled)}${snapshot.ownerReportsEnabled ? ` (${snapshot.ownerReportsRecentReports} recent, ${snapshot.ownerReportsRecentDeliveries} deliveries, ${snapshot.ownerReportsPendingDeliveries} pending, web=${snapshot.ownerReportsWebEnabled ? "on" : "off"}, email=${snapshot.ownerReportsEmailEnabled ? "on" : "off"})` : ""}`,
+    `Owner reports enabled: ${yesNo(snapshot.ownerReportsEnabled)}${snapshot.ownerReportsEnabled ? ` (${snapshot.ownerReportsRecentReports} recent, ${snapshot.ownerReportsRecentDeliveries} deliveries, ${snapshot.ownerReportsPendingDeliveries} pending, alerts=${snapshot.ownerAlertsEnabled ? `${snapshot.ownerRecentAlerts} recent/${snapshot.ownerUnreadAlerts} unread` : "off"}, web=${snapshot.ownerReportsWebEnabled ? "on" : "off"}, email=${snapshot.ownerReportsEmailEnabled ? "on" : "off"})` : ""}`,
     `Storage enabled: ${yesNo(snapshot.storageEnabled)}${snapshot.storageEnabled ? ` (${snapshot.storageActiveLeases} active, ${snapshot.storageRecentRenewals} renewals, ${snapshot.storageRecentAudits} audits, ${snapshot.storageRecentAnchors} anchors, ${snapshot.storageUnderReplicatedBundles} under-replicated)` : ""}`,
     `Artifacts enabled: ${yesNo(snapshot.artifactsEnabled)}${snapshot.artifactsEnabled ? ` (${snapshot.artifactsRecentCount} recent, ${snapshot.artifactsVerifiedCount} verified, ${snapshot.artifactsAnchoredCount} anchored)` : ""}`,
     `x402 server: ${yesNo(snapshot.x402ServerEnabled)}${snapshot.x402ServerEnabled ? ` (${snapshot.x402RecentPayments} recent, ${snapshot.x402PendingPayments} pending, ${snapshot.x402FailedPayments} failed)` : ""}`,
