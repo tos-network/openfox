@@ -194,8 +194,8 @@ import {
 import {
   buildOperatorAutopilotReport,
   buildOperatorAutopilotSnapshot,
-  createOperatorApprovalRequest,
   decideOperatorApprovalRequest,
+  createOperatorApprovalRequest,
   runOperatorAutopilot,
 } from "./operator/autopilot.js";
 import {
@@ -1945,6 +1945,9 @@ Usage:
   openfox report weekly [--json]
   openfox report list [--period <daily|weekly>] [--limit <n>] [--json]
   openfox report get --report-id <id> [--json]
+  openfox report approvals [--status <pending|approved|rejected|expired>] [--limit <n>] [--json]
+  openfox report approve <request-id> [--note <text>] [--json]
+  openfox report reject <request-id> [--note <text>] [--json]
   openfox report deliveries [--channel <web|email>] [--status <pending|delivered|failed>] [--limit <n>] [--json]
   openfox report send --channel <web|email> [--period <daily|weekly> | --report-id <id>] [--json]
 `);
@@ -2027,6 +2030,58 @@ Usage:
           `${item.deliveryId}  [${item.channel}]  ${item.status}  ${item.target}`,
         );
       }
+      return;
+    }
+
+    if (command === "approvals") {
+      const statusRaw = readOption(args, "--status");
+      const status =
+        statusRaw === "pending" ||
+        statusRaw === "approved" ||
+        statusRaw === "rejected" ||
+        statusRaw === "expired"
+          ? statusRaw
+          : undefined;
+      const limit = readNumberOption(args, "--limit", 20);
+      const items = db.listOperatorApprovalRequests(limit, { status });
+      if (asJson) {
+        logger.info(JSON.stringify({ items }, null, 2));
+        return;
+      }
+      if (!items.length) {
+        logger.info("No owner approval requests found.");
+        return;
+      }
+      logger.info("=== OPENFOX OWNER APPROVALS ===");
+      for (const item of items) {
+        logger.info(
+          `${item.requestId}  [${item.status}]  ${item.kind}  scope=${item.scope}  requested_by=${item.requestedBy}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "approve" || command === "reject") {
+      const requestId = args[1]?.trim();
+      if (!requestId) {
+        throw new Error(
+          `Usage: openfox report ${command} <request-id> [--note <text>] [--json]`,
+        );
+      }
+      const record = decideOperatorApprovalRequest({
+        db,
+        requestId,
+        status: command === "approve" ? "approved" : "rejected",
+        decidedBy: "owner-cli",
+        decisionNote: readOption(args, "--note"),
+      });
+      if (asJson) {
+        logger.info(JSON.stringify(record, null, 2));
+        return;
+      }
+      logger.info(
+        `${command === "approve" ? "Approved" : "Rejected"} ${record.requestId}`,
+      );
       return;
     }
 

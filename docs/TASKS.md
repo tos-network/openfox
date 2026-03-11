@@ -310,6 +310,10 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Let operators review and deliver owner reports through CLI, a
     phone-friendly web surface, scheduled delivery hooks, and persisted
     delivery logs.
+- [x] Task 66: Add owner approval inbox and mobile approval actions
+  - Status: Complete
+  - Goal: Let owners review and decide bounded approval requests from the same
+    owner-facing web and CLI surfaces used for reports.
 
 ## Task 53 Breakdown
 
@@ -428,6 +432,15 @@ building OpenFox into a TOS-native agent platform.
   end-of-day, weekly, and anomaly-triggered delivery.
 - [x] Add operator API surfaces for owner reports and deliveries.
 - [x] Add tests for web delivery, email delivery, operator API, and scheduled delivery.
+
+## Task 66 Breakdown
+
+- [x] Add `openfox report approvals`.
+- [x] Add `openfox report approve <request-id>`.
+- [x] Add `openfox report reject <request-id>`.
+- [x] Add owner-web approval inbox routes.
+- [x] Add owner-web approve/reject action routes.
+- [x] Add tests for approval listing and owner-web approval decisions.
 
 ## Task 1 Breakdown
 

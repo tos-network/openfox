@@ -1197,3 +1197,33 @@ Acceptance criteria:
 - owners can review finance and opportunity reports from a phone without opening the terminal
 - web and email views render from the same underlying report object
 - owners can receive routine and anomaly-driven report delivery
+
+### Phase 23: Owner Approval Inbox and Mobile Actions
+
+Status: completed
+
+Goal:
+
+- let the owner handle bounded approval requests from the same mobile-friendly
+  owner surface used for reports
+
+Delivered surface:
+
+- owner approval inbox web page
+- `openfox report approvals`
+- `openfox report approve <request-id>`
+- `openfox report reject <request-id>`
+- owner web endpoints for pending and historical approvals
+
+Implementation tasks:
+
+- expose operator approval requests through the owner web surface
+- add owner-facing approve and reject actions with the same auth boundary as owner reports
+- add owner-facing CLI review and decision commands under `openfox report`
+- add tests for web listing, JSON listing, and approve/reject action paths
+
+Acceptance criteria:
+
+- owners can see pending approval requests from a phone
+- owners can approve or reject a request without using the autopilot CLI directly
+- owner approval decisions persist into the same approval records already used by operator autopilot

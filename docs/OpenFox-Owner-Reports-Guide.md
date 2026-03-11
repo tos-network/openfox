@@ -12,6 +12,7 @@ It turns deterministic local runtime state into:
 - readable owner reports
 - web and email delivery artifacts
 - delivery logs and audit metadata
+- owner approval inbox actions
 
 ## 1. What Owner Reports Do
 
@@ -91,6 +92,9 @@ Inspect stored reports:
 openfox report list --period daily
 openfox report get --report-id <report-id> --json
 openfox report deliveries --channel web --json
+openfox report approvals --status pending --json
+openfox report approve <request-id>
+openfox report reject <request-id>
 ```
 
 Deliver stored or latest reports:
@@ -150,6 +154,9 @@ Routes:
 - `GET /owner/reports/latest/weekly`
 - `GET /owner/reports/:reportId`
 - `GET /owner/deliveries`
+- `GET /owner/approvals`
+- `POST /owner/approvals/:requestId/approve`
+- `POST /owner/approvals/:requestId/reject`
 
 If `authToken` is configured, callers must provide it via:
 
@@ -160,7 +167,33 @@ If `authToken` is configured, callers must provide it via:
 Use this when you want a phone-friendly report surface without opening the
 terminal.
 
-## 6. Email Delivery
+## 6. Owner Approval Inbox
+
+OpenFox already has bounded operator approvals through the autopilot system.
+
+The owner-report surface now exposes those approvals in a simpler owner-facing
+form:
+
+- `openfox report approvals`
+- `openfox report approve <request-id>`
+- `openfox report reject <request-id>`
+- `GET /owner/approvals`
+- `POST /owner/approvals/:requestId/approve`
+- `POST /owner/approvals/:requestId/reject`
+
+This is meant for mobile review and bounded decisions, not broad operator
+reconfiguration.
+
+The approval inbox uses the same underlying approval records as:
+
+- `openfox autopilot approvals`
+- `openfox autopilot approve`
+- `openfox autopilot reject`
+
+So owner-facing approval actions and operator-facing approval actions stay in
+sync.
+
+## 7. Email Delivery
 
 Email delivery supports two modes:
 
@@ -181,7 +214,7 @@ before wiring a real mail pipeline.
 In `sendmail` mode, OpenFox writes those artifacts and then invokes the
 configured sendmail binary.
 
-## 7. Scheduled Generation and Delivery
+## 8. Scheduled Generation and Delivery
 
 OpenFox includes built-in heartbeat tasks for owner reporting:
 
@@ -198,7 +231,7 @@ These can generate or deliver:
 This means owner reports can keep flowing while OpenFox runs as a managed
 service.
 
-## 8. Operator API
+## 9. Operator API
 
 The authenticated operator API also exposes owner-report data:
 
@@ -208,7 +241,7 @@ The authenticated operator API also exposes owner-report data:
 
 These routes are useful for dashboards, control planes, and fleet tooling.
 
-## 9. Practical Guidance
+## 10. Practical Guidance
 
 Start with this sequence:
 
@@ -217,10 +250,12 @@ Start with this sequence:
 3. Run:
    - `openfox report daily --json`
    - `openfox report send --channel web --period daily`
+   - `openfox report approvals --status pending --json`
 4. Verify:
    - `openfox doctor`
    - `openfox status --json`
    - `GET /owner/reports/latest/daily`
+   - `GET /owner/approvals`
 5. Only then enable scheduled delivery and optional email delivery.
 
 This gives you a safe owner-facing reporting surface before introducing a full

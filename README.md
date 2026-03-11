@@ -181,6 +181,8 @@ It supports:
   daily and weekly finance, opportunity, and recommendation reports
 - a built-in owner report web surface for mobile-friendly review of the latest
   daily and weekly reports, plus persisted web/email delivery logs
+- an owner approval inbox with `openfox report approvals|approve|reject` and
+  matching mobile-friendly web approval actions
 - a paid signer-provider surface for bounded delegated execution with:
   - `openfox signer discover`
   - `openfox signer quote`
@@ -746,6 +748,9 @@ Owner-facing delivery surface:
 ```bash
 openfox report list --period daily
 openfox report get --report-id <report-id> --json
+openfox report approvals --status pending --json
+openfox report approve <request-id>
+openfox report reject <request-id>
 openfox report deliveries --channel web --json
 openfox report send --channel web --period daily
 openfox report send --channel email --period weekly
@@ -754,7 +759,7 @@ openfox report send --channel email --period weekly
 When `ownerReports.enabled` is set in `openfox.json`, OpenFox can also start a
 small authenticated owner-report web server during `openfox --run`. That web
 surface serves the latest daily and weekly reports, recent delivery records,
-and the same report objects used for CLI and email delivery.
+the owner approval inbox, and the same report objects used for CLI and email delivery.
 
 ---
 

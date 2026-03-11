@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { describe, expect, it } from "vitest";
+import { createOperatorApprovalRequest } from "../operator/autopilot.js";
 import { deliverOwnerReportChannels } from "../reports/delivery.js";
 import { generateOwnerReport } from "../reports/generation.js";
 import { startOwnerReportServer } from "../reports/server.js";
@@ -114,6 +115,83 @@ describe("owner report delivery", () => {
       await server?.close?.();
       db.close();
       await fs.rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it("serves and decides owner approval requests over the owner report web surface", async () => {
+    const db = createTestDb();
+    let server: Awaited<ReturnType<typeof startOwnerReportServer>> | null = null;
+    try {
+      const config = createTestConfig({
+        ownerReports: {
+          ...DEFAULT_OWNER_REPORTS_CONFIG,
+          enabled: true,
+          web: {
+            ...DEFAULT_OWNER_REPORTS_CONFIG.web,
+            enabled: true,
+            bindHost: "127.0.0.1",
+            port: 0,
+            pathPrefix: "/owner",
+            authToken: "owner-secret",
+          },
+        },
+      });
+
+      const request = createOperatorApprovalRequest({
+        db,
+        config,
+        kind: "treasury_policy_change",
+        scope: "treasury:daily-spend-cap",
+        requestedBy: "autopilot",
+        reason: "raise spend cap",
+      });
+
+      server = await startOwnerReportServer({ config, db });
+      expect(server).not.toBeNull();
+
+      const approvalsJson = await fetch(
+        `${server!.url}/approvals?status=pending&format=json`,
+        {
+          headers: {
+            Authorization: "Bearer owner-secret",
+          },
+        },
+      );
+      expect(approvalsJson.status).toBe(200);
+      const approvalsPayload = (await approvalsJson.json()) as {
+        items: Array<{ requestId: string; status: string }>;
+      };
+      expect(approvalsPayload.items[0]?.requestId).toBe(request.requestId);
+
+      const approvalsHtml = await fetch(
+        `${server!.url}/approvals?token=owner-secret`,
+      );
+      expect(approvalsHtml.status).toBe(200);
+      expect(await approvalsHtml.text()).toContain("OpenFox Approval Inbox");
+
+      const approve = await fetch(
+        `${server!.url}/approvals/${encodeURIComponent(request.requestId)}/approve?format=json`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: "Bearer owner-secret",
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ note: "approved from phone" }),
+        },
+      );
+      expect(approve.status).toBe(200);
+      const approvePayload = (await approve.json()) as {
+        requestId: string;
+        status: string;
+        decisionNote?: string | null;
+      };
+      expect(approvePayload.requestId).toBe(request.requestId);
+      expect(approvePayload.status).toBe("approved");
+      expect(approvePayload.decisionNote).toBe("approved from phone");
+    } finally {
+      await server?.close?.();
+      db.close();
     }
   });
 });
