@@ -1501,7 +1501,7 @@ Acceptance criteria:
 
 ### Phase 31: Ecosystem SDK Builder Packs v2
 
-Status: planned
+Status: completed
 
 Goal:
 

@@ -343,8 +343,8 @@ building OpenFox into a TOS-native agent platform.
   - Status: Complete
   - Goal: Turn the existing fleet, dashboard, and operator surfaces into
     reusable control-plane bundles for public multi-node OpenFox deployments.
-- [ ] Task 73: Add ecosystem SDK builder packs v2
-  - Status: Planned
+- [x] Task 73: Add ecosystem SDK builder packs v2
+  - Status: Complete
   - Goal: Make `tosdk` and OpenFox provider surfaces easier for third-party
     builders to consume without reading runtime internals.
 - [ ] Task 74: Add opportunity strategy execution loops
@@ -1011,10 +1011,10 @@ building OpenFox into a TOS-native agent platform.
 
 ## Task 73 Breakdown
 
-- [ ] Expand `tosdk/examples` into richer requester/provider builder packs.
-- [ ] Add validation tooling so example packs stay runnable.
-- [ ] Add ecosystem-facing snippets for signer, paymaster, storage, artifact, and marketplace integrations.
-- [ ] Update SDK/runtime guidance so third-party builders can choose between `tosdk` and OpenFox more directly.
+- [x] Expand `tosdk/examples` into richer requester/provider builder packs.
+- [x] Add validation tooling so example packs stay runnable.
+- [x] Add ecosystem-facing snippets for signer, paymaster, storage, artifact, and marketplace integrations.
+- [x] Update SDK/runtime guidance so third-party builders can choose between `tosdk` and OpenFox more directly.
 
 ## Task 74 Breakdown
 
