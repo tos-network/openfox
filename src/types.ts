@@ -19,6 +19,23 @@ import type {
   StorageAnchorSummary,
   StorageReceipt,
 } from "tosdk";
+import {
+  cloneSkillBackendStages,
+  DEFAULT_NEWS_FETCH_SKILL_STAGES,
+  DEFAULT_PROOF_VERIFY_SKILL_STAGES,
+  DEFAULT_PROVIDER_BACKEND_MODE,
+  DEFAULT_STORAGE_GET_SKILL_STAGES,
+  DEFAULT_STORAGE_PUT_SKILL_STAGES,
+} from "./agent-discovery/provider-skill-spec.js";
+import type {
+  ProviderBackendMode,
+  SkillBackendStageConfig,
+} from "./agent-discovery/provider-skill-spec.js";
+
+export type {
+  ProviderBackendMode,
+  SkillBackendStageConfig,
+} from "./agent-discovery/provider-skill-spec.js";
 
 export type HexAddress = `0x${string}`;
 export type ArtifactBundleKind = NativeArtifactBundleKind;
@@ -119,6 +136,8 @@ export interface AgentDiscoveryNewsFetchServerConfig {
   maxResponseBytes: number;
   allowPrivateTargets: boolean;
   maxArticleChars: number;
+  backendMode: ProviderBackendMode;
+  skillStages: SkillBackendStageConfig[];
 }
 
 export interface AgentDiscoveryProofVerifyServerConfig {
@@ -132,6 +151,8 @@ export interface AgentDiscoveryProofVerifyServerConfig {
   requestTimeoutMs: number;
   maxFetchBytes: number;
   allowPrivateTargets: boolean;
+  backendMode: ProviderBackendMode;
+  skillStages: SkillBackendStageConfig[];
 }
 
 export interface AgentDiscoveryStorageServerConfig {
@@ -148,6 +169,10 @@ export interface AgentDiscoveryStorageServerConfig {
   defaultTtlSeconds: number;
   maxTtlSeconds: number;
   pruneExpiredOnRead: boolean;
+  putBackendMode: ProviderBackendMode;
+  getBackendMode: ProviderBackendMode;
+  putSkillStages: SkillBackendStageConfig[];
+  getSkillStages: SkillBackendStageConfig[];
 }
 
 export interface AgentGatewayBootnodeConfig {
@@ -338,6 +363,8 @@ export const DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG: AgentDiscoveryNew
     maxResponseBytes: 262144,
     allowPrivateTargets: false,
     maxArticleChars: 12000,
+    backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+    skillStages: cloneSkillBackendStages(DEFAULT_NEWS_FETCH_SKILL_STAGES),
   };
 
 export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryProofVerifyServerConfig =
@@ -352,6 +379,8 @@ export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryP
     requestTimeoutMs: 10_000,
     maxFetchBytes: 262144,
     allowPrivateTargets: false,
+    backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+    skillStages: cloneSkillBackendStages(DEFAULT_PROOF_VERIFY_SKILL_STAGES),
   };
 
 export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorageServerConfig =
@@ -369,6 +398,10 @@ export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorag
     defaultTtlSeconds: 86_400,
     maxTtlSeconds: 2_592_000,
     pruneExpiredOnRead: true,
+    putBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+    getBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+    putSkillStages: cloneSkillBackendStages(DEFAULT_STORAGE_PUT_SKILL_STAGES),
+    getSkillStages: cloneSkillBackendStages(DEFAULT_STORAGE_GET_SKILL_STAGES),
   };
 
 export const DEFAULT_AGENT_GATEWAY_SERVER_CONFIG: AgentGatewayServerConfig = {
@@ -3222,6 +3255,7 @@ export interface Skill {
   primaryEnv?: string;
   requires?: SkillRequirements;
   install?: SkillInstallSpec[];
+  providerBackends?: Record<string, SkillProviderBackendSpec>;
   instructions: string;
   source: SkillSource;
   path: string;
@@ -3244,6 +3278,11 @@ export interface SkillInstallSpec {
   package?: string;
   module?: string;
   url?: string;
+}
+
+export interface SkillProviderBackendSpec {
+  entry: string;
+  description?: string;
 }
 
 export interface SkillPromptEntry {
@@ -3293,6 +3332,14 @@ export interface SkillFrontmatter {
   "primary-env"?: string;
   requires?: SkillRequirements;
   install?: SkillInstallSpec[];
+  "provider-backends"?: Record<
+    string,
+    | string
+    | {
+        entry?: string;
+        description?: string;
+      }
+  >;
 }
 
 // ─── Git ────────────────────────────────────────────────────────

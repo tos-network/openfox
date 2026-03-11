@@ -33,6 +33,10 @@ import {
   validateRequestExpiry,
 } from "./security.js";
 import { fetchBoundedUrl, validateHttpTargetUrl } from "./http-fetch.js";
+import { executeProviderBackend } from "./provider-backends.js";
+import { formatSkillBackendStage } from "./provider-skill-spec.js";
+import { runSkillBackend } from "../skills/backend-runner.js";
+import { parseProofVerifySkillResult } from "./skill-backend-contracts.js";
 
 const logger = createLogger("agent-discovery.proof-verify");
 
@@ -57,6 +61,17 @@ interface StoredProofVerifyResult {
   requesterIdentity: string;
   capability: string;
   createdAt: string;
+}
+
+interface ProofVerifyBackendResult {
+  verdict: ProofVerifyInvocationResponse["verdict"];
+  summary: string;
+  metadata: Record<string, unknown>;
+  verifierReceiptSha256: `0x${string}`;
+  backendSummary: {
+    kind: "skills" | "builtin";
+    stages: string[];
+  };
 }
 
 const BODY_LIMIT_BYTES = 64 * 1024;
@@ -197,12 +212,7 @@ function extractReferencedBundleHash(value: unknown): string | undefined {
 async function verifyRequestBackend(
   request: ProofVerifyInvocationRequest,
   config: AgentDiscoveryProofVerifyServerConfig,
-): Promise<{
-  verdict: ProofVerifyInvocationResponse["verdict"];
-  summary: string;
-  metadata: Record<string, unknown>;
-  verifierReceiptSha256: `0x${string}`;
-}> {
+): Promise<ProofVerifyBackendResult> {
   const checks: Array<{ label: string; ok: boolean; actual?: string; expected?: string }> = [];
   const metadata: Record<string, unknown> = {
     verifier_backend: "bounded_receipt_verifier_v0",
@@ -299,7 +309,54 @@ async function verifyRequestBackend(
     checks,
     metadata,
   })).digest("hex")}` as const;
-  return { verdict, summary, metadata, verifierReceiptSha256 };
+  return {
+    verdict,
+    summary,
+    metadata,
+    verifierReceiptSha256,
+    backendSummary: {
+      kind: "builtin",
+      stages: ["builtin:proof.verify"],
+    },
+  };
+}
+
+async function runSkillProofVerifyBackend(params: {
+  request: ProofVerifyInvocationRequest;
+  proofVerifyConfig: AgentDiscoveryProofVerifyServerConfig;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+}): Promise<ProofVerifyBackendResult> {
+  const skillsDir = params.config.skillsDir || "~/.openfox/skills";
+  const [verifyStage] = params.proofVerifyConfig.skillStages;
+  if (!verifyStage) {
+    throw new Error("proof.verify skillStages must define a verify stage");
+  }
+  const result = parseProofVerifySkillResult(await runSkillBackend({
+    skillsDir,
+    skillName: verifyStage.skill,
+    backendName: verifyStage.backend,
+    input: {
+      request: params.request,
+      options: {
+        allowPrivateTargets: params.proofVerifyConfig.allowPrivateTargets,
+        requestTimeoutMs: params.proofVerifyConfig.requestTimeoutMs,
+        maxFetchBytes: params.proofVerifyConfig.maxFetchBytes,
+      },
+    },
+    context: {
+      config: params.config,
+      db: params.db,
+      now: () => new Date(),
+    },
+  }));
+  return {
+    ...result,
+    backendSummary: {
+      kind: "skills",
+      stages: params.proofVerifyConfig.skillStages.map(formatSkillBackendStage),
+    },
+  };
 }
 
 async function requirePayment(params: {
@@ -354,7 +411,9 @@ export async function startAgentDiscoveryProofVerifyServer(
           capability: proofVerifyConfig.capability,
           priceWei: proofVerifyConfig.priceWei,
           address,
-          integration: "skeleton",
+          integration: "skill_composed",
+          backendMode: proofVerifyConfig.backendMode,
+          skillStages: proofVerifyConfig.skillStages,
         });
         return;
       }
@@ -435,7 +494,25 @@ export async function startAgentDiscoveryProofVerifyServer(
 
       const resultId = buildProofVerifyResultId(body);
       const verifiedAt = Math.floor(Date.now() / 1000);
-      const verification = await verifyRequestBackend(body, proofVerifyConfig);
+      const backend = await executeProviderBackend({
+        mode: proofVerifyConfig.backendMode,
+        runSkills: () =>
+          runSkillProofVerifyBackend({
+            request: body,
+            proofVerifyConfig,
+            config,
+            db,
+          }),
+        runBuiltin: () => verifyRequestBackend(body, proofVerifyConfig),
+        onSkillsFailure: (error) => {
+          logger.warn(
+            `proof.verify skill backend failed, falling back to builtin: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        },
+      });
+      const verification = backend.result;
       const response: ProofVerifyInvocationResponse = {
         status: "ok",
         result_id: resultId,
@@ -451,7 +528,10 @@ export async function startAgentDiscoveryProofVerifyServer(
         ...(body.verifier_profile ? { verifier_profile: body.verifier_profile } : {}),
         verifier_receipt_sha256: verification.verifierReceiptSha256,
         summary: verification.summary,
-        metadata: verification.metadata,
+        metadata: {
+          ...verification.metadata,
+          provider_backend: verification.backendSummary,
+        },
       };
       storeProofVerifyResult(db, {
         resultId,

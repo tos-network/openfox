@@ -176,7 +176,10 @@ export function createEvidenceWorkflowCoordinator(params: {
             request_expires_at: Math.floor(now().getTime() / 1000) + 300,
             subject_url: sourceUrl,
             subject_sha256: fetchResponse.article_sha256,
-            proof_bundle_url: absoluteResultUrl(input.newsFetchBaseUrl, fetchResponse.result_url),
+            proof_bundle_url: absoluteResultUrl(
+              input.newsFetchBaseUrl,
+              fetchResponse.zktls_bundle_url || fetchResponse.result_url,
+            ),
             proof_bundle_sha256: fetchResponse.zktls_bundle_sha256,
             reason: `evidence workflow verify ${runId}`,
           };

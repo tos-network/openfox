@@ -3,6 +3,10 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
+import {
+  DEFAULT_PROOF_VERIFY_SKILL_STAGES,
+  DEFAULT_PROVIDER_BACKEND_MODE,
+} from "../agent-discovery/provider-skill-spec.js";
 import type { OpenFoxConfig, OpenFoxDatabase, OpenFoxIdentity } from "../types.js";
 import { createDatabase } from "../state/database.js";
 
@@ -52,6 +56,8 @@ function makeConfig(): OpenFoxConfig {
         requestTimeoutMs: 5000,
         maxFetchBytes: 65536,
         allowPrivateTargets: true,
+        backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+        skillStages: DEFAULT_PROOF_VERIFY_SKILL_STAGES.map((stage) => ({ ...stage })),
       },
     },
   };
@@ -175,6 +181,10 @@ describe("agent discovery proof.verify server", () => {
       expect(response.status).toBe("ok");
       expect(response.verdict).toBe("valid");
       expect(response.verifier_receipt_sha256).toMatch(/^0x[0-9a-f]{64}$/);
+      expect((response.metadata as Record<string, unknown>).provider_backend).toEqual({
+        kind: "skills",
+        stages: ["proofverify.verify"],
+      });
       expect(submittedPayments).toBe(1);
     } finally {
       await server.close();

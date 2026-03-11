@@ -36,6 +36,13 @@ import {
   recordRequestNonce,
   validateRequestExpiry,
 } from "./security.js";
+import { executeProviderBackend } from "./provider-backends.js";
+import { formatSkillBackendStage } from "./provider-skill-spec.js";
+import { runSkillBackend } from "../skills/backend-runner.js";
+import {
+  parseStorageGetSkillResult,
+  parseStoragePutSkillResult,
+} from "./skill-backend-contracts.js";
 
 const logger = createLogger("agent-discovery.storage");
 
@@ -64,6 +71,41 @@ interface StoredStorageObject {
   expiresAt: string;
   filePath: string;
 }
+
+interface StoragePutBackendResult {
+  objectId: string;
+  objectKey?: string;
+  contentType: string;
+  contentSha256: string;
+  sizeBytes: number;
+  ttlSeconds: number;
+  expiresAt: string;
+  buffer: Buffer;
+  backendSummary: {
+    kind: "skills" | "builtin";
+    stages: string[];
+  };
+}
+
+type StorageGetBackendResult =
+  | {
+      status: "ok";
+      response: Omit<StorageGetInvocationResponse, "payment_tx_hash" | "fetched_at">;
+      backendSummary: {
+        kind: "skills" | "builtin";
+        stages: string[];
+      };
+    }
+  | {
+      status: "rejected";
+      httpStatus: number;
+      reason: string;
+      pruneExpired?: boolean;
+      backendSummary: {
+        kind: "skills" | "builtin";
+        stages: string[];
+      };
+    };
 
 const BODY_LIMIT_BYTES = 512 * 1024;
 
@@ -240,6 +282,187 @@ async function requirePayment(params: {
   return verified;
 }
 
+function prepareBuiltinStoragePut(params: {
+  request: StoragePutInvocationRequest;
+  storageConfig: AgentDiscoveryStorageServerConfig;
+  nowMs: number;
+}): StoragePutBackendResult {
+  const { buffer, contentType } = decodePutPayload(
+    params.request,
+    params.storageConfig.maxObjectBytes,
+  );
+  const hashHex = toHexSha256(buffer);
+  const ttlSeconds =
+    params.request.ttl_seconds ?? params.storageConfig.defaultTtlSeconds;
+  return {
+    objectId: hashHex,
+    objectKey: params.request.object_key?.trim() || undefined,
+    contentType,
+    contentSha256: `0x${hashHex}`,
+    sizeBytes: buffer.byteLength,
+    ttlSeconds,
+    expiresAt: new Date(params.nowMs + ttlSeconds * 1000).toISOString(),
+    buffer,
+    backendSummary: {
+      kind: "builtin",
+      stages: ["builtin:storage.put"],
+    },
+  };
+}
+
+async function prepareSkillStoragePut(params: {
+  request: StoragePutInvocationRequest;
+  storageConfig: AgentDiscoveryStorageServerConfig;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  nowMs: number;
+}): Promise<StoragePutBackendResult> {
+  const skillsDir = params.config.skillsDir || "~/.openfox/skills";
+  const [putStage] = params.storageConfig.putSkillStages;
+  if (!putStage) {
+    throw new Error("storage.put putSkillStages must define a put stage");
+  }
+  const result = parseStoragePutSkillResult(await runSkillBackend({
+    skillsDir,
+    skillName: putStage.skill,
+    backendName: putStage.backend,
+    input: {
+      request: params.request,
+      options: {
+        maxObjectBytes: params.storageConfig.maxObjectBytes,
+        defaultTtlSeconds: params.storageConfig.defaultTtlSeconds,
+        maxTtlSeconds: params.storageConfig.maxTtlSeconds,
+      },
+      nowMs: params.nowMs,
+    },
+    context: {
+      config: params.config,
+      db: params.db,
+      now: () => new Date(params.nowMs),
+    },
+  }));
+  return {
+    objectId: result.objectId,
+    objectKey: result.objectKey,
+    contentType: result.contentType,
+    contentSha256: result.contentSha256,
+    sizeBytes: result.sizeBytes,
+    ttlSeconds: result.ttlSeconds,
+    expiresAt: new Date(result.expiresAt * 1000).toISOString(),
+    buffer: Buffer.from(result.bufferBase64, "base64"),
+    backendSummary: {
+      kind: "skills",
+      stages: params.storageConfig.putSkillStages.map(formatSkillBackendStage),
+    },
+  };
+}
+
+function renderBuiltinStorageGet(params: {
+  request: StorageGetInvocationRequest;
+  object: StoredStorageObject;
+  buffer: Buffer;
+  nowMs: number;
+}): StorageGetBackendResult {
+  if (Date.parse(params.object.expiresAt) <= params.nowMs) {
+    return {
+      status: "rejected",
+      httpStatus: 410,
+      reason: "object expired",
+      pruneExpired: true,
+      backendSummary: {
+        kind: "builtin",
+        stages: ["builtin:storage.get"],
+      },
+    };
+  }
+  if (
+    params.request.max_bytes !== undefined &&
+    params.object.sizeBytes > params.request.max_bytes
+  ) {
+    return {
+      status: "rejected",
+      httpStatus: 400,
+      reason: `object exceeds requested max_bytes (${params.request.max_bytes})`,
+      backendSummary: {
+        kind: "builtin",
+        stages: ["builtin:storage.get"],
+      },
+    };
+  }
+  return {
+    status: "ok",
+    response: {
+      status: "ok",
+      object_id: params.object.objectId,
+      expires_at: Math.floor(Date.parse(params.object.expiresAt) / 1000),
+      content_type: params.object.contentType,
+      content_sha256: params.object.contentSha256,
+      size_bytes: params.object.sizeBytes,
+      metadata: params.object.metadata,
+      ...(params.request.inline_base64 === false
+        ? {}
+        : { content_base64: params.buffer.toString("base64") }),
+      ...(params.object.contentType.startsWith("text/") ||
+      params.object.contentType.includes("json")
+        ? { content_text: params.buffer.toString("utf8") }
+        : {}),
+    },
+    backendSummary: {
+      kind: "builtin",
+      stages: ["builtin:storage.get"],
+    },
+  };
+}
+
+async function renderSkillStorageGet(params: {
+  request: StorageGetInvocationRequest;
+  object: StoredStorageObject;
+  buffer: Buffer;
+  storageConfig: AgentDiscoveryStorageServerConfig;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  nowMs: number;
+}): Promise<StorageGetBackendResult> {
+  const skillsDir = params.config.skillsDir || "~/.openfox/skills";
+  const [getStage] = params.storageConfig.getSkillStages;
+  if (!getStage) {
+    throw new Error("storage.get getSkillStages must define a get stage");
+  }
+  const result = parseStorageGetSkillResult(await runSkillBackend({
+    skillsDir,
+    skillName: getStage.skill,
+    backendName: getStage.backend,
+    input: {
+      request: params.request,
+      object: {
+        objectId: params.object.objectId,
+        objectKey: params.object.objectKey,
+        contentType: params.object.contentType,
+        contentSha256: params.object.contentSha256,
+        sizeBytes: params.object.sizeBytes,
+        metadata: params.object.metadata,
+        storedAt: params.object.storedAt,
+        ttlSeconds: params.object.ttlSeconds,
+        expiresAt: params.object.expiresAt,
+      },
+      bufferBase64: params.buffer.toString("base64"),
+      nowMs: params.nowMs,
+    },
+    context: {
+      config: params.config,
+      db: params.db,
+      now: () => new Date(params.nowMs),
+    },
+  }));
+  return {
+    ...result,
+    backendSummary: {
+      kind: "skills",
+      stages: params.storageConfig.getSkillStages.map(formatSkillBackendStage),
+    },
+  };
+}
+
 export async function startAgentDiscoveryStorageServer(
   params: StartAgentDiscoveryStorageServerParams,
 ): Promise<AgentDiscoveryStorageServer> {
@@ -268,6 +491,10 @@ export async function startAgentDiscoveryStorageServer(
           getPriceWei: storageConfig.getPriceWei,
           defaultTtlSeconds: storageConfig.defaultTtlSeconds,
           maxTtlSeconds: storageConfig.maxTtlSeconds,
+          putBackendMode: storageConfig.putBackendMode,
+          getBackendMode: storageConfig.getBackendMode,
+          putSkillStages: storageConfig.putSkillStages,
+          getSkillStages: storageConfig.getSkillStages,
           address,
           storageDir: rootDir,
         });
@@ -339,6 +566,32 @@ export async function startAgentDiscoveryStorageServer(
         if (wantsPut) {
           const body = rawBody as unknown as StoragePutInvocationRequest;
           const requesterIdentity = validatePutRequest(body, storageConfig);
+          const prepared = await executeProviderBackend({
+            mode: storageConfig.putBackendMode,
+            runSkills: () =>
+              prepareSkillStoragePut({
+                request: body,
+                storageConfig,
+                config,
+                db,
+                nowMs: Date.now(),
+              }),
+            runBuiltin: () =>
+              Promise.resolve(
+                prepareBuiltinStoragePut({
+                  request: body,
+                  storageConfig,
+                  nowMs: Date.now(),
+                }),
+              ),
+            onSkillsFailure: (error) => {
+              logger.warn(
+                `storage.put skill backend failed, falling back to builtin: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            },
+          });
           const requestKey = buildStorageRequestKey(
             "put",
             requesterIdentity,
@@ -399,26 +652,22 @@ export async function startAgentDiscoveryStorageServer(
             expiresAt: body.request_expires_at,
           });
 
-          const { buffer, contentType } = decodePutPayload(body, storageConfig.maxObjectBytes);
-          const hashHex = toHexSha256(buffer);
-          const objectId = hashHex;
+          const objectId = prepared.result.objectId;
           const filePath = path.join(objectsDir, `${objectId}.bin`);
           if (!fs.existsSync(filePath)) {
-            fs.writeFileSync(filePath, buffer);
+            fs.writeFileSync(filePath, prepared.result.buffer);
           }
           const storedAt = new Date().toISOString();
-          const ttlSeconds = body.ttl_seconds ?? storageConfig.defaultTtlSeconds;
-          const expiresAt = new Date(Date.now() + ttlSeconds * 1000).toISOString();
           const object: StoredStorageObject = {
             objectId,
-            objectKey: body.object_key?.trim() || undefined,
-            contentType,
-            contentSha256: `0x${hashHex}`,
-            sizeBytes: buffer.byteLength,
+            objectKey: prepared.result.objectKey,
+            contentType: prepared.result.contentType,
+            contentSha256: prepared.result.contentSha256,
+            sizeBytes: prepared.result.sizeBytes,
             metadata: body.metadata,
             storedAt,
-            ttlSeconds,
-            expiresAt,
+            ttlSeconds: prepared.result.ttlSeconds,
+            expiresAt: prepared.result.expiresAt,
             filePath,
           };
           storeObject(db, object);
@@ -429,10 +678,10 @@ export async function startAgentDiscoveryStorageServer(
             result_url: buildStorageObjectPath(objectId),
             payment_tx_hash: paid.txHash,
             stored_at: Math.floor(Date.now() / 1000),
-            ttl_seconds: ttlSeconds,
-            expires_at: Math.floor(Date.parse(expiresAt) / 1000),
+            ttl_seconds: object.ttlSeconds,
+            expires_at: Math.floor(Date.parse(object.expiresAt) / 1000),
             object_key: object.objectKey,
-            content_type: contentType,
+            content_type: object.contentType,
             content_sha256: object.contentSha256,
             size_bytes: object.sizeBytes,
             metadata: object.metadata,
@@ -462,17 +711,46 @@ export async function startAgentDiscoveryStorageServer(
             json(res, 404, { status: "rejected", reason: "object not found" });
             return;
           }
-          if (Date.parse(object.expiresAt) <= Date.now()) {
-            if (storageConfig.pruneExpiredOnRead) {
+          const buffer = fs.readFileSync(object.filePath);
+          const rendered = await executeProviderBackend({
+            mode: storageConfig.getBackendMode,
+            runSkills: () =>
+              renderSkillStorageGet({
+                request: body,
+                object,
+                buffer,
+                storageConfig,
+                config,
+                db,
+                nowMs: Date.now(),
+              }),
+            runBuiltin: () =>
+              Promise.resolve(
+                renderBuiltinStorageGet({
+                  request: body,
+                  object,
+                  buffer,
+                  nowMs: Date.now(),
+                }),
+              ),
+            onSkillsFailure: (error) => {
+              logger.warn(
+                `storage.get skill backend failed, falling back to builtin: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              );
+            },
+          });
+          if (rendered.result.status !== "ok") {
+            if (
+              rendered.result.pruneExpired &&
+              storageConfig.pruneExpiredOnRead
+            ) {
               deleteStoredObject(db, object);
             }
-            json(res, 410, { status: "rejected", reason: "object expired" });
-            return;
-          }
-          if (body.max_bytes !== undefined && object.sizeBytes > body.max_bytes) {
-            json(res, 400, {
+            json(res, rendered.result.httpStatus, {
               status: "rejected",
-              reason: `object exceeds requested max_bytes (${body.max_bytes})`,
+              reason: rendered.result.reason,
             });
             return;
           }
@@ -505,24 +783,10 @@ export async function startAgentDiscoveryStorageServer(
             nonce: body.request_nonce,
             expiresAt: body.request_expires_at,
           });
-          const buffer = fs.readFileSync(object.filePath);
           const response: StorageGetInvocationResponse = {
-            status: "ok",
+            ...rendered.result.response,
             payment_tx_hash: paid.txHash,
             fetched_at: Math.floor(Date.now() / 1000),
-            object_id: object.objectId,
-            expires_at: Math.floor(Date.parse(object.expiresAt) / 1000),
-            content_type: object.contentType,
-            content_sha256: object.contentSha256,
-            size_bytes: object.sizeBytes,
-            metadata: object.metadata,
-            ...(body.inline_base64 === false
-              ? {}
-              : { content_base64: buffer.toString("base64") }),
-            ...(object.contentType.startsWith("text/") ||
-            object.contentType.includes("json")
-              ? { content_text: buffer.toString("utf8") }
-              : {}),
           };
           db.setKV(requestKey, JSON.stringify(response));
           json(res, 200, response);

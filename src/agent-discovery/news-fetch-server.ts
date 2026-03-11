@@ -33,6 +33,13 @@ import {
   validateRequestExpiry,
 } from "./security.js";
 import { fetchBoundedUrl, validateHttpTargetUrl } from "./http-fetch.js";
+import { executeProviderBackend } from "./provider-backends.js";
+import { formatSkillBackendStage } from "./provider-skill-spec.js";
+import { runSkillBackend } from "../skills/backend-runner.js";
+import {
+  parseNewsFetchCaptureSkillResult,
+  parseZkTlsBundleSkillResult,
+} from "./skill-backend-contracts.js";
 
 const logger = createLogger("agent-discovery.news-fetch");
 
@@ -57,6 +64,23 @@ interface StoredNewsFetchJob {
   requesterIdentity: string;
   capability: string;
   createdAt: string;
+}
+
+interface NewsFetchBackendResult {
+  canonicalUrl: string;
+  httpStatus: number;
+  contentType: string;
+  articleSha256: `0x${string}`;
+  articleText?: string;
+  headline?: string;
+  publisher?: string;
+  bundleFormat: string;
+  bundleSha256: `0x${string}`;
+  bundle: Record<string, unknown>;
+  backendSummary: {
+    kind: "skills" | "builtin";
+    stages: string[];
+  };
 }
 
 const BODY_LIMIT_BYTES = 64 * 1024;
@@ -107,6 +131,10 @@ function getNewsFetchJobKey(jobId: string): string {
 
 function buildNewsFetchResultPath(jobId: string): string {
   return `/news/fetch/result/${jobId}`;
+}
+
+function buildNewsFetchBundlePath(jobId: string): string {
+  return `/news/fetch/bundle/${jobId}`;
 }
 
 function loadStoredNewsFetchJob(
@@ -246,6 +274,120 @@ function buildCaptureBundle(params: {
   return { bundleSha256, bundle };
 }
 
+async function runBuiltinNewsFetchBackend(params: {
+  request: NewsFetchInvocationRequest;
+  sourceUrl: URL;
+  newsFetchConfig: AgentDiscoveryNewsFetchServerConfig;
+  fetchedAt: number;
+}): Promise<NewsFetchBackendResult> {
+  const fetched = await fetchBoundedUrl(params.sourceUrl, {
+    timeoutMs: params.newsFetchConfig.requestTimeoutMs,
+    maxResponseBytes: params.newsFetchConfig.maxResponseBytes,
+  });
+  const articleText = extractArticleText(
+    fetched.contentType,
+    fetched.body,
+    params.newsFetchConfig.maxArticleChars,
+  );
+  const headline =
+    params.request.headline_hint?.trim() ||
+    extractHeadline(fetched.contentType, fetched.body);
+  const publisher =
+    params.request.publisher_hint?.trim() || params.sourceUrl.hostname;
+  const { bundleSha256, bundle } = buildCaptureBundle({
+    request: params.request,
+    fetchedAt: params.fetchedAt,
+    canonicalUrl: fetched.canonicalUrl,
+    articleSha256: fetched.bodySha256,
+    articleText,
+    headline,
+    publisher,
+    contentType: fetched.contentType,
+    httpStatus: fetched.status,
+  });
+  return {
+    canonicalUrl: fetched.canonicalUrl,
+    httpStatus: fetched.status,
+    contentType: fetched.contentType,
+    articleSha256: fetched.bodySha256,
+    articleText,
+    headline,
+    publisher,
+    bundleFormat: "bounded_http_capture_v0",
+    bundleSha256,
+    bundle,
+    backendSummary: {
+      kind: "builtin",
+      stages: ["builtin:news.fetch"],
+    },
+  };
+}
+
+async function runSkillNewsFetchBackend(params: {
+  request: NewsFetchInvocationRequest;
+  sourceUrl: URL;
+  newsFetchConfig: AgentDiscoveryNewsFetchServerConfig;
+  config: OpenFoxConfig;
+  db: OpenFoxDatabase;
+  fetchedAt: number;
+}): Promise<NewsFetchBackendResult> {
+  const skillsDir = params.config.skillsDir || "~/.openfox/skills";
+  const [captureStage, bundleStage] = params.newsFetchConfig.skillStages;
+  if (!captureStage || !bundleStage) {
+    throw new Error("news.fetch skillStages must define capture and bundle stages");
+  }
+  const capture = parseNewsFetchCaptureSkillResult(await runSkillBackend({
+    skillsDir,
+    skillName: captureStage.skill,
+    backendName: captureStage.backend,
+    input: {
+      request: params.request,
+      options: {
+        allowPrivateTargets: params.newsFetchConfig.allowPrivateTargets,
+        requestTimeoutMs: params.newsFetchConfig.requestTimeoutMs,
+        maxResponseBytes: params.newsFetchConfig.maxResponseBytes,
+        maxArticleChars: params.newsFetchConfig.maxArticleChars,
+      },
+    },
+    context: {
+      config: params.config,
+      db: params.db,
+      now: () => new Date(),
+    },
+  }));
+  const bundled = parseZkTlsBundleSkillResult(await runSkillBackend({
+    skillsDir,
+    skillName: bundleStage.skill,
+    backendName: bundleStage.backend,
+    input: {
+      request: params.request,
+      fetchedAt: params.fetchedAt,
+      capture,
+    },
+    context: {
+      config: params.config,
+      db: params.db,
+      now: () => new Date(),
+    },
+  }));
+  return {
+    canonicalUrl: capture.canonicalUrl,
+    httpStatus: capture.httpStatus,
+    contentType: capture.contentType,
+    articleSha256: capture.articleSha256,
+    articleText: capture.articleText,
+    headline: capture.headline,
+    publisher: capture.publisher,
+    bundleFormat: bundled.format,
+    bundleSha256: bundled.bundleSha256,
+    bundle: bundled.bundle,
+    backendSummary: {
+      kind: "skills",
+      stages: params.newsFetchConfig.skillStages.map(formatSkillBackendStage),
+    },
+  };
+}
+
 async function requirePayment(params: {
   req: IncomingMessage;
   res: ServerResponse;
@@ -287,6 +429,7 @@ export async function startAgentDiscoveryNewsFetchServer(
     : `/${newsFetchConfig.path}`;
   const healthzPath = `${path}/healthz`;
   const resultPathPrefix = "/news/fetch/result/";
+  const bundlePathPrefix = "/news/fetch/bundle/";
   const requestPaths = new Set([path, "/news/fetch"]);
 
   const server = http.createServer(async (req, res) => {
@@ -298,7 +441,9 @@ export async function startAgentDiscoveryNewsFetchServer(
           capability: newsFetchConfig.capability,
           priceWei: newsFetchConfig.priceWei,
           address,
-          integration: "skeleton",
+          integration: "skill_composed",
+          backendMode: newsFetchConfig.backendMode,
+          skillStages: newsFetchConfig.skillStages,
         });
         return;
       }
@@ -314,6 +459,25 @@ export async function startAgentDiscoveryNewsFetchServer(
           return;
         }
         json(res, 200, job.response);
+        return;
+      }
+      if (req.method === "GET" && url.pathname.startsWith(bundlePathPrefix)) {
+        const jobId = url.pathname.slice(bundlePathPrefix.length).trim();
+        if (!jobId) {
+          json(res, 400, { error: "missing job id" });
+          return;
+        }
+        const job = loadStoredNewsFetchJob(db, jobId);
+        if (!job) {
+          json(res, 404, { error: "job not found" });
+          return;
+        }
+        const bundle = job.response.metadata?.bundle;
+        if (!bundle || typeof bundle !== "object") {
+          json(res, 404, { error: "bundle not found" });
+          return;
+        }
+        json(res, 200, bundle);
         return;
       }
       if (requestPaths.has(url.pathname) && req.method === "HEAD") {
@@ -386,29 +550,33 @@ export async function startAgentDiscoveryNewsFetchServer(
 
       const jobId = buildNewsFetchJobId(body);
       const fetchedAt = Math.floor(Date.now() / 1000);
-      const fetched = await fetchBoundedUrl(sourceUrl, {
-        timeoutMs: newsFetchConfig.requestTimeoutMs,
-        maxResponseBytes: newsFetchConfig.maxResponseBytes,
+      const backend = await executeProviderBackend({
+        mode: newsFetchConfig.backendMode,
+        runSkills: () =>
+          runSkillNewsFetchBackend({
+            request: body,
+            sourceUrl,
+            newsFetchConfig,
+            config,
+            db,
+            fetchedAt,
+          }),
+        runBuiltin: () =>
+          runBuiltinNewsFetchBackend({
+            request: body,
+            sourceUrl,
+            newsFetchConfig,
+            fetchedAt,
+          }),
+        onSkillsFailure: (error) => {
+          logger.warn(
+            `news.fetch skill backend failed, falling back to builtin: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
+        },
       });
-      const articleText = extractArticleText(
-        fetched.contentType,
-        fetched.body,
-        newsFetchConfig.maxArticleChars,
-      );
-      const headline =
-        body.headline_hint?.trim() || extractHeadline(fetched.contentType, fetched.body);
-      const publisher = body.publisher_hint?.trim() || sourceUrl.hostname;
-      const { bundleSha256, bundle } = buildCaptureBundle({
-        request: body,
-        fetchedAt,
-        canonicalUrl: fetched.canonicalUrl,
-        articleSha256: fetched.bodySha256,
-        articleText,
-        headline,
-        publisher,
-        contentType: fetched.contentType,
-        httpStatus: fetched.status,
-      });
+      const result = backend.result;
       const response: NewsFetchInvocationResponse = {
         status: "ok",
         job_id: jobId,
@@ -416,20 +584,21 @@ export async function startAgentDiscoveryNewsFetchServer(
         payment_tx_hash: paid.txHash,
         fetched_at: fetchedAt,
         source_url: sourceUrl.toString(),
-        canonical_url: fetched.canonicalUrl,
-        publisher,
-        headline,
-        article_sha256: fetched.bodySha256,
-        article_text: articleText,
-        zktls_bundle_format: "bounded_http_capture_v0",
-        zktls_bundle_sha256: bundleSha256,
+        canonical_url: result.canonicalUrl,
+        publisher: result.publisher,
+        headline: result.headline,
+        article_sha256: result.articleSha256,
+        article_text: result.articleText,
+        zktls_bundle_format: result.bundleFormat,
+        zktls_bundle_sha256: result.bundleSha256,
+        zktls_bundle_url: buildNewsFetchBundlePath(jobId),
         metadata: {
           publisher_hint: body.publisher_hint || null,
           headline_hint: body.headline_hint || null,
-          http_status: fetched.status,
-          content_type: fetched.contentType,
-          capture_backend: "bounded_http_capture_v0",
-          bundle,
+          http_status: result.httpStatus,
+          content_type: result.contentType,
+          provider_backend: result.backendSummary,
+          bundle: result.bundle,
         },
       };
       storeNewsFetchJob(db, {

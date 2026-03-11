@@ -3,6 +3,10 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
+import {
+  DEFAULT_NEWS_FETCH_SKILL_STAGES,
+  DEFAULT_PROVIDER_BACKEND_MODE,
+} from "../agent-discovery/provider-skill-spec.js";
 import type { OpenFoxConfig, OpenFoxDatabase, OpenFoxIdentity } from "../types.js";
 import { createDatabase } from "../state/database.js";
 
@@ -51,6 +55,8 @@ function makeConfig(): OpenFoxConfig {
         maxResponseBytes: 65536,
         allowPrivateTargets: true,
         maxArticleChars: 4000,
+        backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+        skillStages: DEFAULT_NEWS_FETCH_SKILL_STAGES.map((stage) => ({ ...stage })),
       },
     },
   };
@@ -163,7 +169,11 @@ describe("agent discovery news.fetch server", () => {
       expect(firstBody.status).toBe("ok");
       expect(firstBody.headline).toBe("Bounded Capture Headline");
       expect(firstBody.article_sha256).toMatch(/^0x[0-9a-f]{64}$/);
-      expect(firstBody.zktls_bundle_format).toBe("bounded_http_capture_v0");
+      expect(firstBody.zktls_bundle_format).toBe("skill_zktls_bundle_v1");
+      expect((firstBody.metadata as Record<string, unknown>).provider_backend).toEqual({
+        kind: "skills",
+        stages: ["newsfetch.capture", "zktls.bundle"],
+      });
 
       const second = await x402Fetch(server.url, requester.account, "POST", JSON.stringify(body));
       expect(second.success).toBe(true);

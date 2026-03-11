@@ -59,6 +59,7 @@ export function parseSkillMd(
     primaryEnv: frontmatter["primary-env"],
     requires: frontmatter.requires,
     install: frontmatter.install,
+    providerBackends: normalizeProviderBackends(frontmatter["provider-backends"]),
     instructions: body,
     source,
     path: filePath,
@@ -77,6 +78,41 @@ function parseYamlFrontmatter(raw: string): SkillFrontmatter | null {
   } catch {
     return null;
   }
+}
+
+function normalizeProviderBackends(
+  raw: SkillFrontmatter["provider-backends"],
+) {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const normalized = Object.entries(raw).reduce<Record<string, { entry: string; description?: string }>>(
+    (acc, [name, value]) => {
+      if (typeof value === "string" && value.trim()) {
+        acc[name] = { entry: value.trim() };
+        return acc;
+      }
+      if (
+        value &&
+        typeof value === "object" &&
+        !Array.isArray(value) &&
+        typeof value.entry === "string" &&
+        value.entry.trim()
+      ) {
+        acc[name] = {
+          entry: value.entry.trim(),
+          ...(typeof value.description === "string" && value.description.trim()
+            ? { description: value.description.trim() }
+            : {}),
+        };
+      }
+      return acc;
+    },
+    {},
+  );
+
+  return Object.keys(normalized).length > 0 ? normalized : undefined;
 }
 
 function extractNameFromPath(filePath: string): string {

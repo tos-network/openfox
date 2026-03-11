@@ -3,6 +3,13 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
+import {
+  DEFAULT_NEWS_FETCH_SKILL_STAGES,
+  DEFAULT_PROOF_VERIFY_SKILL_STAGES,
+  DEFAULT_PROVIDER_BACKEND_MODE,
+  DEFAULT_STORAGE_GET_SKILL_STAGES,
+  DEFAULT_STORAGE_PUT_SKILL_STAGES,
+} from "../agent-discovery/provider-skill-spec.js";
 import type { OpenFoxConfig, OpenFoxDatabase, OpenFoxIdentity } from "../types.js";
 import { createDatabase } from "../state/database.js";
 import { createEvidenceWorkflowCoordinator } from "../evidence-workflow/coordinator.js";
@@ -106,6 +113,8 @@ describe("evidence workflow coordinator", () => {
       maxResponseBytes: 65536,
       allowPrivateTargets: true,
       maxArticleChars: 4000,
+      backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+      skillStages: DEFAULT_NEWS_FETCH_SKILL_STAGES.map((stage) => ({ ...stage })),
     };
 
     const proofConfig = makeBaseConfig(providerAddress);
@@ -120,6 +129,8 @@ describe("evidence workflow coordinator", () => {
       requestTimeoutMs: 5000,
       maxFetchBytes: 65536,
       allowPrivateTargets: true,
+      backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+      skillStages: DEFAULT_PROOF_VERIFY_SKILL_STAGES.map((stage) => ({ ...stage })),
     };
 
     const storageDir = path.join(tempHome, ".openfox", "storage-provider");
@@ -138,6 +149,10 @@ describe("evidence workflow coordinator", () => {
       defaultTtlSeconds: 120,
       maxTtlSeconds: 600,
       pruneExpiredOnRead: true,
+      putBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+      getBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+      putSkillStages: DEFAULT_STORAGE_PUT_SKILL_STAGES.map((stage) => ({ ...stage })),
+      getSkillStages: DEFAULT_STORAGE_GET_SKILL_STAGES.map((stage) => ({ ...stage })),
     };
 
     const providerDb = makeDb(tempHome, "provider.db");

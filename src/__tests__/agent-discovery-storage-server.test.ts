@@ -3,6 +3,11 @@ import os from "os";
 import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
+import {
+  DEFAULT_PROVIDER_BACKEND_MODE,
+  DEFAULT_STORAGE_GET_SKILL_STAGES,
+  DEFAULT_STORAGE_PUT_SKILL_STAGES,
+} from "../agent-discovery/provider-skill-spec.js";
 import type { OpenFoxConfig, OpenFoxDatabase, OpenFoxIdentity } from "../types.js";
 import { createDatabase } from "../state/database.js";
 
@@ -53,6 +58,10 @@ function makeConfig(storageDir: string): OpenFoxConfig {
         defaultTtlSeconds: 1,
         maxTtlSeconds: 60,
         pruneExpiredOnRead: true,
+        putBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+        getBackendMode: DEFAULT_PROVIDER_BACKEND_MODE,
+        putSkillStages: DEFAULT_STORAGE_PUT_SKILL_STAGES.map((stage) => ({ ...stage })),
+        getSkillStages: DEFAULT_STORAGE_GET_SKILL_STAGES.map((stage) => ({ ...stage })),
       },
     },
   };
