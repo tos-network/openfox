@@ -124,7 +124,7 @@ interface InferenceClientOptions {
   getModelProvider?: (modelId: string) => string | undefined;
 }
 
-type InferenceBackend = "runtime" | "openai" | "anthropic" | "ollama";
+type InferenceBackend = "runtime" | "openai" | "anthropic" | "ollama" | "claude-code";
 
 function parseModelSelection(model: string): {
   providerHint?: string;
@@ -199,6 +199,10 @@ export function createInferenceClient(
     if (tools && tools.length > 0) {
       body.tools = tools;
       body.tool_choice = "auto";
+    }
+
+    if (backend === "claude-code") {
+      return chatViaClaudeCode({ model, messages });
     }
 
     if (backend === "anthropic") {
@@ -293,6 +297,8 @@ function resolveInferenceBackend(
     getModelProvider?: (modelId: string) => string | undefined;
   },
 ): InferenceBackend {
+  // Explicit provider hints
+  if (keys.providerHint === "claude-code") return "claude-code";
   if (keys.providerHint === "openai" && keys.openaiApiKey) return "openai";
   if (keys.providerHint === "anthropic" && (keys.anthropicApiKey || loadClaudeOAuthCredentials())) return "anthropic";
   if ((keys.providerHint === "ollama" || keys.providerHint === "local") && keys.ollamaBaseUrl) {
@@ -303,6 +309,7 @@ function resolveInferenceBackend(
   // Registry-based routing: most accurate, no name guessing
   if (keys.getModelProvider) {
     const provider = keys.getModelProvider(model);
+    if (provider === "claude-code") return "claude-code";
     if (provider === "ollama" && keys.ollamaBaseUrl) return "ollama";
     if (provider === "anthropic" && (keys.anthropicApiKey || loadClaudeOAuthCredentials())) return "anthropic";
     if (provider === "openai" && keys.openaiApiKey) return "openai";
@@ -315,8 +322,137 @@ function resolveInferenceBackend(
   const hasAnthropicAuth = keys.anthropicApiKey || loadClaudeOAuthCredentials() !== null;
   if (hasAnthropicAuth && /^claude/i.test(model)) return "anthropic";
   if (keys.openaiApiKey && /^(gpt-[3-9]|gpt-4|gpt-5|o[1-9][-\s.]|o[1-9]$|chatgpt)/i.test(model)) return "openai";
+
+  // Last resort: if Claude Code CLI is installed, use it for Claude models
+  if (/^claude/i.test(model) && isClaudeCodeAvailable()) return "claude-code";
   return "runtime";
 
+}
+
+/* ── Claude Code CLI backend ────────────────────────────────────── */
+
+import { execSync, spawn as nodeSpawn } from "node:child_process";
+
+let _claudeCodeAvailable: boolean | null = null;
+
+function isClaudeCodeAvailable(): boolean {
+  if (_claudeCodeAvailable !== null) return _claudeCodeAvailable;
+  try {
+    execSync("which claude", { stdio: "ignore" });
+    _claudeCodeAvailable = true;
+  } catch {
+    _claudeCodeAvailable = false;
+  }
+  return _claudeCodeAvailable;
+}
+
+/**
+ * Route inference through the locally installed Claude Code CLI.
+ * This is the fully compliant path — Claude Code handles its own
+ * OAuth authentication.  OpenFox never touches credentials.
+ */
+async function chatViaClaudeCode(params: {
+  model: string;
+  messages: ChatMessage[];
+}): Promise<InferenceResponse> {
+  // Build a single prompt from messages
+  const systemParts: string[] = [];
+  const convParts: string[] = [];
+  for (const msg of params.messages) {
+    if (msg.role === "system") {
+      if (msg.content) systemParts.push(msg.content);
+      continue;
+    }
+    const prefix = msg.role === "user" ? "User" : "Assistant";
+    convParts.push(`${prefix}: ${msg.content}`);
+  }
+
+  // Map model IDs to Claude Code aliases
+  const modelAlias = params.model
+    .replace(/^claude-/, "")
+    .replace(/-\d{8}$/, "")     // strip date suffix
+    .replace(/^(sonnet|haiku|opus).*/, "$1");
+
+  const args = [
+    "-p",
+    "--output-format", "json",
+    "--no-session-persistence",
+    "--model", modelAlias,
+  ];
+
+  if (systemParts.length > 0) {
+    args.push("--system-prompt", systemParts.join("\n\n"));
+  }
+
+  const prompt = convParts.length > 0 ? convParts.join("\n\n") : "Hello";
+  args.push(prompt);
+
+  const result = await new Promise<{ exitCode: number; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      const child = nodeSpawn("claude", args, {
+        cwd: process.cwd(),
+        env: { ...process.env, CLAUDECODE: undefined },
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+
+      let stdout = "";
+      let stderr = "";
+      const timer = setTimeout(() => {
+        child.kill("SIGKILL");
+        reject(new Error("Claude Code CLI timed out after 120s"));
+      }, 120_000);
+
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (c: string) => { stdout += c; });
+      child.stderr.on("data", (c: string) => { stderr += c; });
+      child.on("error", (e: Error) => { clearTimeout(timer); reject(e); });
+      child.on("close", (code: number | null) => {
+        clearTimeout(timer);
+        resolve({ exitCode: code ?? -1, stdout, stderr: stderr.trim() });
+      });
+      child.stdin.end();
+    },
+  );
+
+  if (result.exitCode !== 0) {
+    throw new Error(
+      `Claude Code CLI failed (exit ${result.exitCode})${result.stderr ? `: ${result.stderr}` : ""}`,
+    );
+  }
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(result.stdout);
+  } catch {
+    // Non-JSON output — wrap as plain text response
+    return {
+      id: "",
+      model: params.model,
+      message: { role: "assistant", content: result.stdout.trim() },
+      usage: { promptTokens: 0, completionTokens: 0, totalTokens: 0 },
+      finishReason: "stop",
+    };
+  }
+
+  const usage = parsed.usage as Record<string, number> | undefined;
+  const inputTokens = usage?.input_tokens ?? 0;
+  const outputTokens = usage?.output_tokens ?? 0;
+
+  return {
+    id: (parsed.session_id as string) || "",
+    model: Object.keys((parsed.modelUsage as Record<string, unknown>) || {})[0] || params.model,
+    message: {
+      role: "assistant",
+      content: (parsed.result as string) || "",
+    },
+    usage: {
+      promptTokens: inputTokens,
+      completionTokens: outputTokens,
+      totalTokens: inputTokens + outputTokens,
+    },
+    finishReason: (parsed.stop_reason as string) || "stop",
+  };
 }
 
 async function chatViaOpenAiCompatible(params: {
