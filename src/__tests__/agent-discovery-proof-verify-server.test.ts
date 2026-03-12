@@ -1,6 +1,9 @@
 import fs from "fs";
+import http from "http";
 import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
 import {
@@ -84,10 +87,23 @@ function makeDb(root: string): OpenFoxDatabase {
   return createDatabase(path.join(root, ".openfox", "state.db"));
 }
 
-function writeWorker(root: string, name: string, source: string): string {
-  const workerPath = path.join(root, `${name}.mjs`);
-  fs.writeFileSync(workerPath, source);
-  return workerPath;
+function makeRustWorkerConfig(binName: string) {
+  const manifestPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../workers/Cargo.toml",
+  );
+  execFileSync("cargo", ["+stable", "build", "--quiet", "--manifest-path", manifestPath, "--bin", binName], {
+    stdio: "inherit",
+  });
+  const binaryPath = path.resolve(
+    path.dirname(manifestPath),
+    `target/debug/${binName}`,
+  );
+  return {
+    command: binaryPath,
+    args: [],
+    timeoutMs: 10_000,
+  } as const;
 }
 
 async function postPaid(
@@ -258,40 +274,10 @@ describe.sequential("agent discovery proof.verify server", () => {
       JSON.stringify({ privateKey: TEST_PRIVATE_KEY, createdAt: new Date().toISOString() }),
     );
 
-    const workerPath = writeWorker(
-      tempHome,
-      "proofverify-worker",
-      `
-import process from "node:process";
-let raw = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => { raw += chunk; });
-process.stdin.on("end", () => {
-  const input = JSON.parse(raw);
-  const result = {
-    schema_version: "openfox.cli-worker.v1",
-    worker: "proofverify.verify",
-    result: {
-      verdict: "valid",
-      summary: "verified by CLI worker",
-      metadata: {
-        verifier_class: "cryptographic_proof",
-        proof_bundle_sha256: input.request.proof_bundle_sha256 || null
-      },
-      verifierReceiptSha256: "0x${"d".repeat(64)}"
-    }
-  };
-  process.stdout.write(JSON.stringify(result));
-});
-`,
-    );
-
     const config = makeConfig();
-    config.agentDiscovery!.proofVerifyServer!.verifierWorker = {
-      command: process.execPath,
-      args: [workerPath],
-      timeoutMs: 5000,
-    };
+    config.agentDiscovery!.proofVerifyServer!.verifierWorker = makeRustWorkerConfig(
+      "openfox-proof-verifier",
+    );
     const { startAgentDiscoveryProofVerifyServer } = await import("../agent-discovery/proof-verify-server.js");
     const db = makeDb(tempHome);
     const server = await startAgentDiscoveryProofVerifyServer({
@@ -303,6 +289,33 @@ process.stdin.on("end", () => {
     });
 
     const requester = makeIdentity();
+    const fixtureServer = http.createServer((req, res) => {
+      if (req.url === "/subject.txt") {
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("proof verify subject payload");
+        return;
+      }
+      if (req.url === "/bundle.json") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            article_sha256: SUBJECT_SHA,
+            proof_bundle_sha256: `0x${"e".repeat(64)}`,
+            verifier_backend: "bounded_http_capture_v0",
+          }),
+        );
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    await new Promise<void>((resolve) => fixtureServer.listen(0, "127.0.0.1", resolve));
+    const fixtureAddress = fixtureServer.address();
+    const fixturePort =
+      fixtureAddress && typeof fixtureAddress === "object" && "port" in fixtureAddress
+        ? fixtureAddress.port
+        : 0;
+
     global.fetch = vi.fn(async (input, init) => {
       const url = String(input);
       if (url === config.rpcUrl) {
@@ -333,7 +346,9 @@ process.stdin.on("end", () => {
         },
         request_nonce: "proofverifyworker1",
         request_expires_at: Math.floor(Date.now() / 1000) + 300,
+        subject_url: `http://127.0.0.1:${fixturePort}/subject.txt`,
         subject_sha256: SUBJECT_SHA,
+        proof_bundle_url: `http://127.0.0.1:${fixturePort}/bundle.json`,
         proof_bundle_sha256: `0x${"e".repeat(64)}`,
         reason: "paid proof verify",
       };
@@ -343,8 +358,14 @@ process.stdin.on("end", () => {
       const response = result.response as Record<string, unknown>;
       expect(response.status).toBe("ok");
       expect(response.verdict).toBe("valid");
-      expect(response.verifier_receipt_sha256).toBe(`0x${"d".repeat(64)}`);
+      expect(response.verifier_receipt_sha256).toMatch(/^0x[0-9a-f]{64}$/);
+      expect((response.metadata as Record<string, unknown>).verifier_class).toBe(
+        "bundle_integrity_verification",
+      );
     } finally {
+      await new Promise<void>((resolve, reject) =>
+        fixtureServer.close((error) => (error ? reject(error) : resolve())),
+      );
       await server.close();
       db.close();
     }

@@ -1,6 +1,8 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { execFileSync } from "child_process";
+import { fileURLToPath } from "url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
 import {
@@ -83,10 +85,23 @@ function makeDb(root: string): OpenFoxDatabase {
   return createDatabase(path.join(root, ".openfox", "state.db"));
 }
 
-function writeWorker(root: string, name: string, source: string): string {
-  const workerPath = path.join(root, `${name}.mjs`);
-  fs.writeFileSync(workerPath, source);
-  return workerPath;
+function makeRustWorkerConfig(binName: string) {
+  const manifestPath = path.resolve(
+    path.dirname(fileURLToPath(import.meta.url)),
+    "../../workers/Cargo.toml",
+  );
+  execFileSync("cargo", ["+stable", "build", "--quiet", "--manifest-path", manifestPath, "--bin", binName], {
+    stdio: "inherit",
+  });
+  const binaryPath = path.resolve(
+    path.dirname(manifestPath),
+    `target/debug/${binName}`,
+  );
+  return {
+    command: binaryPath,
+    args: [],
+    timeoutMs: 10_000,
+  } as const;
 }
 
 async function postPaid(
@@ -252,43 +267,10 @@ describe.sequential("agent discovery news.fetch server", () => {
       JSON.stringify({ privateKey: TEST_PRIVATE_KEY, createdAt: new Date().toISOString() }),
     );
 
-    const workerPath = writeWorker(
-      tempHome,
-      "zktls-worker",
-      `
-import process from "node:process";
-let raw = "";
-process.stdin.setEncoding("utf8");
-process.stdin.on("data", (chunk) => { raw += chunk; });
-process.stdin.on("end", () => {
-  const input = JSON.parse(raw);
-  const result = {
-    schema_version: "openfox.cli-worker.v1",
-    worker: "zktls.bundle",
-    result: {
-      format: "zktls_bundle_v1",
-      bundleSha256: "0x${"c".repeat(64)}",
-      bundle: {
-        bundle_ref: "artifact://zktls/test",
-        source_url: input.request.source_url,
-        canonical_url: input.capture.canonicalUrl,
-        captured_at: input.context.fetchedAt,
-        source_policy_id: "major-news-headline-v1",
-        subject_sha256: input.capture.articleSha256
-      }
-    }
-  };
-  process.stdout.write(JSON.stringify(result));
-});
-`,
-    );
-
     const config = makeConfig();
-    config.agentDiscovery!.newsFetchServer!.zktlsWorker = {
-      command: process.execPath,
-      args: [workerPath],
-      timeoutMs: 5000,
-    };
+    config.agentDiscovery!.newsFetchServer!.zktlsWorker = makeRustWorkerConfig(
+      "openfox-zktls-bundler",
+    );
     const { startAgentDiscoveryNewsFetchServer } = await import("../agent-discovery/news-fetch-server.js");
     const db = makeDb(tempHome);
     const server = await startAgentDiscoveryNewsFetchServer({
@@ -345,7 +327,11 @@ process.stdin.on("end", () => {
       const response = result.response as Record<string, unknown>;
       expect(response.status).toBe("ok");
       expect(response.zktls_bundle_format).toBe("zktls_bundle_v1");
-      expect(response.zktls_bundle_sha256).toBe(`0x${"c".repeat(64)}`);
+      expect(response.zktls_bundle_sha256).toMatch(/^0x[0-9a-f]{64}$/);
+      expect((response.metadata as Record<string, unknown>).bundle).toMatchObject({
+        backend: "rust_fixture_zktls_v0",
+        source_policy_id: "news.fetch",
+      });
     } finally {
       await server.close();
       db.close();

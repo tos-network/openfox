@@ -1180,6 +1180,8 @@ building OpenFox into a TOS-native agent platform.
   - The `news.fetch` skill path can now invoke a configured bounded CLI worker and fall back to the existing built-in backend when needed.
   - Service status and `doctor` now expose whether a real `zktls.bundle` worker is configured.
   - Deterministic fixture tests now cover worker-backed `news.fetch` routing and replay-safe paid invocation flow.
+  - A Rust workspace now exists under `workers/` with a deterministic `openfox-zktls-bundler` CLI worker implementation.
+  - End-to-end paid `news.fetch` tests now exercise the real Rust worker binary rather than an inline JavaScript stub.
 
 ## Task 87 Breakdown
 
@@ -1206,6 +1208,8 @@ building OpenFox into a TOS-native agent platform.
   - The `proof.verify` skill path can now invoke a configured bounded CLI worker and fall back to the current built-in verifier when needed.
   - Service status and `doctor` now expose whether a real `proofverify.verify` worker is configured.
   - Deterministic fixture tests now cover worker-backed `proof.verify` routing over paid provider invocation.
+  - A Rust workspace now exists under `workers/` with a deterministic `openfox-proof-verifier` CLI worker implementation.
+  - End-to-end paid `proof.verify` tests now exercise the real Rust worker binary rather than an inline JavaScript stub.
 - [ ] Add requester-side summaries that distinguish fallback verification from real proof verification.
 - [ ] Add end-to-end tests for invalid, inconclusive, and valid proof bundle paths.
 
