@@ -15,8 +15,101 @@ import type {
   InferenceToolDefinition,
 } from "../types.js";
 import { ResilientHttpClient } from "./http-client.js";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { homedir } from "node:os";
 
 const INFERENCE_TIMEOUT_MS = 60_000;
+
+/* ── Claude Code OAuth token reuse ──────────────────────────────── */
+
+const CLAUDE_CREDENTIALS_PATH = join(homedir(), ".claude", ".credentials.json");
+const CLAUDE_OAUTH_CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
+const CLAUDE_OAUTH_TOKEN_URL = "https://platform.claude.com/v1/oauth/token";
+const CLAUDE_OAUTH_BETA = "oauth-2025-04-20";
+
+interface ClaudeOAuthCredentials {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+}
+
+let cachedOAuth: ClaudeOAuthCredentials | null = null;
+
+function loadClaudeOAuthCredentials(): ClaudeOAuthCredentials | null {
+  try {
+    const raw = JSON.parse(readFileSync(CLAUDE_CREDENTIALS_PATH, "utf-8"));
+    const oauth = raw?.claudeAiOauth;
+    if (oauth?.accessToken && oauth?.refreshToken && oauth?.expiresAt) {
+      return {
+        accessToken: oauth.accessToken,
+        refreshToken: oauth.refreshToken,
+        expiresAt: oauth.expiresAt,
+      };
+    }
+  } catch {
+    // credentials file does not exist or is malformed
+  }
+  return null;
+}
+
+async function refreshClaudeOAuthToken(
+  refreshToken: string,
+): Promise<ClaudeOAuthCredentials | null> {
+  try {
+    const resp = await fetch(CLAUDE_OAUTH_TOKEN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        grant_type: "refresh_token",
+        refresh_token: refreshToken,
+        client_id: CLAUDE_OAUTH_CLIENT_ID,
+      }),
+    });
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as Record<string, unknown>;
+    const accessToken = data.access_token as string;
+    const expiresIn = (data.expires_in as number) || 28800;
+    const newRefreshToken = (data.refresh_token as string) || refreshToken;
+    const creds: ClaudeOAuthCredentials = {
+      accessToken,
+      refreshToken: newRefreshToken,
+      expiresAt: Date.now() + expiresIn * 1000,
+    };
+    // Persist refreshed tokens so Claude Code also benefits
+    try {
+      const raw = JSON.parse(readFileSync(CLAUDE_CREDENTIALS_PATH, "utf-8"));
+      raw.claudeAiOauth.accessToken = creds.accessToken;
+      raw.claudeAiOauth.refreshToken = creds.refreshToken;
+      raw.claudeAiOauth.expiresAt = creds.expiresAt;
+      writeFileSync(CLAUDE_CREDENTIALS_PATH, JSON.stringify(raw), { mode: 0o600 });
+    } catch {
+      // non-critical — token still usable in memory
+    }
+    return creds;
+  } catch {
+    return null;
+  }
+}
+
+async function getClaudeOAuthAccessToken(): Promise<string | null> {
+  if (!cachedOAuth) {
+    cachedOAuth = loadClaudeOAuthCredentials();
+  }
+  if (!cachedOAuth) return null;
+
+  // Refresh if expiring within 5 minutes
+  if (cachedOAuth.expiresAt - Date.now() < 5 * 60 * 1000) {
+    const refreshed = await refreshClaudeOAuthToken(cachedOAuth.refreshToken);
+    if (refreshed) {
+      cachedOAuth = refreshed;
+    } else {
+      cachedOAuth = null;
+      return null;
+    }
+  }
+  return cachedOAuth.accessToken;
+}
 
 interface InferenceClientOptions {
   apiUrl: string;
@@ -201,7 +294,7 @@ function resolveInferenceBackend(
   },
 ): InferenceBackend {
   if (keys.providerHint === "openai" && keys.openaiApiKey) return "openai";
-  if (keys.providerHint === "anthropic" && keys.anthropicApiKey) return "anthropic";
+  if (keys.providerHint === "anthropic" && (keys.anthropicApiKey || loadClaudeOAuthCredentials())) return "anthropic";
   if ((keys.providerHint === "ollama" || keys.providerHint === "local") && keys.ollamaBaseUrl) {
     return "ollama";
   }
@@ -211,14 +304,16 @@ function resolveInferenceBackend(
   if (keys.getModelProvider) {
     const provider = keys.getModelProvider(model);
     if (provider === "ollama" && keys.ollamaBaseUrl) return "ollama";
-    if (provider === "anthropic" && keys.anthropicApiKey) return "anthropic";
+    if (provider === "anthropic" && (keys.anthropicApiKey || loadClaudeOAuthCredentials())) return "anthropic";
     if (provider === "openai" && keys.openaiApiKey) return "openai";
     if (provider === "runtime") return "runtime";
     // provider unknown or key not configured — fall through to heuristics
   }
 
   // Heuristic fallback (model not in registry yet)
-  if (keys.anthropicApiKey && /^claude/i.test(model)) return "anthropic";
+  // Allow "anthropic" backend if API key is set OR Claude Code OAuth credentials exist
+  const hasAnthropicAuth = keys.anthropicApiKey || loadClaudeOAuthCredentials() !== null;
+  if (hasAnthropicAuth && /^claude/i.test(model)) return "anthropic";
   if (keys.openaiApiKey && /^(gpt-[3-9]|gpt-4|gpt-5|o[1-9][-\s.]|o[1-9]$|chatgpt)/i.test(model)) return "openai";
   return "runtime";
 
@@ -326,13 +421,22 @@ async function chatViaAnthropic(params: {
     body.tool_choice = { type: "auto" };
   }
 
+  // Prefer Claude Code OAuth token (shared subscription), fall back to plain API key
+  const oauthToken = await getClaudeOAuthAccessToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    "anthropic-version": "2023-06-01",
+  };
+  if (oauthToken) {
+    headers["Authorization"] = `Bearer ${oauthToken}`;
+    headers["anthropic-beta"] = CLAUDE_OAUTH_BETA;
+  } else {
+    headers["x-api-key"] = params.anthropicApiKey;
+  }
+
   const resp = await params.httpClient.request("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-api-key": params.anthropicApiKey,
-      "anthropic-version": "2023-06-01",
-    },
+    headers,
     body: JSON.stringify(body),
     timeout: INFERENCE_TIMEOUT_MS,
   });
