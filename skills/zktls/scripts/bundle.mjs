@@ -1,7 +1,14 @@
+/**
+ * OpenFox integration wrapper for zktls.bundle.
+ *
+ * Adds CLI worker routing on top of the openskills core implementation.
+ * When no worker is configured, delegates to the openskills bundle logic.
+ */
 import { createHash } from "node:crypto";
 import { runCliWorker, unwrapCliWorkerResult } from "../../_shared/cli-worker.mjs";
 
 export async function run(input, context) {
+  // CLI worker routing (OpenFox-specific)
   const worker = context?.config?.agentDiscovery?.newsFetchServer?.zktlsWorker;
   if (worker?.command) {
     const workerResult = await runCliWorker(worker, {
@@ -32,6 +39,7 @@ export async function run(input, context) {
     return unwrapCliWorkerResult(workerResult.stdout, "zktls.bundle");
   }
 
+  // Core bundling logic (same as openskills/zktls bundle)
   const request = input?.request ?? {};
   const capture = input?.capture ?? {};
   const fetchedAt = Number(input?.fetchedAt || Math.floor(Date.now() / 1000));
@@ -40,7 +48,7 @@ export async function run(input, context) {
     backend: "skill:zktls.bundle",
     fetched_at: fetchedAt,
     source_url: request.source_url,
-    canonical_url: capture.canonicalUrl,
+    canonical_url: capture.canonicalUrl || request.source_url,
     source_policy_id:
       request.source_policy_id ||
       context?.config?.agentDiscovery?.newsFetchServer?.defaultSourcePolicyId ||

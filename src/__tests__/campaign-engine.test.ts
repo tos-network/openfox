@@ -15,7 +15,7 @@ function createIdentity(): OpenFoxIdentity {
     creatorAddress: HOST_ADDRESS,
     sandboxId: "campaign-host-agent",
     apiKey: "",
-    createdAt: "2026-03-09T00:00:00.000Z",
+    createdAt: "2027-03-09T00:00:00.000Z",
   };
 }
 
@@ -39,7 +39,7 @@ describe("campaign engine", () => {
         enabled: true,
         role: "host",
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const campaign = engine.createCampaign({
@@ -57,7 +57,7 @@ describe("campaign engine", () => {
       taskPrompt: "Translate 'hello world' into Chinese.",
       referenceOutput: "你好，世界",
       rewardWei: "2000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const second = engine.openBounty({
@@ -67,7 +67,7 @@ describe("campaign engine", () => {
       taskPrompt: "Reply with the exact phrase.",
       referenceOutput: "openfox rocks",
       rewardWei: "3000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const details = engine.getCampaignDetails(campaign.campaignId);
@@ -91,7 +91,7 @@ describe("campaign engine", () => {
         enabled: true,
         role: "host",
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const campaign = engine.createCampaign({
@@ -110,7 +110,7 @@ describe("campaign engine", () => {
         taskPrompt: "2+2=?",
         referenceOutput: "4",
         rewardWei: "1000",
-        submissionDeadline: "2026-03-09T01:00:00.000Z",
+        submissionDeadline: "2027-03-09T01:00:00.000Z",
       }),
     ).toThrow("campaign does not allow bounty kind");
 
@@ -121,7 +121,7 @@ describe("campaign engine", () => {
       taskPrompt: "Translate 'fox' into Chinese.",
       referenceOutput: "狐狸",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     expect(() =>
@@ -132,7 +132,7 @@ describe("campaign engine", () => {
         taskPrompt: "Translate 'wolf' into Chinese.",
         referenceOutput: "狼",
         rewardWei: "1",
-        submissionDeadline: "2026-03-09T01:00:00.000Z",
+        submissionDeadline: "2027-03-09T01:00:00.000Z",
       }),
     ).toThrow(/maximum open bounty count|budget is exhausted|campaign is not open: exhausted/);
   });

@@ -31,7 +31,7 @@ function createIdentity(
     creatorAddress: address,
     sandboxId,
     apiKey: "",
-    createdAt: "2026-03-09T00:00:00.000Z",
+    createdAt: "2027-03-09T00:00:00.000Z",
   };
 }
 
@@ -70,14 +70,14 @@ describe("bounty automation", () => {
       source: "bundled",
       path: "/tmp/question-bounty-host/SKILL.md",
       enabled: true,
-      installedAt: "2026-03-09T00:00:00.000Z",
+      installedAt: "2027-03-09T00:00:00.000Z",
     });
     const engine = createBountyEngine({
       identity: hostIdentity,
       db: hostDb,
       inference,
       bountyConfig,
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const opened = await ensureAutoQuestionBountyOpen({
@@ -124,14 +124,14 @@ describe("bounty automation", () => {
         bindHost: "127.0.0.1",
         port: 0,
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const bounty = hostEngine.openQuestionBounty({
       question: "Capital of France?",
       referenceAnswer: "Paris",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const server = await startBountyHttpServer({
@@ -155,7 +155,7 @@ describe("bounty automation", () => {
         source: "bundled",
         path: "/tmp/question-bounty-solver/SKILL.md",
         enabled: true,
-        installedAt: "2026-03-09T00:00:00.000Z",
+        installedAt: "2027-03-09T00:00:00.000Z",
       });
       const result = await runSolverBountyPass({
         identity: solverIdentity,

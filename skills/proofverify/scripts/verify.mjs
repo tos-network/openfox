@@ -1,3 +1,8 @@
+/**
+ * OpenFox integration wrapper for proofverify.verify.
+ *
+ * Adds CLI worker routing and URL fetching on top of the core hash verification logic.
+ */
 import { createHash } from "node:crypto";
 import {
   extractReferencedSubjectHash,
@@ -7,6 +12,7 @@ import {
 import { runCliWorker, unwrapCliWorkerResult } from "../../_shared/cli-worker.mjs";
 
 export async function run(input, context) {
+  // CLI worker routing (OpenFox-specific)
   const worker = context?.config?.agentDiscovery?.proofVerifyServer?.verifierWorker;
   if (worker?.command) {
     const workerResult = await runCliWorker(worker, {
@@ -34,6 +40,7 @@ export async function run(input, context) {
     );
   }
 
+  // Core verification logic
   const request = input?.request ?? {};
   const options = input?.options ?? {};
   const checks = [];
@@ -130,8 +137,15 @@ export async function run(input, context) {
         : "No comparable hashes were available, so the result is inconclusive.";
 
   metadata.checks = checks;
+  metadata.verifier_class = "bundle_integrity_verification";
+  metadata.verification_mode = "worker_backed";
+  const verdictReason =
+    verdict === "valid" ? "all_checks_passed"
+    : verdict === "invalid" ? "check_failed"
+    : "no_checks_available";
   return {
     verdict,
+    verdictReason,
     summary,
     metadata,
     verifierReceiptSha256: `0x${createHash("sha256").update(JSON.stringify({

@@ -123,7 +123,7 @@ describe("owner report delivery", () => {
           ),
         ]),
         periodKind: "daily",
-        nowMs: Date.parse("2026-03-11T18:00:00.000Z"),
+        nowMs: Date.parse("2027-03-11T18:00:00.000Z"),
       });
 
       const results = await deliverOwnerReportChannels({
@@ -173,7 +173,7 @@ describe("owner report delivery", () => {
         config,
         db,
         periodKind: "daily",
-        nowMs: Date.parse("2026-03-11T18:00:00.000Z"),
+        nowMs: Date.parse("2027-03-11T18:00:00.000Z"),
       });
       expect(report.generationStatus).toBe("deterministic_only");
 
@@ -390,7 +390,7 @@ describe("owner report delivery", () => {
         question: "Capital of Spain?",
         referenceAnswer: "Madrid",
         rewardWei: "1000",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
       });
       bountyServer = await startBountyHttpServer({
         bountyConfig: {

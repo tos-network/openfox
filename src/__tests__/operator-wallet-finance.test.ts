@@ -18,9 +18,9 @@ describe("operator wallet and finance snapshots", () => {
     const config = createTestConfig({
       rpcUrl: undefined,
     });
-    const now = Date.parse("2026-03-11T12:00:00.000Z");
-    const day = "2026-03-11";
-    const hour = "2026-03-11 12";
+    const now = Date.parse("2027-03-11T12:00:00.000Z");
+    const day = "2027-03-11";
+    const hour = "2027-03-11 12";
     const hostAddress = config.walletAddress;
     const solverAddress =
       "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -39,11 +39,11 @@ describe("operator wallet and finance snapshots", () => {
         taskPrompt: "Open bounty task",
         referenceOutput: "ref",
         rewardWei: "100",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         judgeMode: "local_model",
         status: "open",
-        createdAt: "2026-03-11T00:00:00.000Z",
-        updatedAt: "2026-03-11T00:00:00.000Z",
+        createdAt: "2027-03-11T00:00:00.000Z",
+        updatedAt: "2027-03-11T00:00:00.000Z",
       });
 
       db.insertBounty({
@@ -55,11 +55,11 @@ describe("operator wallet and finance snapshots", () => {
         taskPrompt: "Approved bounty task",
         referenceOutput: "ref",
         rewardWei: "50",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         judgeMode: "local_model",
         status: "approved",
-        createdAt: "2026-03-11T00:00:00.000Z",
-        updatedAt: "2026-03-11T00:00:00.000Z",
+        createdAt: "2027-03-11T00:00:00.000Z",
+        updatedAt: "2027-03-11T00:00:00.000Z",
       });
 
       db.insertBounty({
@@ -71,11 +71,11 @@ describe("operator wallet and finance snapshots", () => {
         taskPrompt: "Solver reward task",
         referenceOutput: "ref",
         rewardWei: "70",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         judgeMode: "local_model",
         status: "approved",
-        createdAt: "2026-03-11T00:00:00.000Z",
-        updatedAt: "2026-03-11T00:00:00.000Z",
+        createdAt: "2027-03-11T00:00:00.000Z",
+        updatedAt: "2027-03-11T00:00:00.000Z",
       });
       db.insertBountySubmission({
         submissionId: "submission-receivable",
@@ -83,8 +83,8 @@ describe("operator wallet and finance snapshots", () => {
         solverAddress: hostAddress,
         submissionText: "answer",
         status: "accepted",
-        submittedAt: "2026-03-11T01:00:00.000Z",
-        updatedAt: "2026-03-11T01:00:00.000Z",
+        submittedAt: "2027-03-11T01:00:00.000Z",
+        updatedAt: "2027-03-11T01:00:00.000Z",
       });
       db.upsertBountyResult({
         bountyId: "bounty-receivable",
@@ -92,8 +92,8 @@ describe("operator wallet and finance snapshots", () => {
         decision: "accepted",
         confidence: 0.95,
         judgeReason: "correct",
-        createdAt: "2026-03-11T02:00:00.000Z",
-        updatedAt: "2026-03-11T02:00:00.000Z",
+        createdAt: "2027-03-11T02:00:00.000Z",
+        updatedAt: "2027-03-11T02:00:00.000Z",
       });
 
       db.insertBounty({
@@ -105,11 +105,11 @@ describe("operator wallet and finance snapshots", () => {
         taskPrompt: "Solver paid task",
         referenceOutput: "ref",
         rewardWei: "110",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         judgeMode: "local_model",
         status: "paid",
-        createdAt: "2026-03-10T00:00:00.000Z",
-        updatedAt: "2026-03-10T00:00:00.000Z",
+        createdAt: "2027-03-10T00:00:00.000Z",
+        updatedAt: "2027-03-10T00:00:00.000Z",
       });
       db.insertBountySubmission({
         submissionId: "submission-solver-paid",
@@ -117,8 +117,8 @@ describe("operator wallet and finance snapshots", () => {
         solverAddress: hostAddress,
         submissionText: "paid answer",
         status: "accepted",
-        submittedAt: "2026-03-10T01:00:00.000Z",
-        updatedAt: "2026-03-10T01:00:00.000Z",
+        submittedAt: "2027-03-10T01:00:00.000Z",
+        updatedAt: "2027-03-10T01:00:00.000Z",
       });
       db.upsertBountyResult({
         bountyId: "bounty-solver-paid",
@@ -128,8 +128,8 @@ describe("operator wallet and finance snapshots", () => {
         judgeReason: "paid",
         payoutTxHash:
           "0x1111111111111111111111111111111111111111111111111111111111111111",
-        createdAt: "2026-03-10T02:00:00.000Z",
-        updatedAt: "2026-03-11T05:00:00.000Z",
+        createdAt: "2027-03-10T02:00:00.000Z",
+        updatedAt: "2027-03-11T05:00:00.000Z",
       });
 
       db.insertBounty({
@@ -141,11 +141,11 @@ describe("operator wallet and finance snapshots", () => {
         taskPrompt: "Host paid task",
         referenceOutput: "ref",
         rewardWei: "90",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         judgeMode: "local_model",
         status: "paid",
-        createdAt: "2026-03-09T00:00:00.000Z",
-        updatedAt: "2026-03-09T00:00:00.000Z",
+        createdAt: "2027-03-09T00:00:00.000Z",
+        updatedAt: "2027-03-09T00:00:00.000Z",
       });
       db.insertBountySubmission({
         submissionId: "submission-host-paid",
@@ -153,8 +153,8 @@ describe("operator wallet and finance snapshots", () => {
         solverAddress: solverAddress,
         submissionText: "solver answer",
         status: "accepted",
-        submittedAt: "2026-03-09T01:00:00.000Z",
-        updatedAt: "2026-03-09T01:00:00.000Z",
+        submittedAt: "2027-03-09T01:00:00.000Z",
+        updatedAt: "2027-03-09T01:00:00.000Z",
       });
       db.upsertBountyResult({
         bountyId: "bounty-host-paid",
@@ -164,8 +164,8 @@ describe("operator wallet and finance snapshots", () => {
         judgeReason: "paid out",
         payoutTxHash:
           "0x2222222222222222222222222222222222222222222222222222222222222222",
-        createdAt: "2026-03-09T02:00:00.000Z",
-        updatedAt: "2026-03-11T04:00:00.000Z",
+        createdAt: "2027-03-09T02:00:00.000Z",
+        updatedAt: "2027-03-11T04:00:00.000Z",
       });
 
       db.upsertX402Payment({
@@ -188,8 +188,8 @@ describe("operator wallet and finance snapshots", () => {
         status: "verified",
         attemptCount: 0,
         maxAttempts: 3,
-        createdAt: "2026-03-11T03:00:00.000Z",
-        updatedAt: "2026-03-11T03:00:00.000Z",
+        createdAt: "2027-03-11T03:00:00.000Z",
+        updatedAt: "2027-03-11T03:00:00.000Z",
       });
       db.upsertX402Payment({
         paymentId:
@@ -211,8 +211,8 @@ describe("operator wallet and finance snapshots", () => {
         status: "submitted",
         attemptCount: 1,
         maxAttempts: 3,
-        createdAt: "2026-03-11T03:30:00.000Z",
-        updatedAt: "2026-03-11T03:30:00.000Z",
+        createdAt: "2027-03-11T03:30:00.000Z",
+        updatedAt: "2027-03-11T03:30:00.000Z",
       });
       db.upsertX402Payment({
         paymentId:
@@ -234,8 +234,8 @@ describe("operator wallet and finance snapshots", () => {
         status: "confirmed",
         attemptCount: 1,
         maxAttempts: 3,
-        createdAt: "2026-03-11T04:00:00.000Z",
-        updatedAt: "2026-03-11T04:00:00.000Z",
+        createdAt: "2027-03-11T04:00:00.000Z",
+        updatedAt: "2027-03-11T04:00:00.000Z",
       });
       db.upsertX402Payment({
         paymentId:
@@ -257,8 +257,8 @@ describe("operator wallet and finance snapshots", () => {
         status: "confirmed",
         attemptCount: 1,
         maxAttempts: 3,
-        createdAt: "2026-03-11T04:30:00.000Z",
-        updatedAt: "2026-03-11T04:30:00.000Z",
+        createdAt: "2027-03-11T04:30:00.000Z",
+        updatedAt: "2027-03-11T04:30:00.000Z",
       });
       db.upsertX402Payment({
         paymentId:
@@ -280,9 +280,9 @@ describe("operator wallet and finance snapshots", () => {
         status: "failed",
         attemptCount: 2,
         maxAttempts: 3,
-        nextAttemptAt: "2026-03-11T06:00:00.000Z",
-        createdAt: "2026-03-11T05:00:00.000Z",
-        updatedAt: "2026-03-11T05:00:00.000Z",
+        nextAttemptAt: "2027-03-11T06:00:00.000Z",
+        createdAt: "2027-03-11T05:00:00.000Z",
+        updatedAt: "2027-03-11T05:00:00.000Z",
       });
 
       db.upsertSettlementCallback({
@@ -299,9 +299,9 @@ describe("operator wallet and finance snapshots", () => {
         status: "failed",
         attemptCount: 1,
         maxAttempts: 3,
-        nextAttemptAt: "2026-03-11T06:00:00.000Z",
-        createdAt: "2026-03-11T05:10:00.000Z",
-        updatedAt: "2026-03-11T05:10:00.000Z",
+        nextAttemptAt: "2027-03-11T06:00:00.000Z",
+        createdAt: "2027-03-11T05:10:00.000Z",
+        updatedAt: "2027-03-11T05:10:00.000Z",
       });
 
       db.upsertMarketContractCallback({
@@ -319,9 +319,9 @@ describe("operator wallet and finance snapshots", () => {
         status: "failed",
         attemptCount: 1,
         maxAttempts: 3,
-        nextAttemptAt: "2026-03-11T06:00:00.000Z",
-        createdAt: "2026-03-11T05:15:00.000Z",
-        updatedAt: "2026-03-11T05:15:00.000Z",
+        nextAttemptAt: "2027-03-11T06:00:00.000Z",
+        createdAt: "2027-03-11T05:15:00.000Z",
+        updatedAt: "2027-03-11T05:15:00.000Z",
       });
 
       inferenceInsertCost(db.raw, {
@@ -347,6 +347,9 @@ describe("operator wallet and finance snapshots", () => {
         windowHour: hour,
         windowDay: day,
       });
+      // Backdate created_at so cost queries match the test's virtual "now"
+      db.raw.prepare("UPDATE spend_tracking SET created_at = ? WHERE id = ?").run("2027-03-11 10:00:00", "spend-1");
+      db.raw.prepare("UPDATE inference_costs SET created_at = ? WHERE session_id = ?").run("2027-03-11 10:00:00", "session-1");
       onchainTxInsert(db.raw, {
         id: "tx-pending",
         txHash:
@@ -356,7 +359,7 @@ describe("operator wallet and finance snapshots", () => {
         status: "pending",
         gasUsed: null,
         metadata: "{}",
-        createdAt: "2026-03-11T05:20:00.000Z",
+        createdAt: "2027-03-11T05:20:00.000Z",
       });
       onchainTxInsert(db.raw, {
         id: "tx-failed",
@@ -367,7 +370,7 @@ describe("operator wallet and finance snapshots", () => {
         status: "failed",
         gasUsed: null,
         metadata: "{}",
-        createdAt: "2026-03-11T05:25:00.000Z",
+        createdAt: "2027-03-11T05:25:00.000Z",
       });
 
       const wallet = await buildOperatorWalletSnapshot(config, db, now);

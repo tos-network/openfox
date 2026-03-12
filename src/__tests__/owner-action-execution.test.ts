@@ -37,7 +37,7 @@ function createQueuedPursueAction(params: {
   bountyId: string;
   alertId: string;
 }) {
-  const now = "2026-03-11T18:00:00.000Z";
+  const now = "2027-03-11T18:00:00.000Z";
   const config = createTestConfig();
   params.db.upsertOwnerOpportunityAlert({
     alertId: params.alertId,
@@ -133,7 +133,7 @@ describe("owner action execution", () => {
         question: "Capital of Italy?",
         referenceAnswer: "Rome",
         rewardWei: "1000",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
       });
       const bountyServer = await startBountyHttpServer({
         bountyConfig: {
@@ -155,7 +155,7 @@ describe("owner action execution", () => {
         source: "bundled",
         path: "skills/question-bounty-solver/SKILL.md",
         enabled: true,
-        installedAt: "2026-03-11T18:00:00.000Z",
+        installedAt: "2027-03-11T18:00:00.000Z",
       });
       const action = createQueuedPursueAction({
         db: ownerDb,
@@ -266,14 +266,14 @@ describe("owner action execution", () => {
         question: "Capital of Italy?",
         referenceAnswer: "Rome",
         rewardWei: "1000",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         campaignId: campaign.campaignId,
       });
       const bountyTwo = hostEngine.openQuestionBounty({
         question: "Capital of Spain?",
         referenceAnswer: "Madrid",
         rewardWei: "900",
-        submissionDeadline: "2026-03-12T00:00:00.000Z",
+        submissionDeadline: "2027-03-12T00:00:00.000Z",
         campaignId: campaign.campaignId,
       });
       const bountyServer = await startBountyHttpServer({
@@ -296,7 +296,7 @@ describe("owner action execution", () => {
         source: "bundled",
         path: "skills/question-bounty-solver/SKILL.md",
         enabled: true,
-        installedAt: "2026-03-11T18:00:00.000Z",
+        installedAt: "2027-03-11T18:00:00.000Z",
       });
       ownerDb.upsertOwnerOpportunityAction({
         actionId: "owner-action:campaign-root",
@@ -309,7 +309,7 @@ describe("owner action execution", () => {
         baseUrl: bountyServer.url,
         requestedBy: "owner-test",
         approvedBy: "owner-test",
-        approvedAt: "2026-03-11T18:00:00.000Z",
+        approvedAt: "2027-03-11T18:00:00.000Z",
         decisionNote: "auto pursue",
         payload: {
           baseUrl: bountyServer.url,
@@ -320,9 +320,9 @@ describe("owner action execution", () => {
         resolutionKind: null,
         resolutionRef: null,
         resolutionNote: null,
-        queuedAt: "2026-03-11T18:00:00.000Z",
-        createdAt: "2026-03-11T18:00:00.000Z",
-        updatedAt: "2026-03-11T18:00:00.000Z",
+        queuedAt: "2027-03-11T18:00:00.000Z",
+        createdAt: "2027-03-11T18:00:00.000Z",
+        updatedAt: "2027-03-11T18:00:00.000Z",
         completedAt: null,
         cancelledAt: null,
       });
@@ -429,7 +429,7 @@ describe("owner action execution", () => {
         baseUrl,
         requestedBy: "owner-test",
         approvedBy: "owner-test",
-        approvedAt: "2026-03-11T18:00:00.000Z",
+        approvedAt: "2027-03-11T18:00:00.000Z",
         decisionNote: "delegate automatically",
         payload: {
           baseUrl,
@@ -441,9 +441,9 @@ describe("owner action execution", () => {
         resolutionKind: null,
         resolutionRef: null,
         resolutionNote: null,
-        queuedAt: "2026-03-11T18:00:00.000Z",
-        createdAt: "2026-03-11T18:00:00.000Z",
-        updatedAt: "2026-03-11T18:00:00.000Z",
+        queuedAt: "2027-03-11T18:00:00.000Z",
+        createdAt: "2027-03-11T18:00:00.000Z",
+        updatedAt: "2027-03-11T18:00:00.000Z",
         completedAt: null,
         cancelledAt: null,
       });

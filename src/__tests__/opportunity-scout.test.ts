@@ -23,7 +23,7 @@ function createIdentity(): OpenFoxIdentity {
     creatorAddress: HOST_ADDRESS,
     sandboxId: "host-agent",
     apiKey: "",
-    createdAt: "2026-03-09T00:00:00.000Z",
+    createdAt: "2027-03-09T00:00:00.000Z",
   };
 }
 
@@ -49,7 +49,7 @@ describe("opportunity scout", () => {
         bindHost: "127.0.0.1",
         port: 0,
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     engine.createCampaign({
@@ -67,7 +67,7 @@ describe("opportunity scout", () => {
       taskPrompt: "Summarize the given paragraph in one sentence.",
       referenceOutput: "One concise sentence.",
       rewardWei: "5000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const server = await startBountyHttpServer({

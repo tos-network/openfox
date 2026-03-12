@@ -344,11 +344,21 @@ function resolveNestedSkillsRoot(dir: string): string {
 
 // ─── Loading ─────────────────────────────────────────────────────
 
+// Sources where symlinks may safely resolve outside the skills root (user-curated).
+const SYMLINK_TRUSTED_SOURCES: ReadonlySet<SkillSource> = new Set([
+  "agents-personal",
+  "agents-project",
+]);
+
 function loadSkillsFromRoot(
   rootDir: string,
   source: SkillSource,
   limits: Required<SkillsLimitsConfig>,
+  _depth = 0,
 ): Skill[] {
+  // Guard against deep recursion (skill collections are at most 1 level deep)
+  if (_depth > 1) return [];
+
   // Auto-detect nested skills/ subdirectory
   const effectiveDir = resolveNestedSkillsRoot(rootDir);
   if (!fs.existsSync(effectiveDir)) return [];
@@ -381,23 +391,32 @@ function loadSkillsFromRoot(
 
   const toScan = dirs.slice(0, limits.maxSkillsLoadedPerSource);
   const skills: Skill[] = [];
+  const trustSymlinks = SYMLINK_TRUSTED_SOURCES.has(source);
 
   for (const name of toScan) {
     const skillDir = path.join(effectiveDir, name);
     const skillMdPath = path.join(skillDir, "SKILL.md");
 
-    // Symlink containment check
+    // Symlink containment check — relaxed for user-curated sources
     const realDir = tryRealpath(skillDir);
-    if (!realDir || !isPathInside(rootRealPath, realDir)) {
-      if (realDir) {
-        logger.warn(`Skipping skill path that resolves outside its root.`, {
-          source, rootDir: effectiveDir, path: skillDir, realPath: realDir,
-        });
-      }
+    if (!realDir) continue;
+    if (!trustSymlinks && !isPathInside(rootRealPath, realDir)) {
+      logger.warn(`Skipping skill path that resolves outside its root.`, {
+        source, rootDir: effectiveDir, path: skillDir, realPath: realDir,
+      });
       continue;
     }
 
-    if (!fs.existsSync(skillMdPath)) continue;
+    // If no SKILL.md, check if this is a skill collection (e.g. a symlinked repo)
+    if (!fs.existsSync(skillMdPath)) {
+      const nested = loadSkillsFromRoot(skillDir, source, limits, _depth + 1);
+      for (const s of nested) {
+        skills.push(s);
+        if (skills.length >= limits.maxSkillsLoadedPerSource) break;
+      }
+      if (skills.length >= limits.maxSkillsLoadedPerSource) break;
+      continue;
+    }
 
     // File size check
     try {

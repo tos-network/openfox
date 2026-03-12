@@ -1,11 +1,8 @@
 ---
 name: proofverify
-description: Deterministic proof verification backend for bounded evidence bundles.
+description: "Proof verification — OpenFox integration wrapper around openskills/proofverify"
 provider-backends:
   verify:
     entry: scripts/verify.mjs
-    description: Verify bounded bundle and subject hash relationships.
+    description: "Verify bounded bundle and subject hashes with URL fetching and CLI worker support"
 ---
-Use this skill for deterministic proof verification over bounded public evidence.
-Load `references/provider-backend.md` for the stage summary.
-Load `references/verify-contract.json` for the machine-readable I/O contract.

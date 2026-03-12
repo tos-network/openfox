@@ -17,7 +17,7 @@ function createIdentity(): OpenFoxIdentity {
     creatorAddress: HOST_ADDRESS,
     sandboxId: "host-agent",
     apiKey: "",
-    createdAt: "2026-03-09T00:00:00.000Z",
+    createdAt: "2027-03-09T00:00:00.000Z",
   };
 }
 
@@ -53,14 +53,14 @@ describe("bounty engine", () => {
           return { txHash: "0xpaid" };
         },
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const bounty = engine.openQuestionBounty({
       question: "What color is the sky on a clear day?",
       referenceAnswer: "blue",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const submission = await engine.submitAnswer({
@@ -100,14 +100,14 @@ describe("bounty engine", () => {
           throw new Error("should not be called");
         },
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const bounty = engine.openQuestionBounty({
       question: "2 + 2 = ?",
       referenceAnswer: "4",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const result = await engine.submitAnswer({
@@ -145,7 +145,7 @@ describe("bounty engine", () => {
           return { txHash: "0xtranslation" };
         },
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const translation = engine.openBounty({
@@ -154,7 +154,7 @@ describe("bounty engine", () => {
       taskPrompt: "Translate 'hello' into Chinese.",
       referenceOutput: "你好",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const translated = await engine.submitSubmission({
@@ -171,7 +171,7 @@ describe("bounty engine", () => {
       taskPrompt: "Reply to the post with the exact phrase 'openfox test' and submit the proof URL.",
       referenceOutput: "openfox test",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     await expect(
@@ -252,14 +252,14 @@ describe("bounty engine", () => {
               publisherAddress: HOST_ADDRESS,
               resultHash:
                 "0x1111111111111111111111111111111111111111111111111111111111111111",
-              createdAt: "2026-03-09T00:00:00.000Z",
+              createdAt: "2027-03-09T00:00:00.000Z",
             },
             receiptHash:
               "0x2222222222222222222222222222222222222222222222222222222222222222",
             settlementTxHash:
               "0x3333333333333333333333333333333333333333333333333333333333333333",
-            createdAt: "2026-03-09T00:00:00.000Z",
-            updatedAt: "2026-03-09T00:00:00.000Z",
+            createdAt: "2027-03-09T00:00:00.000Z",
+            updatedAt: "2027-03-09T00:00:00.000Z",
           };
         },
       },
@@ -268,7 +268,7 @@ describe("bounty engine", () => {
           return { txHash: "0xartifactpaid" };
         },
       },
-      now: () => new Date("2026-03-09T00:00:00.000Z"),
+      now: () => new Date("2027-03-09T00:00:00.000Z"),
     });
 
     const bounty = engine.openBounty({
@@ -277,7 +277,7 @@ describe("bounty engine", () => {
       taskPrompt: "Submit the body text of the target article.",
       referenceOutput: "expected evidence",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-09T01:00:00.000Z",
+      submissionDeadline: "2027-03-09T01:00:00.000Z",
     });
 
     const result = await engine.submitSubmission({

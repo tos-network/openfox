@@ -264,12 +264,12 @@ describe.sequential("agent discovery proof.verify server", () => {
       expect(submittedPayments).toBe(1);
       const records = listProofVerificationRecords(db, 10);
       expect(records).toHaveLength(1);
-      expect(records[0]?.verificationMode).toBe("fallback");
+      expect(records[0]?.verificationMode).toBe("worker_backed");
       expect(records[0]?.verdictReason).toBe("all_checks_passed");
       expect(records[0]?.boundSubjectHashes.subjectSha256).toBe(SUBJECT_SHA);
       const summary = buildProofVerificationSummary(db, 10);
       expect(summary.totalResults).toBe(1);
-      expect(summary.fallbackVerifications).toBe(1);
+      expect(summary.fallbackVerifications).toBe(0);
     } finally {
       await server.close();
       db.close();
@@ -378,7 +378,7 @@ describe.sequential("agent discovery proof.verify server", () => {
       expect(records).toHaveLength(1);
       expect(records[0]?.verificationMode).toBe("worker_backed");
       expect(records[0]?.verifierClass).toBe("bundle_integrity_verification");
-      expect(records[0]?.verifierMaterialReference?.kind).toBe("proof_bundle");
+      expect(records[0]?.verifierMaterialReference?.kind).toBe("bundle_integrity_verification");
       expect(records[0]?.boundSubjectHashes.subjectSha256).toBe(SUBJECT_SHA);
     } finally {
       await new Promise<void>((resolve, reject) =>

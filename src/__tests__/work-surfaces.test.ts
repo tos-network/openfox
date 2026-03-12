@@ -54,7 +54,7 @@ function createIdentity(
     creatorAddress: address,
     sandboxId,
     apiKey: "",
-    createdAt: "2026-03-11T00:00:00.000Z",
+    createdAt: "2027-03-11T00:00:00.000Z",
   };
 }
 
@@ -95,7 +95,7 @@ describe("data_labeling bounty surface", () => {
           return { txHash: "0xpaid" };
         },
       },
-      now: () => new Date("2026-03-11T00:00:00.000Z"),
+      now: () => new Date("2027-03-11T00:00:00.000Z"),
     });
 
     const bounty = engine.openBounty({
@@ -105,7 +105,7 @@ describe("data_labeling bounty surface", () => {
         'Label each sentence as positive, negative, or neutral:\n1. "I love this product"\n2. "It broke on day one"\n3. "The box is brown"',
       referenceOutput: "1. positive\n2. negative\n3. neutral",
       rewardWei: "1000",
-      submissionDeadline: "2026-03-11T01:00:00.000Z",
+      submissionDeadline: "2027-03-11T01:00:00.000Z",
       skillName: "data-labeling-bounty-host",
     });
 
@@ -146,7 +146,7 @@ describe("data_labeling bounty surface", () => {
           throw new Error("should not be called");
         },
       },
-      now: () => new Date("2026-03-11T00:00:00.000Z"),
+      now: () => new Date("2027-03-11T00:00:00.000Z"),
     });
 
     const bounty = engine.openBounty({
@@ -155,7 +155,7 @@ describe("data_labeling bounty surface", () => {
       taskPrompt: 'Label: 1. "Great" 2. "Terrible"',
       referenceOutput: "1. positive\n2. negative",
       rewardWei: "500",
-      submissionDeadline: "2026-03-11T01:00:00.000Z",
+      submissionDeadline: "2027-03-11T01:00:00.000Z",
     });
 
     const submission = await engine.submitAnswer({
@@ -194,14 +194,14 @@ describe("data_labeling bounty surface", () => {
       source: "bundled",
       path: "/tmp/data-labeling-bounty-host/SKILL.md",
       enabled: true,
-      installedAt: "2026-03-11T00:00:00.000Z",
+      installedAt: "2027-03-11T00:00:00.000Z",
     });
     const engine = createBountyEngine({
       identity: hostIdentity,
       db,
       inference,
       bountyConfig,
-      now: () => new Date("2026-03-11T00:00:00.000Z"),
+      now: () => new Date("2027-03-11T00:00:00.000Z"),
     });
 
     const opened = await ensureAutoQuestionBountyOpen({
