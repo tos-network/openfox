@@ -198,7 +198,10 @@ Any party can verify the published record:
 5. Check that M-of-N consensus was genuinely reached
 6. Verify that `server_name` is in the allowed news source whitelist
 
-**Skills:** `proofverify.verify` (hash comparison), `zktls.verify-attestation` (attestation structure)
+**Skills:**
+- `proofverify.verify` — hash comparison (bundle_sha256 integrity)
+- `proofverify.verify-attestations` — TLSNotary attestation validation (cryptographic Presentation verification or structural ProverOutput check via native module; extracts server_name, transcript, connection metadata)
+- `proofverify.verify-consensus` — M-of-N consensus verification (checks verdict agreement, server_name consistency, article hash consensus, attestation uniqueness)
 
 ### Step 7: Challenge
 
@@ -239,7 +242,9 @@ The entire pipeline is built on skills from the `openskills` repository:
 | Fetch + Prove | `zktls` | `prove` | Native module (`tlsn` crate via napi-rs) |
 | Verify attestation | `zktls` | `verify-attestation` | Native module |
 | Bundle evidence | `zktls` | `bundle` | Pure JS (SHA-256) |
-| Verify bundle | `proofverify` | `verify` | Pure JS (hash comparison) |
+| Verify bundle hash | `proofverify` | `verify` | Pure JS (hash comparison) |
+| Verify attestations | `proofverify` | `verify-attestations` | Native module (dual-path: cryptographic Presentation or structural ProverOutput) |
+| M-of-N consensus | `proofverify` | `verify-consensus` | Pure JS (verdict/server/hash agreement) |
 | Transaction signing | `crypto-schnorr` | `sign` | Native (Ristretto255) |
 | Confidential values | `crypto-uno-proofs` | `verify` | Native (Pedersen/ElGamal) |
 | Range proofs | `crypto-rangeproofs` | `verify` | Native (Bulletproofs) |
@@ -256,7 +261,12 @@ npm run build
 # Produces: openskills-zktls.linux-x64-gnu.node (17MB)
 ```
 
-The native module compiles the TLSNotary `tlsn` v0.1.0-alpha.14 Rust crate into a Node.js addon via napi-rs. It exposes two async functions: `prove()` for generating zk-TLS attestations and `verify()` for offline attestation validation.
+The native module compiles the TLSNotary `tlsn` v0.1.0-alpha.14 Rust crate into a Node.js addon via napi-rs. It exposes two async functions:
+
+- `prove()` — generates zk-TLS attestations via MPC-TLS
+- `verify()` — dual-path offline attestation validation:
+  - **Cryptographic** (`verificationLevel: "cryptographic"`) — accepts a TLSNotary `Presentation` (JSON or base64-bincode), calls `Presentation::verify()` to validate notary signature, Merkle proofs, server identity, and transcript proofs. Returns `serverName`, `revealedSent`/`revealedRecv`, `connectionTime`.
+  - **Structural** (`verificationLevel: "structural"`) — accepts a `ProverOutput` JSON, validates deserialization and `commitmentCount > 0`. Used when the notary attestation step hasn't been performed.
 
 ## Example: Single Agent Prove Flow
 

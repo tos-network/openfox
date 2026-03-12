@@ -41,7 +41,8 @@ Use `openskills` when you need:
 - cryptographic skill contracts
 - proof-heavy backend substrates
 - native algorithm implementations that should stay outside the OpenFox runtime
-- reusable `zktls` and `proofverify` style skill backends
+- `zktls` backends: MPC-TLS proving, attestation verification (native), evidence bundling
+- `proofverify` backends: hash integrity, TLSNotary attestation validation (native dual-path), M-of-N consensus
 
 Practical rule:
 
