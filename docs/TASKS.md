@@ -1175,6 +1175,11 @@ building OpenFox into a TOS-native agent platform.
 - [ ] Persist zkTLS bundle metadata, origin claims, verifier-material references, and integrity hashes in durable local state.
 - [ ] Surface zkTLS backend readiness, source-policy coverage, and bundle health through service status, `doctor`, and operator APIs.
 - [ ] Add end-to-end tests for paid `news.fetch -> zktls.bundle` runs with deterministic fixtures and replay/idempotency coverage.
+- Progress already landed:
+  - A versioned CLI worker contract for `zktls.bundle` is defined in `OpenFox-CLI-Worker-Contracts-v0.md`.
+  - The `news.fetch` skill path can now invoke a configured bounded CLI worker and fall back to the existing built-in backend when needed.
+  - Service status and `doctor` now expose whether a real `zktls.bundle` worker is configured.
+  - Deterministic fixture tests now cover worker-backed `news.fetch` routing and replay-safe paid invocation flow.
 
 ## Task 87 Breakdown
 
@@ -1196,6 +1201,11 @@ building OpenFox into a TOS-native agent platform.
 - [ ] Add real verifier-backend adapters behind the existing `proof.verify` provider shell.
 - [ ] Persist verifier class, verifier-material reference, verdict reason, and bound subject hashes in durable verification records.
 - [ ] Surface verifier readiness, unsupported proof classes, and degraded verifier state through service status, `doctor`, and operator APIs.
+- Progress already landed:
+  - The `proofverify.verify` CLI worker contract is defined in `OpenFox-CLI-Worker-Contracts-v0.md`.
+  - The `proof.verify` skill path can now invoke a configured bounded CLI worker and fall back to the current built-in verifier when needed.
+  - Service status and `doctor` now expose whether a real `proofverify.verify` worker is configured.
+  - Deterministic fixture tests now cover worker-backed `proof.verify` routing over paid provider invocation.
 - [ ] Add requester-side summaries that distinguish fallback verification from real proof verification.
 - [ ] Add end-to-end tests for invalid, inconclusive, and valid proof bundle paths.
 

@@ -73,9 +73,11 @@ export interface HealthSnapshot {
   newsFetchProviderEnabled: boolean;
   newsFetchBackendMode?: string;
   newsFetchSkillStages: string[];
+  newsFetchWorkerConfigured: boolean;
   proofVerifyProviderEnabled: boolean;
   proofVerifyBackendMode?: string;
   proofVerifySkillStages: string[];
+  proofVerifyWorkerConfigured: boolean;
   discoveryStorageProviderEnabled: boolean;
   discoveryStoragePutBackendMode?: string;
   discoveryStorageGetBackendMode?: string;
@@ -226,9 +228,11 @@ async function buildConfigSnapshot(
   newsFetchProviderEnabled: boolean;
   newsFetchBackendMode?: string;
   newsFetchSkillStages: string[];
+  newsFetchWorkerConfigured: boolean;
   proofVerifyProviderEnabled: boolean;
   proofVerifyBackendMode?: string;
   proofVerifySkillStages: string[];
+  proofVerifyWorkerConfigured: boolean;
   discoveryStorageProviderEnabled: boolean;
   discoveryStoragePutBackendMode?: string;
   discoveryStorageGetBackendMode?: string;
@@ -441,6 +445,10 @@ async function buildConfigSnapshot(
           (stage) => `${stage.skill}.${stage.backend}`,
         )
       : [],
+    newsFetchWorkerConfigured: Boolean(
+      config.agentDiscovery?.newsFetchServer?.enabled &&
+        config.agentDiscovery?.newsFetchServer?.zktlsWorker?.command,
+    ),
     proofVerifyProviderEnabled: config.agentDiscovery?.proofVerifyServer?.enabled === true,
     proofVerifyBackendMode: config.agentDiscovery?.proofVerifyServer?.enabled
       ? config.agentDiscovery.proofVerifyServer.backendMode
@@ -450,6 +458,10 @@ async function buildConfigSnapshot(
           (stage) => `${stage.skill}.${stage.backend}`,
         )
       : [],
+    proofVerifyWorkerConfigured: Boolean(
+      config.agentDiscovery?.proofVerifyServer?.enabled &&
+        config.agentDiscovery?.proofVerifyServer?.verifierWorker?.command,
+    ),
     discoveryStorageProviderEnabled: config.agentDiscovery?.storageServer?.enabled === true,
     discoveryStoragePutBackendMode: config.agentDiscovery?.storageServer?.enabled
       ? config.agentDiscovery.storageServer.putBackendMode
@@ -963,6 +975,15 @@ function collectFindings(
         severity: "ok",
         summary: `news.fetch is using ${snapshot.newsFetchBackendMode} with ${snapshot.newsFetchSkillStages.join(" -> ")}.`,
       });
+      if (!snapshot.newsFetchWorkerConfigured) {
+        findings.push({
+          id: "news-fetch-worker-missing",
+          severity: "warn",
+          summary: "news.fetch does not have a real zkTLS CLI worker configured.",
+          recommendation:
+            "Set agentDiscovery.newsFetchServer.zktlsWorker.command to enable the real zkTLS backend path.",
+        });
+      }
     }
   }
 
@@ -992,6 +1013,15 @@ function collectFindings(
         severity: "ok",
         summary: `proof.verify is using ${snapshot.proofVerifyBackendMode} with ${snapshot.proofVerifySkillStages.join(" -> ")}.`,
       });
+      if (!snapshot.proofVerifyWorkerConfigured) {
+        findings.push({
+          id: "proof-verify-worker-missing",
+          severity: "warn",
+          summary: "proof.verify does not have a real verifier CLI worker configured.",
+          recommendation:
+            "Set agentDiscovery.proofVerifyServer.verifierWorker.command to enable the real proof verifier path.",
+        });
+      }
     }
   }
 
@@ -1402,9 +1432,11 @@ export async function buildHealthSnapshot(
       newsFetchProviderEnabled: false,
       newsFetchBackendMode: undefined,
       newsFetchSkillStages: [],
+      newsFetchWorkerConfigured: false,
       proofVerifyProviderEnabled: false,
       proofVerifyBackendMode: undefined,
       proofVerifySkillStages: [],
+      proofVerifyWorkerConfigured: false,
       discoveryStorageProviderEnabled: false,
       discoveryStoragePutBackendMode: undefined,
       discoveryStorageGetBackendMode: undefined,

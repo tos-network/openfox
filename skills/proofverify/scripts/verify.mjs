@@ -4,8 +4,36 @@ import {
   fetchBoundedUrl,
   validateHttpTargetUrl,
 } from "../../_shared/http-utils.mjs";
+import { runCliWorker, unwrapCliWorkerResult } from "../../_shared/cli-worker.mjs";
 
-export async function run(input) {
+export async function run(input, context) {
+  const worker = context?.config?.agentDiscovery?.proofVerifyServer?.verifierWorker;
+  if (worker?.command) {
+    const workerResult = await runCliWorker(worker, {
+      schema_version: "openfox.cli-worker.v1",
+      worker: "proofverify.verify",
+      request_id: input?.request?.request_nonce || `proofverify-${Date.now()}`,
+      request: input?.request ?? {},
+      options: {
+        ...(input?.options ?? {}),
+      },
+      context: {
+        verifierMaterialRefs: [],
+      },
+    });
+    if (workerResult.exitCode === 0) {
+      return unwrapCliWorkerResult(workerResult.stdout, "proofverify.verify");
+    }
+    if ((workerResult.exitCode === 20 || workerResult.exitCode === 21) && workerResult.stdout) {
+      return unwrapCliWorkerResult(workerResult.stdout, "proofverify.verify");
+    }
+    throw new Error(
+      `proofverify.verify CLI worker failed with exit code ${workerResult.exitCode}${
+        workerResult.stderr ? `: ${workerResult.stderr}` : ""
+      }`,
+    );
+  }
+
   const request = input?.request ?? {};
   const options = input?.options ?? {};
   const checks = [];

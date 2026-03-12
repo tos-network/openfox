@@ -1,6 +1,34 @@
 import { createHash } from "node:crypto";
+import { runCliWorker, unwrapCliWorkerResult } from "../../_shared/cli-worker.mjs";
 
-export async function run(input) {
+export async function run(input, context) {
+  const worker = context?.config?.agentDiscovery?.newsFetchServer?.zktlsWorker;
+  if (worker?.command) {
+    const workerResult = await runCliWorker(worker, {
+      schema_version: "openfox.cli-worker.v1",
+      worker: "zktls.bundle",
+      request_id: input?.request?.request_nonce || `newsfetch-${Date.now()}`,
+      request: input?.request ?? {},
+      capture: input?.capture ?? {},
+      options: {
+        sourcePolicyId:
+          context?.config?.agentDiscovery?.newsFetchServer?.capability || "news.fetch",
+        maxBundleBytes: worker.maxStdoutBytes || 1024 * 1024,
+      },
+      context: {
+        fetchedAt: Number(input?.fetchedAt || Math.floor(Date.now() / 1000)),
+      },
+    });
+    if (workerResult.exitCode !== 0) {
+      throw new Error(
+        `zktls.bundle CLI worker failed with exit code ${workerResult.exitCode}${
+          workerResult.stderr ? `: ${workerResult.stderr}` : ""
+        }`,
+      );
+    }
+    return unwrapCliWorkerResult(workerResult.stdout, "zktls.bundle");
+  }
+
   const request = input?.request ?? {};
   const capture = input?.capture ?? {};
   const fetchedAt = Number(input?.fetchedAt || Math.floor(Date.now() / 1000));

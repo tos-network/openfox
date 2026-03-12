@@ -59,6 +59,8 @@ export interface ServiceStatusSnapshot {
           capability: string;
           backendMode: string;
           skillStages: string[];
+          workerConfigured: boolean;
+          workerCommand?: string;
         }
       | null;
     proofVerify:
@@ -67,6 +69,8 @@ export interface ServiceStatusSnapshot {
           capability: string;
           backendMode: string;
           skillStages: string[];
+          workerConfigured: boolean;
+          workerCommand?: string;
         }
       | null;
     discoveryStorage:
@@ -519,11 +523,21 @@ export function buildServiceStatusReport(
     lines.push(
       `  - news.fetch: ${snapshot.providerSurfaces.newsFetch.url}  capability=${snapshot.providerSurfaces.newsFetch.capability}  backend_mode=${snapshot.providerSurfaces.newsFetch.backendMode}  stages=${snapshot.providerSurfaces.newsFetch.skillStages.join(" -> ") || "(none)"}`,
     );
+    if (snapshot.providerSurfaces.newsFetch.workerConfigured) {
+      lines.push(
+        `    worker=${snapshot.providerSurfaces.newsFetch.workerCommand || "(configured)"}`,
+      );
+    }
   }
   if (snapshot.providerSurfaces.proofVerify) {
     lines.push(
       `  - proof.verify: ${snapshot.providerSurfaces.proofVerify.url}  capability=${snapshot.providerSurfaces.proofVerify.capability}  backend_mode=${snapshot.providerSurfaces.proofVerify.backendMode}  stages=${snapshot.providerSurfaces.proofVerify.skillStages.join(" -> ") || "(none)"}`,
     );
+    if (snapshot.providerSurfaces.proofVerify.workerConfigured) {
+      lines.push(
+        `    worker=${snapshot.providerSurfaces.proofVerify.workerCommand || "(configured)"}`,
+      );
+    }
   }
   if (snapshot.providerSurfaces.discoveryStorage) {
     lines.push(
@@ -676,6 +690,10 @@ export function buildServiceStatusSnapshot(
               capability: newsFetch.capability,
               backendMode: newsFetch.backendMode,
               skillStages: newsFetch.skillStages.map((stage) => `${stage.skill}.${stage.backend}`),
+              workerConfigured: Boolean(newsFetch.zktlsWorker?.command),
+              ...(newsFetch.zktlsWorker?.command
+                ? { workerCommand: newsFetch.zktlsWorker.command }
+                : {}),
             }
           : null,
       proofVerify:
@@ -689,6 +707,10 @@ export function buildServiceStatusSnapshot(
               capability: proofVerify.capability,
               backendMode: proofVerify.backendMode,
               skillStages: proofVerify.skillStages.map((stage) => `${stage.skill}.${stage.backend}`),
+              workerConfigured: Boolean(proofVerify.verifierWorker?.command),
+              ...(proofVerify.verifierWorker?.command
+                ? { workerCommand: proofVerify.verifierWorker.command }
+                : {}),
             }
           : null,
       discoveryStorage:

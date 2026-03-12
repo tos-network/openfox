@@ -4,6 +4,10 @@ import path from "path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { privateKeyToAccount } from "tosdk/accounts";
 import {
+  buildTOSX402Payment,
+  encodeTOSX402PaymentHeader,
+} from "../tos/client.js";
+import {
   DEFAULT_NEWS_FETCH_SKILL_STAGES,
   DEFAULT_PROVIDER_BACKEND_MODE,
 } from "../agent-discovery/provider-skill-spec.js";
@@ -79,7 +83,60 @@ function makeDb(root: string): OpenFoxDatabase {
   return createDatabase(path.join(root, ".openfox", "state.db"));
 }
 
-describe("agent discovery news.fetch server", () => {
+function writeWorker(root: string, name: string, source: string): string {
+  const workerPath = path.join(root, `${name}.mjs`);
+  fs.writeFileSync(workerPath, source);
+  return workerPath;
+}
+
+async function postPaid(
+  url: string,
+  body: Record<string, unknown>,
+  rpcUrl: string,
+): Promise<{ success: boolean; status: number; response: unknown }> {
+  const initial = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const paymentRequired = (await initial.json()) as {
+    accepts?: Array<{
+      scheme: "exact";
+      network: string;
+      maxAmountRequired: string;
+      payToAddress: `0x${string}`;
+      asset?: string;
+      requiredDeadlineSeconds?: number;
+    }>;
+  };
+  const requirement = paymentRequired.accepts?.[0];
+  if (initial.status !== 402 || !requirement) {
+    return {
+      success: initial.ok,
+      status: initial.status,
+      response: paymentRequired,
+    };
+  }
+  const payment = await buildTOSX402Payment({
+    privateKey: TEST_PRIVATE_KEY,
+    requirement,
+    rpcUrl,
+  });
+  const paymentHeader = encodeTOSX402PaymentHeader(payment);
+  const paid = await fetch(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Payment-Signature": paymentHeader,
+      "X-Payment": paymentHeader,
+    },
+    body: JSON.stringify(body),
+  });
+  const response = await paid.json().catch(() => paid.text());
+  return { success: paid.ok, status: paid.status, response };
+}
+
+describe.sequential("agent discovery news.fetch server", () => {
   const originalFetch = global.fetch;
   const originalHome = process.env.HOME;
   const originalTosRpcUrl = process.env.TOS_RPC_URL;
@@ -110,7 +167,6 @@ describe("agent discovery news.fetch server", () => {
 
     const config = makeConfig();
     const { startAgentDiscoveryNewsFetchServer } = await import("../agent-discovery/news-fetch-server.js");
-    const { x402Fetch } = await import("../runtime/x402.js");
     const db = makeDb(tempHome);
     const server = await startAgentDiscoveryNewsFetchServer({
       identity: makeIdentity(),
@@ -163,7 +219,7 @@ describe("agent discovery news.fetch server", () => {
         reason: "paid news fetch",
       };
 
-      const first = await x402Fetch(server.url, requester.account, "POST", JSON.stringify(body));
+      const first = await postPaid(server.url, body, config.rpcUrl!);
       expect(first.success).toBe(true);
       const firstBody = first.response as Record<string, unknown>;
       expect(firstBody.status).toBe("ok");
@@ -175,11 +231,121 @@ describe("agent discovery news.fetch server", () => {
         stages: ["newsfetch.capture", "zktls.bundle"],
       });
 
-      const second = await x402Fetch(server.url, requester.account, "POST", JSON.stringify(body));
+      const second = await postPaid(server.url, body, config.rpcUrl!);
       expect(second.success).toBe(true);
       const secondBody = second.response as Record<string, unknown>;
       expect(secondBody.idempotent).toBe(true);
       expect(submittedPayments).toBe(1);
+    } finally {
+      await server.close();
+      db.close();
+    }
+  });
+
+  it("can route zktls.bundle through a configured CLI worker", async () => {
+    tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-news-fetch-worker-"));
+    process.env.HOME = tempHome;
+    process.env.TOS_RPC_URL = "http://127.0.0.1:8545";
+    fs.mkdirSync(path.join(tempHome, ".openfox"), { recursive: true });
+    fs.writeFileSync(
+      path.join(tempHome, ".openfox", "wallet.json"),
+      JSON.stringify({ privateKey: TEST_PRIVATE_KEY, createdAt: new Date().toISOString() }),
+    );
+
+    const workerPath = writeWorker(
+      tempHome,
+      "zktls-worker",
+      `
+import process from "node:process";
+let raw = "";
+process.stdin.setEncoding("utf8");
+process.stdin.on("data", (chunk) => { raw += chunk; });
+process.stdin.on("end", () => {
+  const input = JSON.parse(raw);
+  const result = {
+    schema_version: "openfox.cli-worker.v1",
+    worker: "zktls.bundle",
+    result: {
+      format: "zktls_bundle_v1",
+      bundleSha256: "0x${"c".repeat(64)}",
+      bundle: {
+        bundle_ref: "artifact://zktls/test",
+        source_url: input.request.source_url,
+        canonical_url: input.capture.canonicalUrl,
+        captured_at: input.context.fetchedAt,
+        source_policy_id: "major-news-headline-v1",
+        subject_sha256: input.capture.articleSha256
+      }
+    }
+  };
+  process.stdout.write(JSON.stringify(result));
+});
+`,
+    );
+
+    const config = makeConfig();
+    config.agentDiscovery!.newsFetchServer!.zktlsWorker = {
+      command: process.execPath,
+      args: [workerPath],
+      timeoutMs: 5000,
+    };
+    const { startAgentDiscoveryNewsFetchServer } = await import("../agent-discovery/news-fetch-server.js");
+    const db = makeDb(tempHome);
+    const server = await startAgentDiscoveryNewsFetchServer({
+      identity: makeIdentity(),
+      config,
+      address: config.walletAddress!,
+      db,
+      newsFetchConfig: config.agentDiscovery!.newsFetchServer!,
+    });
+
+    const requester = makeIdentity();
+    global.fetch = vi.fn(async (input, init) => {
+      const url = String(input);
+      if (url === config.rpcUrl) {
+        const body = JSON.parse(String(init?.body ?? "{}")) as { id: number; method: string };
+        switch (body.method) {
+          case "tos_chainId":
+            return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0x682" }), { status: 200 });
+          case "tos_getTransactionReceipt":
+          case "tos_getTransactionByHash":
+            return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: null }), { status: 200 });
+          case "tos_getTransactionCount":
+            return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0x1" }), { status: 200 });
+          case "tos_sendRawTransaction":
+            return new Response(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: "0xpay1" }), { status: 200 });
+          default:
+            throw new Error(`unexpected RPC method ${body.method}`);
+        }
+      }
+      if (url === "https://news.example/story") {
+        return new Response(
+          "<html><head><title>CLI Worker Headline</title></head><body><article>hello</article></body></html>",
+          { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } },
+        );
+      }
+      return originalFetch(input as RequestInfo | URL, init);
+    }) as typeof fetch;
+
+    try {
+      const body = {
+        capability: "news.fetch",
+        requester: {
+          agent_id: requester.address.toLowerCase(),
+          identity: { kind: "tos", value: requester.address.toLowerCase() },
+        },
+        request_nonce: "newsfetchworker1",
+        request_expires_at: Math.floor(Date.now() / 1000) + 300,
+        source_url: "https://news.example/story",
+        reason: "paid news fetch",
+      };
+
+      const result = await postPaid(server.url, body, config.rpcUrl!);
+      expect(result.success).toBe(true);
+      const response = result.response as Record<string, unknown>;
+      expect(response.status).toBe("ok");
+      expect(response.zktls_bundle_format).toBe("zktls_bundle_v1");
+      expect(response.zktls_bundle_sha256).toBe(`0x${"c".repeat(64)}`);
     } finally {
       await server.close();
       db.close();

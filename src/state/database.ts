@@ -4605,6 +4605,7 @@ function deserializeSkill(row: any): Skill {
     instructions: row.instructions,
     source: row.source,
     path: row.path,
+    baseDir: path.dirname(row.path),
     enabled: !!row.enabled,
     installedAt: row.installed_at,
   };

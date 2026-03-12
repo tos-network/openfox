@@ -138,6 +138,7 @@ export interface AgentDiscoveryNewsFetchServerConfig {
   maxArticleChars: number;
   backendMode: ProviderBackendMode;
   skillStages: SkillBackendStageConfig[];
+  zktlsWorker?: ProviderCliWorkerConfig | null;
 }
 
 export interface AgentDiscoveryProofVerifyServerConfig {
@@ -153,6 +154,7 @@ export interface AgentDiscoveryProofVerifyServerConfig {
   allowPrivateTargets: boolean;
   backendMode: ProviderBackendMode;
   skillStages: SkillBackendStageConfig[];
+  verifierWorker?: ProviderCliWorkerConfig | null;
 }
 
 export interface AgentDiscoveryStorageServerConfig {
@@ -377,6 +379,7 @@ export const DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG: AgentDiscoveryNew
     maxArticleChars: 12000,
     backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
     skillStages: cloneSkillBackendStages(DEFAULT_NEWS_FETCH_SKILL_STAGES),
+    zktlsWorker: null,
   };
 
 export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryProofVerifyServerConfig =
@@ -393,6 +396,7 @@ export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryP
     allowPrivateTargets: false,
     backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
     skillStages: cloneSkillBackendStages(DEFAULT_PROOF_VERIFY_SKILL_STAGES),
+    verifierWorker: null,
   };
 
 export const DEFAULT_AGENT_DISCOVERY_STORAGE_SERVER_CONFIG: AgentDiscoveryStorageServerConfig =
@@ -3351,6 +3355,16 @@ export interface SkillInstallSpec {
 export interface SkillProviderBackendSpec {
   entry: string;
   description?: string;
+}
+
+export interface ProviderCliWorkerConfig {
+  command: string;
+  args?: string[];
+  timeoutMs?: number;
+  maxStdinBytes?: number;
+  maxStdoutBytes?: number;
+  env?: Record<string, string>;
+  cwd?: string;
 }
 
 export interface SkillPromptEntry {
