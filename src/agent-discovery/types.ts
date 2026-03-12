@@ -5,10 +5,12 @@ import type {
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
   AgentDiscoveryNewsFetchServerConfig,
+  NewsFetchSourcePolicyConfig,
   AgentDiscoveryObservationServerConfig,
   AgentDiscoveryOracleServerConfig,
   AgentDiscoveryPolicyProfiles,
   AgentDiscoveryProofVerifyServerConfig,
+  ProofVerifierClass,
   AgentDiscoverySelectionPolicy,
   AgentDiscoverySentimentAnalysisServerConfig,
   AgentDiscoveryStorageServerConfig,
@@ -20,10 +22,12 @@ export type {
   AgentDiscoveryEndpointConfig,
   AgentDiscoveryFaucetServerConfig,
   AgentDiscoveryNewsFetchServerConfig,
+  NewsFetchSourcePolicyConfig,
   AgentDiscoveryObservationServerConfig,
   AgentDiscoveryOracleServerConfig,
   AgentDiscoveryPolicyProfiles,
   AgentDiscoveryProofVerifyServerConfig,
+  ProofVerifierClass,
   AgentDiscoverySelectionPolicy,
   AgentDiscoverySentimentAnalysisServerConfig,
   AgentDiscoveryStorageServerConfig,
@@ -274,6 +278,7 @@ export interface NewsFetchInvocationRequest {
   request_nonce: string;
   request_expires_at: number;
   source_url: string;
+  source_policy_id?: string;
   publisher_hint?: string;
   headline_hint?: string;
   reason: string;

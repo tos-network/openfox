@@ -59,6 +59,9 @@ export interface ServiceStatusSnapshot {
           capability: string;
           backendMode: string;
           skillStages: string[];
+          sourcePolicyCount: number;
+          defaultSourcePolicyId: string | null;
+          sourcePolicyIds: string[];
           workerConfigured: boolean;
           workerCommand?: string;
         }
@@ -69,6 +72,7 @@ export interface ServiceStatusSnapshot {
           capability: string;
           backendMode: string;
           skillStages: string[];
+          supportedVerifierClasses: string[];
           workerConfigured: boolean;
           workerCommand?: string;
         }
@@ -523,6 +527,9 @@ export function buildServiceStatusReport(
     lines.push(
       `  - news.fetch: ${snapshot.providerSurfaces.newsFetch.url}  capability=${snapshot.providerSurfaces.newsFetch.capability}  backend_mode=${snapshot.providerSurfaces.newsFetch.backendMode}  stages=${snapshot.providerSurfaces.newsFetch.skillStages.join(" -> ") || "(none)"}`,
     );
+    lines.push(
+      `    source_policies=${snapshot.providerSurfaces.newsFetch.sourcePolicyCount}${snapshot.providerSurfaces.newsFetch.defaultSourcePolicyId ? `  default=${snapshot.providerSurfaces.newsFetch.defaultSourcePolicyId}` : ""}${snapshot.providerSurfaces.newsFetch.sourcePolicyIds.length > 0 ? `  ids=${snapshot.providerSurfaces.newsFetch.sourcePolicyIds.join(",")}` : ""}`,
+    );
     if (snapshot.providerSurfaces.newsFetch.workerConfigured) {
       lines.push(
         `    worker=${snapshot.providerSurfaces.newsFetch.workerCommand || "(configured)"}`,
@@ -532,6 +539,9 @@ export function buildServiceStatusReport(
   if (snapshot.providerSurfaces.proofVerify) {
     lines.push(
       `  - proof.verify: ${snapshot.providerSurfaces.proofVerify.url}  capability=${snapshot.providerSurfaces.proofVerify.capability}  backend_mode=${snapshot.providerSurfaces.proofVerify.backendMode}  stages=${snapshot.providerSurfaces.proofVerify.skillStages.join(" -> ") || "(none)"}`,
+    );
+    lines.push(
+      `    verifier_classes=${snapshot.providerSurfaces.proofVerify.supportedVerifierClasses.join(",") || "(none)"}`,
     );
     if (snapshot.providerSurfaces.proofVerify.workerConfigured) {
       lines.push(
@@ -690,6 +700,9 @@ export function buildServiceStatusSnapshot(
               capability: newsFetch.capability,
               backendMode: newsFetch.backendMode,
               skillStages: newsFetch.skillStages.map((stage) => `${stage.skill}.${stage.backend}`),
+              sourcePolicyCount: newsFetch.sourcePolicies?.length ?? 0,
+              defaultSourcePolicyId: newsFetch.defaultSourcePolicyId ?? null,
+              sourcePolicyIds: (newsFetch.sourcePolicies ?? []).map((policy) => policy.id),
               workerConfigured: Boolean(newsFetch.zktlsWorker?.command),
               ...(newsFetch.zktlsWorker?.command
                 ? { workerCommand: newsFetch.zktlsWorker.command }
@@ -707,6 +720,8 @@ export function buildServiceStatusSnapshot(
               capability: proofVerify.capability,
               backendMode: proofVerify.backendMode,
               skillStages: proofVerify.skillStages.map((stage) => `${stage.skill}.${stage.backend}`),
+              supportedVerifierClasses:
+                proofVerify.supportedVerifierClasses ?? [],
               workerConfigured: Boolean(proofVerify.verifierWorker?.command),
               ...(proofVerify.verifierWorker?.command
                 ? { workerCommand: proofVerify.verifierWorker.command }

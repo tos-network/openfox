@@ -138,8 +138,16 @@ export interface AgentDiscoveryNewsFetchServerConfig {
   maxArticleChars: number;
   backendMode: ProviderBackendMode;
   skillStages: SkillBackendStageConfig[];
+  requireSourcePolicyId?: boolean;
+  defaultSourcePolicyId?: string;
+  sourcePolicies?: NewsFetchSourcePolicyConfig[];
   zktlsWorker?: ProviderCliWorkerConfig | null;
 }
+
+export type ProofVerifierClass =
+  | "structural_verification"
+  | "bundle_integrity_verification"
+  | "cryptographic_proof_verification";
 
 export interface AgentDiscoveryProofVerifyServerConfig {
   enabled: boolean;
@@ -154,7 +162,15 @@ export interface AgentDiscoveryProofVerifyServerConfig {
   allowPrivateTargets: boolean;
   backendMode: ProviderBackendMode;
   skillStages: SkillBackendStageConfig[];
+  supportedVerifierClasses?: ProofVerifierClass[];
   verifierWorker?: ProviderCliWorkerConfig | null;
+}
+
+export interface NewsFetchSourcePolicyConfig {
+  id: string;
+  allowHosts: string[];
+  pathPrefixes?: string[];
+  description?: string;
 }
 
 export interface AgentDiscoveryStorageServerConfig {
@@ -379,6 +395,9 @@ export const DEFAULT_AGENT_DISCOVERY_NEWS_FETCH_SERVER_CONFIG: AgentDiscoveryNew
     maxArticleChars: 12000,
     backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
     skillStages: cloneSkillBackendStages(DEFAULT_NEWS_FETCH_SKILL_STAGES),
+    requireSourcePolicyId: false,
+    defaultSourcePolicyId: undefined,
+    sourcePolicies: [],
     zktlsWorker: null,
   };
 
@@ -396,6 +415,11 @@ export const DEFAULT_AGENT_DISCOVERY_PROOF_VERIFY_SERVER_CONFIG: AgentDiscoveryP
     allowPrivateTargets: false,
     backendMode: DEFAULT_PROVIDER_BACKEND_MODE,
     skillStages: cloneSkillBackendStages(DEFAULT_PROOF_VERIFY_SKILL_STAGES),
+    supportedVerifierClasses: [
+      "structural_verification",
+      "bundle_integrity_verification",
+      "cryptographic_proof_verification",
+    ],
     verifierWorker: null,
   };
 

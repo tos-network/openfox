@@ -1947,7 +1947,7 @@ Delivered so far:
 
 ### Phase 42: Stronger zkTLS Backend Integration
 
-Status: planned
+Status: in progress
 
 Goal:
 
@@ -1981,6 +1981,14 @@ Implementation tasks:
 - add end-to-end tests for paid `news.fetch -> zktls.bundle` runs against
   deterministic fixtures and bounded replay/idempotency cases
 
+Progress already landed:
+
+- versioned `zktls.bundle` CLI worker contract documented and exercised
+- Rust CLI worker workspace with `openfox-zktls-bundler`
+- provider-shell worker routing behind the existing `news.fetch` surface
+- bounded source-policy configuration and operator/doctor visibility
+- deterministic end-to-end paid `news.fetch -> zktls.bundle` fixture coverage
+
 Acceptance criteria:
 
 - an operator can run `news.fetch` with a real zkTLS backend selected through
@@ -1995,7 +2003,7 @@ Acceptance criteria:
 
 ### Phase 43: Stronger Proof Verifier Backend Integration
 
-Status: planned
+Status: in progress
 
 Goal:
 
@@ -2029,6 +2037,14 @@ Implementation tasks:
 - add requester-side result summaries that distinguish structural verification
   from cryptographic verification
 - add end-to-end tests for invalid, inconclusive, and valid proof bundle paths
+
+Progress already landed:
+
+- versioned `proofverify.verify` CLI worker contract documented and exercised
+- Rust CLI worker workspace with `openfox-proof-verifier`
+- provider-shell worker routing behind the existing `proof.verify` surface
+- canonical verifier classes surfaced in config, service status, and `doctor`
+- deterministic end-to-end paid `proof.verify` fixture coverage for worker-backed routing
 
 Acceptance criteria:
 

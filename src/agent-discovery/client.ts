@@ -1177,6 +1177,7 @@ export async function requestNewsFetch(params: {
   config: OpenFoxConfig;
   address: string;
   sourceUrl: string;
+  sourcePolicyId?: string;
   publisherHint?: string;
   headlineHint?: string;
   capability?: string;
@@ -1222,6 +1223,7 @@ export async function requestNewsFetch(params: {
     request_nonce: randomBytes(16).toString("hex"),
     request_expires_at: buildRequestExpiry(),
     source_url: params.sourceUrl,
+    ...(params.sourcePolicyId ? { source_policy_id: params.sourcePolicyId } : {}),
     ...(params.publisherHint ? { publisher_hint: params.publisherHint } : {}),
     ...(params.headlineHint ? { headline_hint: params.headlineHint } : {}),
     reason: params.reason || "paid news fetch",

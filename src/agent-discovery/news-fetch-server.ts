@@ -23,6 +23,7 @@ import { normalizeTOSAddress as normalizeAddress } from "../tos/address.js";
 import {
   buildNewsFetchServerUrl,
   type AgentDiscoveryNewsFetchServerConfig,
+  type NewsFetchSourcePolicyConfig,
   type NewsFetchInvocationRequest,
   type NewsFetchInvocationResponse,
 } from "./types.js";
@@ -81,6 +82,8 @@ interface NewsFetchBackendResult {
     kind: "skills" | "builtin";
     stages: string[];
   };
+  sourcePolicyId?: string;
+  sourcePolicyHost?: string;
 }
 
 const BODY_LIMIT_BYTES = 64 * 1024;
@@ -151,10 +154,68 @@ function storeNewsFetchJob(db: OpenFoxDatabase, job: StoredNewsFetchJob): void {
   db.setKV(job.requestKey, job.jobId);
 }
 
+function matchesSourcePolicy(
+  sourceUrl: URL,
+  policy: NewsFetchSourcePolicyConfig,
+): boolean {
+  const hostname = sourceUrl.hostname.toLowerCase();
+  const hostMatched = policy.allowHosts.some((host) => {
+    const normalized = host.toLowerCase();
+    return hostname === normalized || hostname.endsWith(`.${normalized}`);
+  });
+  if (!hostMatched) return false;
+  if (!policy.pathPrefixes || policy.pathPrefixes.length === 0) return true;
+  return policy.pathPrefixes.some((prefix) => sourceUrl.pathname.startsWith(prefix));
+}
+
+function resolveSourcePolicy(
+  request: NewsFetchInvocationRequest,
+  config: AgentDiscoveryNewsFetchServerConfig,
+  sourceUrl: URL,
+): { sourcePolicyId?: string; sourcePolicyHost?: string } {
+  const policies = config.sourcePolicies ?? [];
+  const requestedPolicyId =
+    request.source_policy_id || config.defaultSourcePolicyId || undefined;
+  if (policies.length === 0) {
+    if (config.requireSourcePolicyId && !requestedPolicyId) {
+      throw new Error("source_policy_id is required for this news.fetch provider");
+    }
+    return {
+      sourcePolicyId: requestedPolicyId,
+    };
+  }
+
+  if (requestedPolicyId) {
+    const policy = policies.find((entry) => entry.id === requestedPolicyId);
+    if (!policy) {
+      throw new Error(`unknown source_policy_id ${requestedPolicyId}`);
+    }
+    if (!matchesSourcePolicy(sourceUrl, policy)) {
+      throw new Error(`source_url is not allowed by source policy ${requestedPolicyId}`);
+    }
+    return {
+      sourcePolicyId: policy.id,
+      sourcePolicyHost: sourceUrl.hostname.toLowerCase(),
+    };
+  }
+
+  const matched = policies.filter((policy) => matchesSourcePolicy(sourceUrl, policy));
+  if (matched.length === 0) {
+    throw new Error("source_url is not covered by any configured source policy");
+  }
+  if (matched.length > 1) {
+    throw new Error("source_url matches multiple source policies; set source_policy_id explicitly");
+  }
+  return {
+    sourcePolicyId: matched[0].id,
+    sourcePolicyHost: sourceUrl.hostname.toLowerCase(),
+  };
+}
+
 function validateRequest(
   request: NewsFetchInvocationRequest,
   config: AgentDiscoveryNewsFetchServerConfig,
-): { requesterIdentity: string; sourceUrl: URL } {
+): { requesterIdentity: string; sourceUrl: URL; sourcePolicyId?: string; sourcePolicyHost?: string } {
   if (request.capability !== config.capability) {
     throw new Error(`unsupported capability ${request.capability}`);
   }
@@ -169,9 +230,11 @@ function validateRequest(
   const sourceUrl = validateHttpTargetUrl(request.source_url, {
     allowPrivateTargets: config.allowPrivateTargets,
   });
+  const sourcePolicy = resolveSourcePolicy(request, config, sourceUrl);
   return {
     requesterIdentity: request.requester.identity.value.toLowerCase(),
     sourceUrl,
+    ...sourcePolicy,
   };
 }
 
@@ -254,6 +317,7 @@ function buildCaptureBundle(params: {
   publisher?: string;
   contentType: string;
   httpStatus: number;
+  sourcePolicyId?: string;
 }): { bundleSha256: `0x${string}`; bundle: Record<string, unknown> } {
   const bundle = {
     version: 1,
@@ -261,6 +325,7 @@ function buildCaptureBundle(params: {
     fetched_at: params.fetchedAt,
     source_url: params.request.source_url,
     canonical_url: params.canonicalUrl,
+    source_policy_id: params.sourcePolicyId || null,
     publisher_hint: params.request.publisher_hint || null,
     headline_hint: params.request.headline_hint || null,
     http_status: params.httpStatus,
@@ -279,6 +344,8 @@ async function runBuiltinNewsFetchBackend(params: {
   sourceUrl: URL;
   newsFetchConfig: AgentDiscoveryNewsFetchServerConfig;
   fetchedAt: number;
+  sourcePolicyId?: string;
+  sourcePolicyHost?: string;
 }): Promise<NewsFetchBackendResult> {
   const fetched = await fetchBoundedUrl(params.sourceUrl, {
     timeoutMs: params.newsFetchConfig.requestTimeoutMs,
@@ -304,6 +371,7 @@ async function runBuiltinNewsFetchBackend(params: {
     publisher,
     contentType: fetched.contentType,
     httpStatus: fetched.status,
+    sourcePolicyId: params.sourcePolicyId,
   });
   return {
     canonicalUrl: fetched.canonicalUrl,
@@ -320,6 +388,8 @@ async function runBuiltinNewsFetchBackend(params: {
       kind: "builtin",
       stages: ["builtin:news.fetch"],
     },
+    sourcePolicyId: params.sourcePolicyId,
+    sourcePolicyHost: params.sourcePolicyHost,
   };
 }
 
@@ -330,6 +400,8 @@ async function runSkillNewsFetchBackend(params: {
   config: OpenFoxConfig;
   db: OpenFoxDatabase;
   fetchedAt: number;
+  sourcePolicyId?: string;
+  sourcePolicyHost?: string;
 }): Promise<NewsFetchBackendResult> {
   const skillsDir = params.config.skillsDir || "~/.openfox/skills";
   const [captureStage, bundleStage] = params.newsFetchConfig.skillStages;
@@ -385,6 +457,8 @@ async function runSkillNewsFetchBackend(params: {
       kind: "skills",
       stages: params.newsFetchConfig.skillStages.map(formatSkillBackendStage),
     },
+    sourcePolicyId: params.sourcePolicyId,
+    sourcePolicyHost: params.sourcePolicyHost,
   };
 }
 
@@ -500,7 +574,7 @@ export async function startAgentDiscoveryNewsFetchServer(
       }
 
       const body = (await readJsonBody(req)) as NewsFetchInvocationRequest;
-      const { requesterIdentity, sourceUrl } = validateRequest(body, newsFetchConfig);
+      const { requesterIdentity, sourceUrl, sourcePolicyId, sourcePolicyHost } = validateRequest(body, newsFetchConfig);
       const requestKey = buildNewsFetchRequestKey(body);
       const existingJobId = db.getKV(requestKey);
       if (existingJobId) {
@@ -560,6 +634,8 @@ export async function startAgentDiscoveryNewsFetchServer(
             config,
             db,
             fetchedAt,
+            sourcePolicyId,
+            sourcePolicyHost,
           }),
         runBuiltin: () =>
           runBuiltinNewsFetchBackend({
@@ -567,6 +643,8 @@ export async function startAgentDiscoveryNewsFetchServer(
             sourceUrl,
             newsFetchConfig,
             fetchedAt,
+            sourcePolicyId,
+            sourcePolicyHost,
           }),
         onSkillsFailure: (error) => {
           logger.warn(
@@ -585,6 +663,7 @@ export async function startAgentDiscoveryNewsFetchServer(
         payment_tx_hash: paid.txHash,
         fetched_at: fetchedAt,
         source_url: sourceUrl.toString(),
+        ...(sourcePolicyId ? { source_policy_id: sourcePolicyId } : {}),
         canonical_url: result.canonicalUrl,
         publisher: result.publisher,
         headline: result.headline,
@@ -596,6 +675,8 @@ export async function startAgentDiscoveryNewsFetchServer(
         metadata: {
           publisher_hint: body.publisher_hint || null,
           headline_hint: body.headline_hint || null,
+          source_policy_id: result.sourcePolicyId || null,
+          source_policy_host: result.sourcePolicyHost || null,
           http_status: result.httpStatus,
           content_type: result.contentType,
           provider_backend: result.backendSummary,

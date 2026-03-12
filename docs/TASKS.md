@@ -1169,12 +1169,12 @@ building OpenFox into a TOS-native agent platform.
   - Invoke the real backend through a bounded CLI worker contract using
     `stdin/stdout`, deterministic exit codes, and explicit timeout and size
     limits.
-- [ ] Define a versioned `zktls.bundle` backend contract with canonical input/output schemas.
-- [ ] Add a real zkTLS backend adapter behind the existing `news.fetch` provider shell.
-- [ ] Add bounded source-policy configuration for allowlisted major news and public-information sites.
+- [x] Define a versioned `zktls.bundle` backend contract with canonical input/output schemas.
+- [x] Add a Rust-first CLI worker adapter behind the existing `news.fetch` provider shell.
+- [x] Add bounded source-policy configuration for allowlisted major news and public-information sites.
 - [ ] Persist zkTLS bundle metadata, origin claims, verifier-material references, and integrity hashes in durable local state.
-- [ ] Surface zkTLS backend readiness, source-policy coverage, and bundle health through service status, `doctor`, and operator APIs.
-- [ ] Add end-to-end tests for paid `news.fetch -> zktls.bundle` runs with deterministic fixtures and replay/idempotency coverage.
+- [x] Surface zkTLS backend readiness, source-policy coverage, and bundle health through service status, `doctor`, and operator APIs.
+- [x] Add end-to-end tests for paid `news.fetch -> zktls.bundle` runs with deterministic fixtures and replay/idempotency coverage.
 - Progress already landed:
   - A versioned CLI worker contract for `zktls.bundle` is defined in `OpenFox-CLI-Worker-Contracts-v0.md`.
   - The `news.fetch` skill path can now invoke a configured bounded CLI worker and fall back to the existing built-in backend when needed.
@@ -1199,10 +1199,10 @@ building OpenFox into a TOS-native agent platform.
     persistence, and operator surfaces.
   - Support multiple verifier classes behind one bounded CLI contract rather
     than introducing a second public protocol.
-- [ ] Define canonical verifier backend classes for structural verification, bundle integrity verification, and cryptographic proof verification.
-- [ ] Add real verifier-backend adapters behind the existing `proof.verify` provider shell.
+- [x] Define canonical verifier backend classes for structural verification, bundle integrity verification, and cryptographic proof verification.
+- [x] Add a Rust-first CLI worker adapter behind the existing `proof.verify` provider shell.
 - [ ] Persist verifier class, verifier-material reference, verdict reason, and bound subject hashes in durable verification records.
-- [ ] Surface verifier readiness, unsupported proof classes, and degraded verifier state through service status, `doctor`, and operator APIs.
+- [x] Surface verifier readiness, unsupported proof classes, and degraded verifier state through service status, `doctor`, and operator APIs.
 - Progress already landed:
   - The `proofverify.verify` CLI worker contract is defined in `OpenFox-CLI-Worker-Contracts-v0.md`.
   - The `proof.verify` skill path can now invoke a configured bounded CLI worker and fall back to the current built-in verifier when needed.

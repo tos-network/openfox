@@ -216,6 +216,7 @@ async function verifyRequestBackend(
   const checks: Array<{ label: string; ok: boolean; actual?: string; expected?: string }> = [];
   const metadata: Record<string, unknown> = {
     verifier_backend: "bounded_receipt_verifier_v0",
+    verification_mode: "fallback",
   };
 
   if (request.subject_url) {
@@ -352,6 +353,10 @@ async function runSkillProofVerifyBackend(params: {
   }));
   return {
     ...result,
+    metadata: {
+      ...result.metadata,
+      verification_mode: "worker_backed",
+    },
     backendSummary: {
       kind: "skills",
       stages: params.proofVerifyConfig.skillStages.map(formatSkillBackendStage),

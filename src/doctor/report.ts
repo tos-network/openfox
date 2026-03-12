@@ -74,10 +74,13 @@ export interface HealthSnapshot {
   newsFetchBackendMode?: string;
   newsFetchSkillStages: string[];
   newsFetchWorkerConfigured: boolean;
+  newsFetchSourcePolicyCount: number;
+  newsFetchDefaultSourcePolicyId?: string;
   proofVerifyProviderEnabled: boolean;
   proofVerifyBackendMode?: string;
   proofVerifySkillStages: string[];
   proofVerifyWorkerConfigured: boolean;
+  proofVerifySupportedVerifierClasses: string[];
   discoveryStorageProviderEnabled: boolean;
   discoveryStoragePutBackendMode?: string;
   discoveryStorageGetBackendMode?: string;
@@ -229,10 +232,13 @@ async function buildConfigSnapshot(
   newsFetchBackendMode?: string;
   newsFetchSkillStages: string[];
   newsFetchWorkerConfigured: boolean;
+  newsFetchSourcePolicyCount: number;
+  newsFetchDefaultSourcePolicyId?: string;
   proofVerifyProviderEnabled: boolean;
   proofVerifyBackendMode?: string;
   proofVerifySkillStages: string[];
   proofVerifyWorkerConfigured: boolean;
+  proofVerifySupportedVerifierClasses: string[];
   discoveryStorageProviderEnabled: boolean;
   discoveryStoragePutBackendMode?: string;
   discoveryStorageGetBackendMode?: string;
@@ -449,6 +455,12 @@ async function buildConfigSnapshot(
       config.agentDiscovery?.newsFetchServer?.enabled &&
         config.agentDiscovery?.newsFetchServer?.zktlsWorker?.command,
     ),
+    newsFetchSourcePolicyCount: config.agentDiscovery?.newsFetchServer?.enabled
+      ? (config.agentDiscovery.newsFetchServer.sourcePolicies?.length ?? 0)
+      : 0,
+    newsFetchDefaultSourcePolicyId: config.agentDiscovery?.newsFetchServer?.enabled
+      ? config.agentDiscovery.newsFetchServer.defaultSourcePolicyId
+      : undefined,
     proofVerifyProviderEnabled: config.agentDiscovery?.proofVerifyServer?.enabled === true,
     proofVerifyBackendMode: config.agentDiscovery?.proofVerifyServer?.enabled
       ? config.agentDiscovery.proofVerifyServer.backendMode
@@ -462,6 +474,9 @@ async function buildConfigSnapshot(
       config.agentDiscovery?.proofVerifyServer?.enabled &&
         config.agentDiscovery?.proofVerifyServer?.verifierWorker?.command,
     ),
+    proofVerifySupportedVerifierClasses: config.agentDiscovery?.proofVerifyServer?.enabled
+      ? (config.agentDiscovery.proofVerifyServer.supportedVerifierClasses ?? [])
+      : [],
     discoveryStorageProviderEnabled: config.agentDiscovery?.storageServer?.enabled === true,
     discoveryStoragePutBackendMode: config.agentDiscovery?.storageServer?.enabled
       ? config.agentDiscovery.storageServer.putBackendMode
@@ -984,6 +999,21 @@ function collectFindings(
             "Set agentDiscovery.newsFetchServer.zktlsWorker.command to enable the real zkTLS backend path.",
         });
       }
+      if (snapshot.newsFetchSourcePolicyCount === 0) {
+        findings.push({
+          id: "news-fetch-source-policy-missing",
+          severity: "warn",
+          summary: "news.fetch does not have any bounded source policies configured.",
+          recommendation:
+            "Configure agentDiscovery.newsFetchServer.sourcePolicies to allowlist major news and public-information hosts.",
+        });
+      } else {
+        findings.push({
+          id: "news-fetch-source-policy-configured",
+          severity: "ok",
+          summary: `news.fetch has ${snapshot.newsFetchSourcePolicyCount} configured source polic${snapshot.newsFetchSourcePolicyCount === 1 ? "y" : "ies"}${snapshot.newsFetchDefaultSourcePolicyId ? ` (default: ${snapshot.newsFetchDefaultSourcePolicyId})` : ""}.`,
+        });
+      }
     }
   }
 
@@ -1020,6 +1050,21 @@ function collectFindings(
           summary: "proof.verify does not have a real verifier CLI worker configured.",
           recommendation:
             "Set agentDiscovery.proofVerifyServer.verifierWorker.command to enable the real proof verifier path.",
+        });
+      }
+      if (snapshot.proofVerifySupportedVerifierClasses.length === 0) {
+        findings.push({
+          id: "proof-verify-classes-missing",
+          severity: "warn",
+          summary: "proof.verify does not declare any supported verifier classes.",
+          recommendation:
+            "Set agentDiscovery.proofVerifyServer.supportedVerifierClasses to advertise structural, bundle integrity, and proof verification support.",
+        });
+      } else {
+        findings.push({
+          id: "proof-verify-classes-configured",
+          severity: "ok",
+          summary: `proof.verify supports verifier classes: ${snapshot.proofVerifySupportedVerifierClasses.join(", ")}.`,
         });
       }
     }
@@ -1433,10 +1478,13 @@ export async function buildHealthSnapshot(
       newsFetchBackendMode: undefined,
       newsFetchSkillStages: [],
       newsFetchWorkerConfigured: false,
+      newsFetchSourcePolicyCount: 0,
+      newsFetchDefaultSourcePolicyId: undefined,
       proofVerifyProviderEnabled: false,
       proofVerifyBackendMode: undefined,
       proofVerifySkillStages: [],
       proofVerifyWorkerConfigured: false,
+      proofVerifySupportedVerifierClasses: [],
       discoveryStorageProviderEnabled: false,
       discoveryStoragePutBackendMode: undefined,
       discoveryStorageGetBackendMode: undefined,
@@ -1567,7 +1615,9 @@ export function buildHealthSnapshotReport(snapshot: HealthSnapshot): string {
     `Signer provider enabled: ${yesNo(snapshot.signerProviderEnabled)}${snapshot.signerProviderEnabled ? ` (${snapshot.signerRecentQuotes} quotes, ${snapshot.signerRecentExecutions} executions, ${snapshot.signerPendingExecutions} pending)` : ""}`,
     `Paymaster provider enabled: ${yesNo(snapshot.paymasterProviderEnabled)}${snapshot.paymasterProviderEnabled ? ` (${snapshot.paymasterRecentQuotes} quotes, ${snapshot.paymasterRecentAuthorizations} authorizations, ${snapshot.paymasterPendingAuthorizations} pending, sponsor funded=${snapshot.paymasterSponsorFunded === null ? "unknown" : yesNo(snapshot.paymasterSponsorFunded)}, signer parity=${snapshot.paymasterSignerParityAligned ? "aligned" : "limited"})` : ""}`,
     `news.fetch backend: ${snapshot.newsFetchProviderEnabled ? `${snapshot.newsFetchBackendMode} (${snapshot.newsFetchSkillStages.join(" -> ") || "(none)"})` : "disabled"}`,
+    `news.fetch source policies: ${snapshot.newsFetchProviderEnabled ? `${snapshot.newsFetchSourcePolicyCount}${snapshot.newsFetchDefaultSourcePolicyId ? ` (default ${snapshot.newsFetchDefaultSourcePolicyId})` : ""}` : "disabled"}`,
     `proof.verify backend: ${snapshot.proofVerifyProviderEnabled ? `${snapshot.proofVerifyBackendMode} (${snapshot.proofVerifySkillStages.join(" -> ") || "(none)"})` : "disabled"}`,
+    `proof.verify classes: ${snapshot.proofVerifyProviderEnabled ? (snapshot.proofVerifySupportedVerifierClasses.join(", ") || "(none)") : "disabled"}`,
     `discovery storage backend: ${snapshot.discoveryStorageProviderEnabled ? `put=${snapshot.discoveryStoragePutBackendMode} (${snapshot.discoveryStoragePutSkillStages.join(" -> ") || "(none)"}), get=${snapshot.discoveryStorageGetBackendMode} (${snapshot.discoveryStorageGetSkillStages.join(" -> ") || "(none)"})` : "disabled"}`,
     `Gateway enabled: ${yesNo(snapshot.gatewayEnabled)}`,
     `Bounty enabled: ${yesNo(snapshot.bountyEnabled)}${snapshot.bountyRole ? ` (${snapshot.bountyRole})` : ""}`,

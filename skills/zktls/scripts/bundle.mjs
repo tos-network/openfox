@@ -12,7 +12,10 @@ export async function run(input, context) {
       capture: input?.capture ?? {},
       options: {
         sourcePolicyId:
-          context?.config?.agentDiscovery?.newsFetchServer?.capability || "news.fetch",
+          input?.request?.source_policy_id ||
+          context?.config?.agentDiscovery?.newsFetchServer?.defaultSourcePolicyId ||
+          context?.config?.agentDiscovery?.newsFetchServer?.capability ||
+          "news.fetch",
         maxBundleBytes: worker.maxStdoutBytes || 1024 * 1024,
       },
       context: {
@@ -38,6 +41,10 @@ export async function run(input, context) {
     fetched_at: fetchedAt,
     source_url: request.source_url,
     canonical_url: capture.canonicalUrl,
+    source_policy_id:
+      request.source_policy_id ||
+      context?.config?.agentDiscovery?.newsFetchServer?.defaultSourcePolicyId ||
+      null,
     publisher_hint: request.publisher_hint || null,
     headline_hint: request.headline_hint || null,
     http_status: capture.httpStatus,
