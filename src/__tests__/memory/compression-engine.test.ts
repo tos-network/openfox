@@ -3,7 +3,6 @@ import path from "node:path";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MIGRATION_V9, MIGRATION_V10 } from "../../state/schema.js";
 import { EventStream } from "../../memory/event-stream.js";
 import { KnowledgeStore } from "../../memory/knowledge-store.js";
 import {
@@ -11,6 +10,7 @@ import {
   type CompressionPlan,
 } from "../../memory/compression-engine.js";
 import type { ContextUtilization } from "../../memory/context-manager.js";
+import { CREATE_TABLES } from "../../state/schema.js";
 
 const CHECKPOINT_DIR = path.resolve(".omc/state/checkpoints");
 
@@ -25,8 +25,7 @@ function createTestDb(): BetterSqlite3.Database {
   const testDb = new Database(":memory:");
   testDb.pragma("journal_mode = WAL");
   testDb.pragma("foreign_keys = ON");
-  testDb.exec(MIGRATION_V9);
-  testDb.exec(MIGRATION_V10);
+  testDb.exec(CREATE_TABLES);
   return testDb;
 }
 

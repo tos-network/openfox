@@ -8,7 +8,7 @@
 
 import { describe, it, expect, beforeEach } from "vitest";
 import Database from "better-sqlite3";
-import { MIGRATION_V5 } from "../state/schema.js";
+
 import { WorkingMemoryManager } from "../memory/working.js";
 import { EpisodicMemoryManager } from "../memory/episodic.js";
 import { SemanticMemoryManager } from "../memory/semantic.js";
@@ -33,6 +33,7 @@ import { formatMemoryBlock } from "../agent/context.js";
 import { normalizeErrorType } from "../memory/ingestion.js";
 import { DEFAULT_MEMORY_BUDGET } from "../types.js";
 import type { MemoryRetrievalResult, ToolCallResult, AgentTurn } from "../types.js";
+import { CREATE_TABLES } from "../state/schema.js";
 
 // ─── Test Helpers ───────────────────────────────────────────────
 
@@ -40,12 +41,7 @@ function createTestDb(): Database.Database {
   const db = new Database(":memory:");
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-  db.exec(MIGRATION_V5);
-  db.exec("INSERT INTO schema_version (version) VALUES (5)");
+  db.exec(CREATE_TABLES);
   return db;
 }
 

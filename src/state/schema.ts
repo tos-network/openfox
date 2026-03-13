@@ -125,6 +125,7 @@ export const CREATE_TABLES = `
     creator_message TEXT,
     funded_amount_cents INTEGER NOT NULL DEFAULT 0,
     status TEXT NOT NULL DEFAULT 'spawning',
+    role TEXT DEFAULT 'generalist',
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     last_checked TEXT
   );
@@ -203,7 +204,12 @@ export const CREATE_TABLES = `
     content TEXT NOT NULL,
     received_at TEXT NOT NULL DEFAULT (datetime('now')),
     processed_at TEXT,
-    reply_to TEXT
+    reply_to TEXT,
+    to_address TEXT,
+    raw_content TEXT,
+    status TEXT DEFAULT 'received',
+    retry_count INTEGER DEFAULT 0,
+    max_retries INTEGER DEFAULT 3
   );
 
   CREATE INDEX IF NOT EXISTS idx_inbox_unprocessed
@@ -879,1123 +885,8 @@ export const CREATE_TABLES = `
 
   CREATE INDEX IF NOT EXISTS idx_paymaster_authorizations_receipt_hash
     ON paymaster_authorizations(receipt_hash);
-`;
 
-export const MIGRATION_V17 = `
-  CREATE TABLE IF NOT EXISTS x402_payments (
-    payment_id TEXT PRIMARY KEY,
-    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','signer','gateway_request','gateway_session')),
-    request_key TEXT NOT NULL,
-    request_hash TEXT NOT NULL,
-    payer_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    chain_id TEXT NOT NULL,
-    tx_nonce TEXT NOT NULL,
-    tx_hash TEXT NOT NULL UNIQUE,
-    raw_transaction TEXT NOT NULL,
-    amount_wei TEXT NOT NULL,
-    confirmation_policy TEXT NOT NULL CHECK(confirmation_policy IN ('broadcast','receipt')),
-    status TEXT NOT NULL CHECK(status IN ('verified','submitted','confirmed','failed','replaced')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 5,
-    receipt_json TEXT,
-    last_error TEXT,
-    next_attempt_at TEXT,
-    bound_kind TEXT,
-    bound_subject_id TEXT,
-    artifact_url TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_request
-    ON x402_payments(service_kind, request_key, updated_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_status
-    ON x402_payments(status, service_kind, next_attempt_at);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
-    ON x402_payments(bound_kind, bound_subject_id);
-`;
-
-export const MIGRATION_V18 = `
-  CREATE TABLE IF NOT EXISTS x402_payments_v18 (
-    payment_id TEXT PRIMARY KEY,
-    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','signer','gateway_request','gateway_session','storage')),
-    request_key TEXT NOT NULL,
-    request_hash TEXT NOT NULL,
-    payer_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    chain_id TEXT NOT NULL,
-    tx_nonce TEXT NOT NULL,
-    tx_hash TEXT NOT NULL UNIQUE,
-    raw_transaction TEXT NOT NULL,
-    amount_wei TEXT NOT NULL,
-    confirmation_policy TEXT NOT NULL CHECK(confirmation_policy IN ('broadcast','receipt')),
-    status TEXT NOT NULL CHECK(status IN ('verified','submitted','confirmed','failed','replaced')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 5,
-    receipt_json TEXT,
-    last_error TEXT,
-    next_attempt_at TEXT,
-    bound_kind TEXT,
-    bound_subject_id TEXT,
-    artifact_url TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  INSERT INTO x402_payments_v18 (
-    payment_id, service_kind, request_key, request_hash, payer_address,
-    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
-    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
-    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
-    artifact_url, created_at, updated_at
-  )
-  SELECT
-    payment_id, service_kind, request_key, request_hash, payer_address,
-    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
-    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
-    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
-    artifact_url, created_at, updated_at
-  FROM x402_payments;
-
-  DROP TABLE x402_payments;
-  ALTER TABLE x402_payments_v18 RENAME TO x402_payments;
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_request
-    ON x402_payments(service_kind, request_key, updated_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_status
-    ON x402_payments(status, service_kind, next_attempt_at);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
-    ON x402_payments(bound_kind, bound_subject_id);
-
-  CREATE TABLE IF NOT EXISTS storage_quotes (
-    quote_id TEXT PRIMARY KEY,
-    requester_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    cid TEXT NOT NULL,
-    bundle_kind TEXT NOT NULL,
-    size_bytes INTEGER NOT NULL,
-    ttl_seconds INTEGER NOT NULL,
-    amount_wei TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('quoted','used','expired')),
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_storage_quotes_status
-    ON storage_quotes(status, expires_at);
-
-  CREATE TABLE IF NOT EXISTS storage_leases (
-    lease_id TEXT PRIMARY KEY,
-    quote_id TEXT,
-    cid TEXT NOT NULL,
-    bundle_hash TEXT NOT NULL,
-    bundle_kind TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    provider_base_url TEXT,
-    size_bytes INTEGER NOT NULL,
-    ttl_seconds INTEGER NOT NULL,
-    amount_wei TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('quoted','active','expired','released')),
-    storage_path TEXT NOT NULL,
-    request_key TEXT NOT NULL,
-    payment_id TEXT,
-    receipt_json TEXT NOT NULL,
-    receipt_hash TEXT NOT NULL,
-    anchor_tx_hash TEXT,
-    anchor_receipt_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_leases_request
-    ON storage_leases(request_key);
-
-  CREATE INDEX IF NOT EXISTS idx_storage_leases_cid
-    ON storage_leases(cid, status, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS storage_renewals (
-    renewal_id TEXT PRIMARY KEY,
-    lease_id TEXT NOT NULL,
-    cid TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    provider_base_url TEXT,
-    previous_expires_at TEXT NOT NULL,
-    renewed_expires_at TEXT NOT NULL,
-    added_ttl_seconds INTEGER NOT NULL,
-    amount_wei TEXT NOT NULL,
-    payment_id TEXT,
-    receipt_json TEXT NOT NULL,
-    receipt_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_storage_renewals_lease
-    ON storage_renewals(lease_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_storage_renewals_cid
-    ON storage_renewals(cid, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS storage_audits (
-    audit_id TEXT PRIMARY KEY,
-    lease_id TEXT NOT NULL,
-    cid TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('verified','failed')),
-    challenge_nonce TEXT NOT NULL,
-    response_hash TEXT NOT NULL,
-    details_json TEXT,
-    checked_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_storage_audits_lease
-    ON storage_audits(lease_id, checked_at DESC);
-
-  CREATE TABLE IF NOT EXISTS storage_anchors (
-    anchor_id TEXT PRIMARY KEY,
-    lease_id TEXT NOT NULL,
-    summary_json TEXT NOT NULL,
-    summary_hash TEXT NOT NULL,
-    anchor_tx_hash TEXT,
-    anchor_receipt_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_storage_anchors_lease
-    ON storage_anchors(lease_id);
-`;
-
-export const MIGRATION_V19 = `
-  CREATE TABLE IF NOT EXISTS artifacts (
-    artifact_id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('public_news.capture','oracle.evidence','oracle.aggregate','committee.vote')),
-    title TEXT NOT NULL,
-    lease_id TEXT NOT NULL,
-    quote_id TEXT,
-    cid TEXT NOT NULL,
-    bundle_hash TEXT NOT NULL,
-    provider_base_url TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    source_url TEXT,
-    subject_id TEXT,
-    summary_text TEXT,
-    result_digest TEXT,
-    metadata_json TEXT,
-    status TEXT NOT NULL CHECK(status IN ('stored','verified','anchored','failed')),
-    verification_id TEXT,
-    anchor_id TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_artifacts_kind_status
-    ON artifacts(kind, status, created_at DESC);
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifacts_lease
-    ON artifacts(lease_id);
-
-  CREATE TABLE IF NOT EXISTS artifact_verifications (
-    verification_id TEXT PRIMARY KEY,
-    artifact_id TEXT NOT NULL,
-    receipt_json TEXT NOT NULL,
-    receipt_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_verifications_artifact
-    ON artifact_verifications(artifact_id);
-
-  CREATE TABLE IF NOT EXISTS artifact_anchors (
-    anchor_id TEXT PRIMARY KEY,
-    artifact_id TEXT NOT NULL,
-    summary_json TEXT NOT NULL,
-    summary_hash TEXT NOT NULL,
-    anchor_tx_hash TEXT,
-    anchor_receipt_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_anchors_artifact
-    ON artifact_anchors(artifact_id);
-`;
-
-export const MIGRATION_V20 = `
-  ALTER TABLE bounty_results RENAME TO bounty_results_old;
-  ALTER TABLE bounty_submissions RENAME TO bounty_submissions_old;
-  ALTER TABLE bounties RENAME TO bounties_old;
-
-  CREATE TABLE bounties (
-    bounty_id TEXT PRIMARY KEY,
-    host_agent_id TEXT NOT NULL,
-    host_address TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling')),
-    title TEXT NOT NULL,
-    task_prompt TEXT NOT NULL,
-    reference_output TEXT NOT NULL,
-    skill_name TEXT,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    policy_json TEXT NOT NULL DEFAULT '{}',
-    reward_wei TEXT NOT NULL,
-    submission_deadline TEXT NOT NULL,
-    judge_mode TEXT NOT NULL CHECK(judge_mode IN ('local_model')),
-    status TEXT NOT NULL CHECK(status IN ('open','submitted','under_review','approved','rejected','paid','expired')),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status, created_at);
-
-  INSERT INTO bounties (
-    bounty_id,
-    host_agent_id,
-    host_address,
-    kind,
-    title,
-    task_prompt,
-    reference_output,
-    skill_name,
-    metadata_json,
-    policy_json,
-    reward_wei,
-    submission_deadline,
-    judge_mode,
-    status,
-    created_at,
-    updated_at
-  )
-  SELECT
-    bounty_id,
-    host_agent_id,
-    host_address,
-    CASE
-      WHEN kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling') THEN kind
-      ELSE 'question'
-    END,
-    title,
-    task_prompt,
-    reference_output,
-    skill_name,
-    metadata_json,
-    policy_json,
-    reward_wei,
-    submission_deadline,
-    judge_mode,
-    status,
-    created_at,
-    updated_at
-  FROM bounties_old;
-
-  CREATE TABLE bounty_submissions (
-    submission_id TEXT PRIMARY KEY,
-    bounty_id TEXT NOT NULL REFERENCES bounties(bounty_id) ON DELETE CASCADE,
-    solver_agent_id TEXT,
-    solver_address TEXT NOT NULL,
-    submission_text TEXT NOT NULL,
-    proof_url TEXT,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL CHECK(status IN ('submitted','accepted','rejected')),
-    submitted_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_bounty_submissions_bounty ON bounty_submissions(bounty_id, submitted_at);
-
-  INSERT INTO bounty_submissions (
-    submission_id,
-    bounty_id,
-    solver_agent_id,
-    solver_address,
-    submission_text,
-    proof_url,
-    metadata_json,
-    status,
-    submitted_at,
-    updated_at
-  )
-  SELECT
-    submission_id,
-    bounty_id,
-    solver_agent_id,
-    solver_address,
-    submission_text,
-    proof_url,
-    metadata_json,
-    status,
-    submitted_at,
-    updated_at
-  FROM bounty_submissions_old;
-
-  CREATE TABLE bounty_results (
-    bounty_id TEXT PRIMARY KEY REFERENCES bounties(bounty_id) ON DELETE CASCADE,
-    winning_submission_id TEXT,
-    decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),
-    confidence REAL NOT NULL,
-    judge_reason TEXT NOT NULL,
-    payout_tx_hash TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  INSERT INTO bounty_results (
-    bounty_id,
-    winning_submission_id,
-    decision,
-    confidence,
-    judge_reason,
-    payout_tx_hash,
-    created_at,
-    updated_at
-  )
-  SELECT
-    bounty_id,
-    winning_submission_id,
-    decision,
-    confidence,
-    judge_reason,
-    payout_tx_hash,
-    created_at,
-    updated_at
-  FROM bounty_results_old;
-
-  DROP TABLE bounty_results_old;
-  DROP TABLE bounty_submissions_old;
-  DROP TABLE bounties_old;
-
-  CREATE INDEX IF NOT EXISTS idx_artifacts_source_url
-    ON artifacts(source_url);
-  CREATE INDEX IF NOT EXISTS idx_artifacts_subject_id
-    ON artifacts(subject_id);
-  CREATE INDEX IF NOT EXISTS idx_artifacts_title
-    ON artifacts(title);
-`;
-
-export const MIGRATION_V21 = `
-  ALTER TABLE storage_leases ADD COLUMN provider_base_url TEXT;
-
-  CREATE TABLE IF NOT EXISTS storage_renewals (
-    renewal_id TEXT PRIMARY KEY,
-    lease_id TEXT NOT NULL,
-    cid TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    provider_base_url TEXT,
-    previous_expires_at TEXT NOT NULL,
-    renewed_expires_at TEXT NOT NULL,
-    added_ttl_seconds INTEGER NOT NULL,
-    amount_wei TEXT NOT NULL,
-    payment_id TEXT,
-    receipt_json TEXT NOT NULL,
-    receipt_hash TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_storage_renewals_lease
-    ON storage_renewals(lease_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_storage_renewals_cid
-    ON storage_renewals(cid, created_at DESC);
-`;
-
-export const MIGRATION_V22 = `
-  CREATE TABLE IF NOT EXISTS x402_payments_v22 (
-    payment_id TEXT PRIMARY KEY,
-    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','signer','gateway_request','gateway_session','storage')),
-    request_key TEXT NOT NULL,
-    request_hash TEXT NOT NULL,
-    payer_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    chain_id TEXT NOT NULL,
-    tx_nonce TEXT NOT NULL,
-    tx_hash TEXT NOT NULL UNIQUE,
-    raw_transaction TEXT NOT NULL,
-    amount_wei TEXT NOT NULL,
-    confirmation_policy TEXT NOT NULL CHECK(confirmation_policy IN ('broadcast','receipt')),
-    status TEXT NOT NULL CHECK(status IN ('verified','submitted','confirmed','failed','replaced')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 5,
-    receipt_json TEXT,
-    last_error TEXT,
-    next_attempt_at TEXT,
-    bound_kind TEXT,
-    bound_subject_id TEXT,
-    artifact_url TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  INSERT INTO x402_payments_v22 (
-    payment_id, service_kind, request_key, request_hash, payer_address,
-    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
-    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
-    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
-    artifact_url, created_at, updated_at
-  )
-  SELECT
-    payment_id, service_kind, request_key, request_hash, payer_address,
-    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
-    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
-    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
-    artifact_url, created_at, updated_at
-  FROM x402_payments;
-
-  DROP TABLE x402_payments;
-  ALTER TABLE x402_payments_v22 RENAME TO x402_payments;
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_request
-    ON x402_payments(service_kind, request_key, updated_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_status
-    ON x402_payments(status, service_kind, next_attempt_at);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
-    ON x402_payments(bound_kind, bound_subject_id);
-
-  CREATE TABLE IF NOT EXISTS signer_quotes (
-    quote_id TEXT PRIMARY KEY,
-    provider_address TEXT NOT NULL,
-    wallet_address TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    target_address TEXT NOT NULL,
-    value_wei TEXT NOT NULL,
-    data_hex TEXT NOT NULL,
-    gas TEXT NOT NULL,
-    policy_id TEXT NOT NULL,
-    policy_hash TEXT NOT NULL,
-    scope_hash TEXT NOT NULL,
-    delegate_identity TEXT,
-    trust_tier TEXT NOT NULL CHECK(trust_tier IN ('self_hosted','org_trusted','public_low_trust')),
-    amount_wei TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('quoted','used','expired')),
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_signer_quotes_status
-    ON signer_quotes(status, expires_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_signer_quotes_requester
-    ON signer_quotes(requester_address, updated_at DESC);
-
-  CREATE TABLE IF NOT EXISTS signer_executions (
-    execution_id TEXT PRIMARY KEY,
-    quote_id TEXT NOT NULL,
-    request_key TEXT NOT NULL,
-    request_hash TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    wallet_address TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    target_address TEXT NOT NULL,
-    value_wei TEXT NOT NULL,
-    data_hex TEXT NOT NULL,
-    gas TEXT NOT NULL,
-    policy_id TEXT NOT NULL,
-    policy_hash TEXT NOT NULL,
-    scope_hash TEXT NOT NULL,
-    delegate_identity TEXT,
-    trust_tier TEXT NOT NULL CHECK(trust_tier IN ('self_hosted','org_trusted','public_low_trust')),
-    request_nonce TEXT NOT NULL,
-    request_expires_at INTEGER NOT NULL,
-    reason TEXT,
-    payment_id TEXT,
-    submitted_tx_hash TEXT,
-    submitted_receipt_json TEXT,
-    receipt_hash TEXT,
-    status TEXT NOT NULL CHECK(status IN ('pending','submitted','confirmed','failed','rejected')),
-    last_error TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_signer_executions_request_key
-    ON signer_executions(request_key);
-
-  CREATE INDEX IF NOT EXISTS idx_signer_executions_status
-    ON signer_executions(status, updated_at DESC);
-`;
-
-export const MIGRATION_V23 = `
-  CREATE TABLE IF NOT EXISTS x402_payments_v23 (
-    payment_id TEXT PRIMARY KEY,
-    service_kind TEXT NOT NULL CHECK(service_kind IN ('observation','oracle','signer','paymaster','gateway_request','gateway_session','storage')),
-    request_key TEXT NOT NULL,
-    request_hash TEXT NOT NULL,
-    payer_address TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    chain_id TEXT NOT NULL,
-    tx_nonce TEXT NOT NULL,
-    tx_hash TEXT NOT NULL UNIQUE,
-    raw_transaction TEXT NOT NULL,
-    amount_wei TEXT NOT NULL,
-    confirmation_policy TEXT NOT NULL CHECK(confirmation_policy IN ('broadcast','receipt')),
-    status TEXT NOT NULL CHECK(status IN ('verified','submitted','confirmed','failed','replaced')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 5,
-    receipt_json TEXT,
-    last_error TEXT,
-    next_attempt_at TEXT,
-    bound_kind TEXT,
-    bound_subject_id TEXT,
-    artifact_url TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  INSERT INTO x402_payments_v23 (
-    payment_id, service_kind, request_key, request_hash, payer_address,
-    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
-    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
-    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
-    artifact_url, created_at, updated_at
-  )
-  SELECT
-    payment_id, service_kind, request_key, request_hash, payer_address,
-    provider_address, chain_id, tx_nonce, tx_hash, raw_transaction,
-    amount_wei, confirmation_policy, status, attempt_count, max_attempts,
-    receipt_json, last_error, next_attempt_at, bound_kind, bound_subject_id,
-    artifact_url, created_at, updated_at
-  FROM x402_payments;
-
-  DROP TABLE x402_payments;
-  ALTER TABLE x402_payments_v23 RENAME TO x402_payments;
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_request
-    ON x402_payments(service_kind, request_key, updated_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_status
-    ON x402_payments(status, service_kind, next_attempt_at);
-
-  CREATE INDEX IF NOT EXISTS idx_x402_payment_binding
-    ON x402_payments(bound_kind, bound_subject_id);
-
-  CREATE TABLE IF NOT EXISTS paymaster_quotes (
-    quote_id TEXT PRIMARY KEY,
-    provider_address TEXT NOT NULL,
-    sponsor_address TEXT NOT NULL,
-    sponsor_signer_type TEXT NOT NULL DEFAULT 'secp256k1',
-    wallet_address TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    requester_signer_type TEXT NOT NULL DEFAULT 'secp256k1',
-    target_address TEXT NOT NULL,
-    value_wei TEXT NOT NULL,
-    data_hex TEXT NOT NULL,
-    gas TEXT NOT NULL,
-    policy_id TEXT NOT NULL,
-    policy_hash TEXT NOT NULL,
-    scope_hash TEXT NOT NULL,
-    delegate_identity TEXT,
-    trust_tier TEXT NOT NULL CHECK(trust_tier IN ('self_hosted','org_trusted','public_low_trust')),
-    amount_wei TEXT NOT NULL,
-    sponsor_nonce TEXT NOT NULL,
-    sponsor_expiry INTEGER NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('quoted','used','expired')),
-    expires_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_paymaster_quotes_status
-    ON paymaster_quotes(status, expires_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_paymaster_quotes_requester
-    ON paymaster_quotes(requester_address, updated_at DESC);
-
-  CREATE TABLE IF NOT EXISTS paymaster_authorizations (
-    authorization_id TEXT PRIMARY KEY,
-    quote_id TEXT NOT NULL,
-    request_key TEXT NOT NULL,
-    request_hash TEXT NOT NULL,
-    provider_address TEXT NOT NULL,
-    sponsor_address TEXT NOT NULL,
-    sponsor_signer_type TEXT NOT NULL DEFAULT 'secp256k1',
-    wallet_address TEXT NOT NULL,
-    requester_address TEXT NOT NULL,
-    requester_signer_type TEXT NOT NULL DEFAULT 'secp256k1',
-    target_address TEXT NOT NULL,
-    value_wei TEXT NOT NULL,
-    data_hex TEXT NOT NULL,
-    gas TEXT NOT NULL,
-    policy_id TEXT NOT NULL,
-    policy_hash TEXT NOT NULL,
-    scope_hash TEXT NOT NULL,
-    delegate_identity TEXT,
-    trust_tier TEXT NOT NULL CHECK(trust_tier IN ('self_hosted','org_trusted','public_low_trust')),
-    request_nonce TEXT NOT NULL,
-    request_expires_at INTEGER NOT NULL,
-    sponsor_nonce TEXT NOT NULL,
-    sponsor_expiry INTEGER NOT NULL,
-    reason TEXT,
-    payment_id TEXT,
-    execution_signature_json TEXT,
-    sponsor_signature_json TEXT,
-    submitted_tx_hash TEXT,
-    submitted_receipt_json TEXT,
-    receipt_hash TEXT,
-    status TEXT NOT NULL CHECK(status IN ('authorized','submitted','confirmed','failed','rejected','expired')),
-    last_error TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_paymaster_authorizations_request_key
-    ON paymaster_authorizations(request_key);
-
-  CREATE INDEX IF NOT EXISTS idx_paymaster_authorizations_status
-    ON paymaster_authorizations(status, updated_at DESC);
-`;
-
-export const MIGRATION_V24 = `
-  ALTER TABLE paymaster_quotes
-    ADD COLUMN chain_id TEXT NOT NULL DEFAULT '0';
-
-  ALTER TABLE paymaster_authorizations
-    ADD COLUMN chain_id TEXT NOT NULL DEFAULT '0';
-
-  ALTER TABLE paymaster_authorizations
-    ADD COLUMN execution_nonce TEXT NOT NULL DEFAULT '0';
-`;
-
-export const MIGRATION_V26 = `
-  CREATE TABLE IF NOT EXISTS execution_trails (
-    trail_id TEXT PRIMARY KEY,
-    subject_kind TEXT NOT NULL CHECK(subject_kind IN ('storage_lease','storage_renewal','storage_audit','storage_anchor','artifact','artifact_verification','artifact_anchor')),
-    subject_id TEXT NOT NULL,
-    execution_kind TEXT NOT NULL CHECK(execution_kind IN ('signer_execution','paymaster_authorization')),
-    execution_record_id TEXT NOT NULL,
-    execution_tx_hash TEXT,
-    execution_receipt_hash TEXT,
-    link_mode TEXT NOT NULL CHECK(link_mode IN ('direct','derived')),
-    source_subject_kind TEXT,
-    source_subject_id TEXT,
-    metadata_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_execution_trails_subject_execution
-    ON execution_trails(subject_kind, subject_id, execution_kind, execution_record_id);
-
-  CREATE INDEX IF NOT EXISTS idx_execution_trails_subject
-    ON execution_trails(subject_kind, subject_id, updated_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_execution_trails_execution
-    ON execution_trails(execution_kind, execution_record_id, updated_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_signer_executions_tx_hash
-    ON signer_executions(submitted_tx_hash);
-
-  CREATE INDEX IF NOT EXISTS idx_signer_executions_receipt_hash
-    ON signer_executions(receipt_hash);
-
-  CREATE INDEX IF NOT EXISTS idx_paymaster_authorizations_tx_hash
-    ON paymaster_authorizations(submitted_tx_hash);
-
-  CREATE INDEX IF NOT EXISTS idx_paymaster_authorizations_receipt_hash
-    ON paymaster_authorizations(receipt_hash);
-`;
-
-export const MIGRATION_V27 = `
-  CREATE TABLE IF NOT EXISTS campaigns (
-    campaign_id TEXT PRIMARY KEY,
-    host_agent_id TEXT NOT NULL,
-    host_address TEXT NOT NULL,
-    title TEXT NOT NULL,
-    description TEXT NOT NULL,
-    budget_wei TEXT NOT NULL,
-    max_open_bounties INTEGER NOT NULL,
-    allowed_kinds_json TEXT NOT NULL DEFAULT '[]',
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL CHECK(status IN ('open','paused','exhausted','completed')),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_campaigns_status
-    ON campaigns(status, created_at);
-
-  ALTER TABLE bounties
-    ADD COLUMN campaign_id TEXT REFERENCES campaigns(campaign_id) ON DELETE SET NULL;
-
-  CREATE INDEX IF NOT EXISTS idx_bounties_campaign
-    ON bounties(campaign_id, created_at);
-`;
-
-export const MIGRATION_V28 = `
-  CREATE TABLE IF NOT EXISTS operator_control_events (
-    event_id TEXT PRIMARY KEY,
-    action TEXT NOT NULL CHECK(action IN ('pause','resume','drain','retry_payments','retry_settlement','retry_market','retry_signer','retry_paymaster')),
-    status TEXT NOT NULL CHECK(status IN ('applied','noop','failed')),
-    actor TEXT NOT NULL,
-    reason TEXT,
-    summary TEXT,
-    result_json TEXT,
-    created_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_operator_control_events_created
-    ON operator_control_events(created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_control_events_action
-    ON operator_control_events(action, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_control_events_status
-    ON operator_control_events(status, created_at DESC);
-`;
-
-export const MIGRATION_V29 = `
-  ALTER TABLE operator_control_events RENAME TO operator_control_events_legacy;
-
-  CREATE TABLE operator_control_events (
-    event_id TEXT PRIMARY KEY,
-    action TEXT NOT NULL CHECK(action IN ('pause','resume','drain','maintain_storage','maintain_artifacts','quarantine_provider','retry_payments','retry_settlement','retry_market','retry_signer','retry_paymaster')),
-    status TEXT NOT NULL CHECK(status IN ('applied','noop','failed')),
-    actor TEXT NOT NULL,
-    reason TEXT,
-    summary TEXT,
-    result_json TEXT,
-    created_at TEXT NOT NULL
-  );
-
-  INSERT INTO operator_control_events (
-    event_id, action, status, actor, reason, summary, result_json, created_at
-  )
-  SELECT
-    event_id, action, status, actor, reason, summary, result_json, created_at
-  FROM operator_control_events_legacy;
-
-  DROP TABLE operator_control_events_legacy;
-
-  CREATE INDEX IF NOT EXISTS idx_operator_control_events_created
-    ON operator_control_events(created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_control_events_action
-    ON operator_control_events(action, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_control_events_status
-    ON operator_control_events(status, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS operator_approval_requests (
-    request_id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('treasury_policy_change','spend_cap_change','signer_policy_change','paymaster_policy_change')),
-    scope TEXT NOT NULL,
-    requested_by TEXT NOT NULL,
-    reason TEXT,
-    payload_json TEXT,
-    status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','expired')),
-    expires_at TEXT,
-    created_at TEXT NOT NULL,
-    decided_at TEXT,
-    decided_by TEXT,
-    decision_note TEXT
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_created
-    ON operator_approval_requests(created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_status
-    ON operator_approval_requests(status, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_kind
-    ON operator_approval_requests(kind, created_at DESC);
-`;
-
-export const MIGRATION_V30 = `
-  CREATE TABLE IF NOT EXISTS owner_finance_snapshots (
-    snapshot_id TEXT PRIMARY KEY,
-    period_kind TEXT NOT NULL CHECK(period_kind IN ('daily','weekly')),
-    period_start TEXT NOT NULL,
-    period_end TEXT NOT NULL,
-    payload_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_finance_snapshot_period
-    ON owner_finance_snapshots(period_kind, period_start);
-
-  CREATE TABLE IF NOT EXISTS owner_reports (
-    report_id TEXT PRIMARY KEY,
-    period_kind TEXT NOT NULL CHECK(period_kind IN ('daily','weekly')),
-    finance_snapshot_id TEXT NOT NULL,
-    provider TEXT,
-    model TEXT,
-    input_hash TEXT NOT NULL,
-    generation_status TEXT NOT NULL CHECK(generation_status IN ('generated','deterministic_only')),
-    payload_json TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_owner_reports_period
-    ON owner_reports(period_kind, created_at DESC);
-
-  CREATE TABLE IF NOT EXISTS owner_report_deliveries (
-    delivery_id TEXT PRIMARY KEY,
-    report_id TEXT NOT NULL,
-    channel TEXT NOT NULL CHECK(channel IN ('web','email')),
-    status TEXT NOT NULL CHECK(status IN ('pending','delivered','failed')),
-    target TEXT NOT NULL,
-    rendered_path TEXT,
-    metadata_json TEXT,
-    last_error TEXT,
-    delivered_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_owner_report_deliveries_report
-    ON owner_report_deliveries(report_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_owner_report_deliveries_channel
-    ON owner_report_deliveries(channel, status, created_at DESC);
-`;
-
-export const MIGRATION_V31 = `
-  CREATE TABLE IF NOT EXISTS owner_opportunity_alerts (
-    alert_id TEXT PRIMARY KEY,
-    opportunity_hash TEXT NOT NULL,
-    kind TEXT NOT NULL,
-    provider_class TEXT NOT NULL,
-    trust_tier TEXT NOT NULL,
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    suggested_action TEXT NOT NULL,
-    capability TEXT,
-    base_url TEXT,
-    reward_wei TEXT,
-    estimated_cost_wei TEXT NOT NULL,
-    margin_wei TEXT NOT NULL,
-    margin_bps INTEGER NOT NULL,
-    strategy_score REAL,
-    strategy_matched INTEGER NOT NULL DEFAULT 0,
-    strategy_reasons_json TEXT NOT NULL DEFAULT '[]',
-    payload_json TEXT NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL CHECK(status IN ('unread','read','dismissed')),
-    action_kind TEXT,
-    action_request_id TEXT,
-    action_requested_at TEXT,
-    read_at TEXT,
-    dismissed_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_status
-    ON owner_opportunity_alerts(status, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_alerts_hash
-    ON owner_opportunity_alerts(opportunity_hash, created_at DESC);
-`;
-
-export const MIGRATION_V32 = `
-  ALTER TABLE owner_opportunity_alerts ADD COLUMN action_kind TEXT;
-  ALTER TABLE owner_opportunity_alerts ADD COLUMN action_request_id TEXT;
-  ALTER TABLE owner_opportunity_alerts ADD COLUMN action_requested_at TEXT;
-`;
-
-export const MIGRATION_V33 = `
-  ALTER TABLE operator_approval_requests RENAME TO operator_approval_requests_legacy;
-
-  CREATE TABLE operator_approval_requests (
-    request_id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('treasury_policy_change','spend_cap_change','signer_policy_change','paymaster_policy_change','opportunity_action')),
-    scope TEXT NOT NULL,
-    requested_by TEXT NOT NULL,
-    reason TEXT,
-    payload_json TEXT,
-    status TEXT NOT NULL CHECK(status IN ('pending','approved','rejected','expired')),
-    expires_at TEXT,
-    created_at TEXT NOT NULL,
-    decided_at TEXT,
-    decided_by TEXT,
-    decision_note TEXT
-  );
-
-  INSERT INTO operator_approval_requests (
-    request_id, kind, scope, requested_by, reason, payload_json, status,
-    expires_at, created_at, decided_at, decided_by, decision_note
-  )
-  SELECT
-    request_id, kind, scope, requested_by, reason, payload_json, status,
-    expires_at, created_at, decided_at, decided_by, decision_note
-  FROM operator_approval_requests_legacy;
-
-  DROP TABLE operator_approval_requests_legacy;
-
-  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_created
-    ON operator_approval_requests(created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_status
-    ON operator_approval_requests(status, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_operator_approval_requests_kind
-    ON operator_approval_requests(kind, created_at DESC);
-`;
-
-export const MIGRATION_V34 = `
-  CREATE TABLE IF NOT EXISTS owner_opportunity_actions (
-    action_id TEXT PRIMARY KEY,
-    alert_id TEXT NOT NULL,
-    request_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('review','pursue','delegate')),
-    title TEXT NOT NULL,
-    summary TEXT NOT NULL,
-    capability TEXT,
-    base_url TEXT,
-    requested_by TEXT NOT NULL,
-    approved_by TEXT,
-    approved_at TEXT,
-    decision_note TEXT,
-    payload_json TEXT NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL CHECK(status IN ('queued','completed','cancelled')),
-    resolution_kind TEXT CHECK(resolution_kind IN ('note','bounty','campaign','provider_call','artifact','report','other')),
-    resolution_ref TEXT,
-    resolution_note TEXT,
-    queued_at TEXT NOT NULL,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    completed_at TEXT,
-    cancelled_at TEXT
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_opportunity_actions_request
-    ON owner_opportunity_actions(request_id);
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_owner_opportunity_actions_alert
-    ON owner_opportunity_actions(alert_id);
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_actions_status
-    ON owner_opportunity_actions(status, created_at DESC);
-`;
-
-export const MIGRATION_V35 = `
-  ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_kind TEXT
-    CHECK(resolution_kind IN ('note','bounty','campaign','provider_call','artifact','report','other'));
-  ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_ref TEXT;
-  ALTER TABLE owner_opportunity_actions ADD COLUMN resolution_note TEXT;
-`;
-
-export const MIGRATION_V36 = `
-  CREATE TABLE IF NOT EXISTS owner_opportunity_action_executions (
-    execution_id TEXT PRIMARY KEY,
-    action_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve','remote_observation_request','remote_oracle_request')),
-    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign','provider')),
-    target_ref TEXT NOT NULL,
-    remote_base_url TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('running','completed','failed','skipped')),
-    request_payload_json TEXT NOT NULL DEFAULT '{}',
-    result_payload_json TEXT,
-    execution_ref TEXT,
-    error_message TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    completed_at TEXT,
-    failed_at TEXT
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_action
-    ON owner_opportunity_action_executions(action_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_status
-    ON owner_opportunity_action_executions(status, created_at DESC);
-`;
-
-export const MIGRATION_V37 = `
-  ALTER TABLE owner_opportunity_action_executions
-    RENAME TO owner_opportunity_action_executions_v36;
-
-  CREATE TABLE owner_opportunity_action_executions (
-    execution_id TEXT PRIMARY KEY,
-    action_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('remote_bounty_solve','remote_campaign_solve','remote_observation_request','remote_oracle_request')),
-    target_kind TEXT NOT NULL CHECK(target_kind IN ('bounty','campaign','provider')),
-    target_ref TEXT NOT NULL,
-    remote_base_url TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('running','completed','failed','skipped')),
-    request_payload_json TEXT NOT NULL DEFAULT '{}',
-    result_payload_json TEXT,
-    execution_ref TEXT,
-    error_message TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL,
-    completed_at TEXT,
-    failed_at TEXT
-  );
-
-  INSERT INTO owner_opportunity_action_executions (
-    execution_id,
-    action_id,
-    kind,
-    target_kind,
-    target_ref,
-    remote_base_url,
-    status,
-    request_payload_json,
-    result_payload_json,
-    execution_ref,
-    error_message,
-    created_at,
-    updated_at,
-    completed_at,
-    failed_at
-  )
-  SELECT
-    execution_id,
-    action_id,
-    kind,
-    target_kind,
-    target_ref,
-    remote_base_url,
-    status,
-    request_payload_json,
-    result_payload_json,
-    execution_ref,
-    error_message,
-    created_at,
-    updated_at,
-    completed_at,
-    failed_at
-  FROM owner_opportunity_action_executions_v36;
-
-  DROP TABLE owner_opportunity_action_executions_v36;
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_action
-    ON owner_opportunity_action_executions(action_id, created_at DESC);
-
-  CREATE INDEX IF NOT EXISTS idx_owner_opportunity_action_executions_status
-    ON owner_opportunity_action_executions(status, created_at DESC);
-`;
-
-export const MIGRATION_V3 = `
-  CREATE TABLE IF NOT EXISTS inbox_messages (
-    id TEXT PRIMARY KEY,
-    from_address TEXT NOT NULL,
-    content TEXT NOT NULL,
-    received_at TEXT NOT NULL DEFAULT (datetime('now')),
-    processed_at TEXT,
-    reply_to TEXT
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_inbox_unprocessed
-    ON inbox_messages(received_at) WHERE processed_at IS NULL;
-`;
-
-export const MIGRATION_V4 = `
-  -- Policy decisions table
+  -- Policy decisions
   CREATE TABLE IF NOT EXISTS policy_decisions (
     id TEXT PRIMARY KEY,
     turn_id TEXT,
@@ -2014,7 +905,7 @@ export const MIGRATION_V4 = `
   CREATE INDEX IF NOT EXISTS idx_policy_decisions_tool ON policy_decisions(tool_name);
   CREATE INDEX IF NOT EXISTS idx_policy_decisions_decision ON policy_decisions(decision);
 
-  -- Spend tracking table
+  -- Spend tracking
   CREATE TABLE IF NOT EXISTS spend_tracking (
     id TEXT PRIMARY KEY,
     tool_name TEXT NOT NULL,
@@ -2030,7 +921,7 @@ export const MIGRATION_V4 = `
   CREATE INDEX IF NOT EXISTS idx_spend_hour ON spend_tracking(category, window_hour);
   CREATE INDEX IF NOT EXISTS idx_spend_day ON spend_tracking(category, window_day);
 
-  -- Heartbeat schedule (Phase 1.1)
+  -- Heartbeat schedule
   CREATE TABLE IF NOT EXISTS heartbeat_schedule (
     task_name TEXT PRIMARY KEY,
     cron_expression TEXT NOT NULL,
@@ -2053,7 +944,7 @@ export const MIGRATION_V4 = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
-  -- Heartbeat history (Phase 1.1)
+  -- Heartbeat history
   CREATE TABLE IF NOT EXISTS heartbeat_history (
     id TEXT PRIMARY KEY,
     task_name TEXT NOT NULL REFERENCES heartbeat_schedule(task_name),
@@ -2068,7 +959,7 @@ export const MIGRATION_V4 = `
 
   CREATE INDEX IF NOT EXISTS idx_hb_history_task ON heartbeat_history(task_name, started_at);
 
-  -- Wake events (Phase 1.1)
+  -- Wake events
   CREATE TABLE IF NOT EXISTS wake_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     source TEXT NOT NULL,
@@ -2080,7 +971,7 @@ export const MIGRATION_V4 = `
 
   CREATE INDEX IF NOT EXISTS idx_wake_unconsumed ON wake_events(created_at) WHERE consumed_at IS NULL;
 
-  -- Heartbeat dedup (Phase 1.1)
+  -- Heartbeat dedup
   CREATE TABLE IF NOT EXISTS heartbeat_dedup (
     dedup_key TEXT PRIMARY KEY,
     task_name TEXT NOT NULL,
@@ -2090,81 +981,7 @@ export const MIGRATION_V4 = `
 
   CREATE INDEX IF NOT EXISTS idx_dedup_expires ON heartbeat_dedup(expires_at);
 
-  -- Data migration: heartbeat_entries -> heartbeat_schedule
-  INSERT OR IGNORE INTO heartbeat_schedule (task_name, cron_expression, enabled, last_run_at, next_run_at)
-  SELECT name, schedule, enabled, last_run, next_run FROM heartbeat_entries;
-`;
-
-// Inbox modifications for V4 (ALTER TABLE must be run separately from CREATE TABLE)
-export const MIGRATION_V4_ALTER = `
-  ALTER TABLE inbox_messages ADD COLUMN to_address TEXT;
-`;
-
-export const MIGRATION_V4_ALTER2 = `
-  ALTER TABLE inbox_messages ADD COLUMN raw_content TEXT;
-`;
-
-// Inbox state machine columns (Phase 1.2)
-// Note: SQLite ALTER TABLE ADD COLUMN cannot include CHECK constraints,
-// so status validation is enforced at the application level.
-export const MIGRATION_V4_ALTER_INBOX_STATUS = `
-  ALTER TABLE inbox_messages ADD COLUMN status TEXT DEFAULT 'received';
-`;
-
-export const MIGRATION_V4_ALTER_INBOX_RETRY = `
-  ALTER TABLE inbox_messages ADD COLUMN retry_count INTEGER DEFAULT 0;
-`;
-
-export const MIGRATION_V4_ALTER_INBOX_MAX_RETRIES = `
-  ALTER TABLE inbox_messages ADD COLUMN max_retries INTEGER DEFAULT 3;
-`;
-
-export const MIGRATION_V2 = `
-  CREATE TABLE IF NOT EXISTS skills (
-    name TEXT PRIMARY KEY,
-    description TEXT NOT NULL DEFAULT '',
-    auto_activate INTEGER NOT NULL DEFAULT 1,
-    requires TEXT DEFAULT '{}',
-    instructions TEXT NOT NULL DEFAULT '',
-    source TEXT NOT NULL DEFAULT 'builtin',
-    path TEXT NOT NULL DEFAULT '',
-    enabled INTEGER NOT NULL DEFAULT 1,
-    installed_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE TABLE IF NOT EXISTS children (
-    id TEXT PRIMARY KEY,
-    name TEXT NOT NULL,
-    address TEXT NOT NULL,
-    sandbox_id TEXT NOT NULL,
-    genesis_prompt TEXT NOT NULL,
-    creator_message TEXT,
-    funded_amount_cents INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'spawning',
-    created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    last_checked TEXT
-  );
-
-  CREATE TABLE IF NOT EXISTS reputation (
-    id TEXT PRIMARY KEY,
-    from_agent TEXT NOT NULL,
-    to_agent TEXT NOT NULL,
-    score INTEGER NOT NULL,
-    comment TEXT NOT NULL DEFAULT '',
-    tx_hash TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now'))
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_skills_enabled ON skills(enabled);
-  CREATE INDEX IF NOT EXISTS idx_children_status ON children(status);
-  CREATE INDEX IF NOT EXISTS idx_reputation_to ON reputation(to_agent);
-`;
-
-// === Phase 2.1 + 2.2: Soul + Memory Tables ===
-
-export const MIGRATION_V5 = `
-  -- === Phase 2.1: Soul System ===
-
+  -- Soul history
   CREATE TABLE IF NOT EXISTS soul_history (
     id TEXT PRIMARY KEY,
     version INTEGER NOT NULL,
@@ -2179,8 +996,7 @@ export const MIGRATION_V5 = `
 
   CREATE INDEX IF NOT EXISTS idx_soul_version ON soul_history(version);
 
-  -- === Phase 2.2: Memory System ===
-
+  -- Working memory
   CREATE TABLE IF NOT EXISTS working_memory (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -2195,6 +1011,7 @@ export const MIGRATION_V5 = `
 
   CREATE INDEX IF NOT EXISTS idx_wm_session ON working_memory(session_id, priority);
 
+  -- Episodic memory
   CREATE TABLE IF NOT EXISTS episodic_memory (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -2215,6 +1032,7 @@ export const MIGRATION_V5 = `
   CREATE INDEX IF NOT EXISTS idx_episodic_importance ON episodic_memory(importance);
   CREATE INDEX IF NOT EXISTS idx_episodic_classification ON episodic_memory(classification);
 
+  -- Session summaries
   CREATE TABLE IF NOT EXISTS session_summaries (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL UNIQUE,
@@ -2228,6 +1046,7 @@ export const MIGRATION_V5 = `
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Semantic memory
   CREATE TABLE IF NOT EXISTS semantic_memory (
     id TEXT PRIMARY KEY,
     category TEXT NOT NULL CHECK(category IN ('self','environment','financial','agent','domain','procedural_ref','creator')),
@@ -2244,6 +1063,7 @@ export const MIGRATION_V5 = `
 
   CREATE INDEX IF NOT EXISTS idx_semantic_category ON semantic_memory(category);
 
+  -- Procedural memory
   CREATE TABLE IF NOT EXISTS procedural_memory (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL UNIQUE,
@@ -2256,6 +1076,7 @@ export const MIGRATION_V5 = `
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
+  -- Relationship memory
   CREATE TABLE IF NOT EXISTS relationship_memory (
     id TEXT PRIMARY KEY,
     entity_address TEXT NOT NULL UNIQUE,
@@ -2270,13 +1091,8 @@ export const MIGRATION_V5 = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_rel_trust ON relationship_memory(trust_score);
-`;
 
-// === Phase 2.3: Inference & Model Strategy Tables ===
-
-export const MIGRATION_V6 = `
-  -- === Phase 2.3: Inference & Model Strategy ===
-
+  -- Inference costs
   CREATE TABLE IF NOT EXISTS inference_costs (
     id TEXT PRIMARY KEY,
     session_id TEXT NOT NULL,
@@ -2298,6 +1114,7 @@ export const MIGRATION_V6 = `
   CREATE INDEX IF NOT EXISTS idx_inf_created ON inference_costs(created_at);
   CREATE INDEX IF NOT EXISTS idx_inf_task ON inference_costs(task_type);
 
+  -- Model registry
   CREATE TABLE IF NOT EXISTS model_registry (
     model_id TEXT PRIMARY KEY,
     provider TEXT NOT NULL,
@@ -2314,13 +1131,8 @@ export const MIGRATION_V6 = `
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
-`;
 
-// === Phase 3: Replication + Social ===
-
-export const MIGRATION_V7 = `
-  -- === Phase 3.1: Replication Lifecycle ===
-
+  -- Child lifecycle events
   CREATE TABLE IF NOT EXISTS child_lifecycle_events (
     id TEXT PRIMARY KEY,
     child_id TEXT NOT NULL,
@@ -2336,8 +1148,7 @@ export const MIGRATION_V7 = `
 
   CREATE INDEX IF NOT EXISTS idx_child_events ON child_lifecycle_events(child_id, created_at);
 
-  -- === Phase 3.2: On-chain Activity ===
-
+  -- On-chain transactions
   CREATE TABLE IF NOT EXISTS onchain_transactions (
     id TEXT PRIMARY KEY,
     tx_hash TEXT NOT NULL UNIQUE,
@@ -2350,13 +1161,8 @@ export const MIGRATION_V7 = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_onchain_status ON onchain_transactions(status);
-`;
 
-// === Phase 4.1: Observability ===
-
-export const MIGRATION_V8 = `
-  -- === Phase 4.1: Observability ===
-
+  -- Metric snapshots
   CREATE TABLE IF NOT EXISTS metric_snapshots (
     id TEXT PRIMARY KEY,
     snapshot_at TEXT NOT NULL,
@@ -2366,19 +1172,13 @@ export const MIGRATION_V8 = `
   );
 
   CREATE INDEX IF NOT EXISTS idx_metric_snapshots_at ON metric_snapshots(snapshot_at);
-`;
 
-// === Plan A: Orchestration + Memory ===
-
-export const MIGRATION_V9 = `
-  -- Schema version: 9
-  -- Tables: goals, task_graph, event_stream
-
-  CREATE TABLE goals (
-    id TEXT PRIMARY KEY,                    -- ULID
+  -- Goals
+  CREATE TABLE IF NOT EXISTS goals (
+    id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
     description TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'active',  -- active|completed|failed|paused
+    status TEXT NOT NULL DEFAULT 'active',
     strategy TEXT,
     expected_revenue_cents INTEGER DEFAULT 0,
     actual_revenue_cents INTEGER DEFAULT 0,
@@ -2387,18 +1187,19 @@ export const MIGRATION_V9 = `
     completed_at TEXT
   );
 
-  CREATE TABLE task_graph (
-    id TEXT PRIMARY KEY,                    -- ULID
-    parent_id TEXT,                         -- parent task (decomposition)
+  -- Task graph
+  CREATE TABLE IF NOT EXISTS task_graph (
+    id TEXT PRIMARY KEY,
+    parent_id TEXT,
     goal_id TEXT NOT NULL REFERENCES goals(id),
     title TEXT NOT NULL,
     description TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending', -- pending|assigned|running|completed|failed|blocked|cancelled
-    assigned_to TEXT,                       -- agent wallet address (0x...)
-    agent_role TEXT,                        -- predefined role name
-    priority INTEGER DEFAULT 50,           -- 0-100
-    dependencies TEXT DEFAULT '[]',        -- JSON array of task IDs
-    result TEXT,                           -- JSON TaskResult
+    status TEXT NOT NULL DEFAULT 'pending',
+    assigned_to TEXT,
+    agent_role TEXT,
+    priority INTEGER DEFAULT 50,
+    dependencies TEXT DEFAULT '[]',
+    result TEXT,
     estimated_cost_cents INTEGER DEFAULT 0,
     actual_cost_cents INTEGER DEFAULT 0,
     max_retries INTEGER DEFAULT 3,
@@ -2409,13 +1210,14 @@ export const MIGRATION_V9 = `
     completed_at TEXT
   );
 
-  CREATE INDEX idx_task_graph_goal ON task_graph(goal_id);
-  CREATE INDEX idx_task_graph_status ON task_graph(status);
-  CREATE INDEX idx_task_graph_assigned ON task_graph(assigned_to);
+  CREATE INDEX IF NOT EXISTS idx_task_graph_goal ON task_graph(goal_id);
+  CREATE INDEX IF NOT EXISTS idx_task_graph_status ON task_graph(status);
+  CREATE INDEX IF NOT EXISTS idx_task_graph_assigned ON task_graph(assigned_to);
 
-  CREATE TABLE event_stream (
-    id TEXT PRIMARY KEY,                    -- ULID
-    type TEXT NOT NULL,                     -- EventType enum
+  -- Event stream
+  CREATE TABLE IF NOT EXISTS event_stream (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
     agent_address TEXT NOT NULL,
     goal_id TEXT,
     task_id TEXT,
@@ -2425,26 +1227,17 @@ export const MIGRATION_V9 = `
     created_at TEXT NOT NULL
   );
 
-  CREATE INDEX idx_events_agent ON event_stream(agent_address, created_at);
-  CREATE INDEX idx_events_goal ON event_stream(goal_id, created_at);
-  CREATE INDEX idx_events_type ON event_stream(type, created_at);
-`;
+  CREATE INDEX IF NOT EXISTS idx_events_agent ON event_stream(agent_address, created_at);
+  CREATE INDEX IF NOT EXISTS idx_events_goal ON event_stream(goal_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_events_type ON event_stream(type, created_at);
 
-// Role column for children table (must be separate statement for SQLite ALTER)
-export const MIGRATION_V9_ALTER_CHILDREN_ROLE = `
-  ALTER TABLE children ADD COLUMN role TEXT DEFAULT 'generalist';
-`;
-
-export const MIGRATION_V10 = `
-  -- Schema version: 10
-  -- Tables: knowledge_store
-
-  CREATE TABLE knowledge_store (
-    id TEXT PRIMARY KEY,                    -- ULID
-    category TEXT NOT NULL,                 -- market|technical|social|financial|operational
+  -- Knowledge store
+  CREATE TABLE IF NOT EXISTS knowledge_store (
+    id TEXT PRIMARY KEY,
+    category TEXT NOT NULL,
     key TEXT NOT NULL,
     content TEXT NOT NULL,
-    source TEXT NOT NULL,                   -- agent address that contributed
+    source TEXT NOT NULL,
     confidence REAL DEFAULT 1.0,
     last_verified TEXT NOT NULL,
     access_count INTEGER DEFAULT 0,
@@ -2453,291 +1246,11 @@ export const MIGRATION_V10 = `
     expires_at TEXT
   );
 
-  CREATE INDEX idx_knowledge_category ON knowledge_store(category);
-  CREATE INDEX idx_knowledge_key ON knowledge_store(key);
+  CREATE INDEX IF NOT EXISTS idx_knowledge_category ON knowledge_store(category);
+  CREATE INDEX IF NOT EXISTS idx_knowledge_key ON knowledge_store(key);
+
+  CREATE INDEX IF NOT EXISTS idx_bounties_campaign
+    ON bounties(campaign_id, created_at);
 `;
 
-export const MIGRATION_V11 = `
-  DROP TABLE IF EXISTS registry;
-  DROP TABLE IF EXISTS discovered_agents_cache;
-`;
 
-export const MIGRATION_V12 = `
-  CREATE TABLE IF NOT EXISTS bounties (
-    bounty_id TEXT PRIMARY KEY,
-    host_agent_id TEXT NOT NULL,
-    host_address TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('question')),
-    question TEXT NOT NULL,
-    reference_answer TEXT NOT NULL,
-    reward_wei TEXT NOT NULL,
-    submission_deadline TEXT NOT NULL,
-    judge_mode TEXT NOT NULL CHECK(judge_mode IN ('local_model')),
-    status TEXT NOT NULL CHECK(status IN ('open','submitted','under_review','approved','rejected','paid','expired')),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status, created_at);
-
-  CREATE TABLE IF NOT EXISTS bounty_submissions (
-    submission_id TEXT PRIMARY KEY,
-    bounty_id TEXT NOT NULL REFERENCES bounties(bounty_id) ON DELETE CASCADE,
-    solver_agent_id TEXT,
-    solver_address TEXT NOT NULL,
-    answer TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('submitted','accepted','rejected')),
-    submitted_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_bounty_submissions_bounty ON bounty_submissions(bounty_id, submitted_at);
-
-  CREATE TABLE IF NOT EXISTS bounty_results (
-    bounty_id TEXT PRIMARY KEY REFERENCES bounties(bounty_id) ON DELETE CASCADE,
-    winning_submission_id TEXT,
-    decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),
-    confidence REAL NOT NULL,
-    judge_reason TEXT NOT NULL,
-    payout_tx_hash TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-`;
-
-export const MIGRATION_V13 = `
-  ALTER TABLE bounty_results RENAME TO bounty_results_old;
-  ALTER TABLE bounty_submissions RENAME TO bounty_submissions_old;
-  ALTER TABLE bounties RENAME TO bounties_old;
-
-  CREATE TABLE bounties (
-    bounty_id TEXT PRIMARY KEY,
-    host_agent_id TEXT NOT NULL,
-    host_address TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling')),
-    title TEXT NOT NULL,
-    task_prompt TEXT NOT NULL,
-    reference_output TEXT NOT NULL,
-    skill_name TEXT,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    policy_json TEXT NOT NULL DEFAULT '{}',
-    reward_wei TEXT NOT NULL,
-    submission_deadline TEXT NOT NULL,
-    judge_mode TEXT NOT NULL CHECK(judge_mode IN ('local_model')),
-    status TEXT NOT NULL CHECK(status IN ('open','submitted','under_review','approved','rejected','paid','expired')),
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status, created_at);
-
-  INSERT INTO bounties (
-    bounty_id,
-    host_agent_id,
-    host_address,
-    kind,
-    title,
-    task_prompt,
-    reference_output,
-    skill_name,
-    metadata_json,
-    policy_json,
-    reward_wei,
-    submission_deadline,
-    judge_mode,
-    status,
-    created_at,
-    updated_at
-  )
-  SELECT
-    bounty_id,
-    host_agent_id,
-    host_address,
-    CASE
-      WHEN kind IN ('question','translation','social_proof','problem_solving','public_news_capture','oracle_evidence_capture','data_labeling') THEN kind
-      ELSE 'question'
-    END,
-    substr(question, 1, 160),
-    question,
-    reference_answer,
-    NULL,
-    '{}',
-    '{"maxSubmissionsPerSolver":1,"solverCooldownSeconds":3600,"maxAutoPayPerSolverPerDayWei":"1000000000000000000","trustedProofUrlPrefixes":["https://x.com/","https://twitter.com/","https://www.x.com/","https://www.twitter.com/"]}',
-    reward_wei,
-    submission_deadline,
-    judge_mode,
-    status,
-    created_at,
-    updated_at
-  FROM bounties_old;
-
-  CREATE TABLE bounty_submissions (
-    submission_id TEXT PRIMARY KEY,
-    bounty_id TEXT NOT NULL REFERENCES bounties(bounty_id) ON DELETE CASCADE,
-    solver_agent_id TEXT,
-    solver_address TEXT NOT NULL,
-    submission_text TEXT NOT NULL,
-    proof_url TEXT,
-    metadata_json TEXT NOT NULL DEFAULT '{}',
-    status TEXT NOT NULL CHECK(status IN ('submitted','accepted','rejected')),
-    submitted_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE INDEX IF NOT EXISTS idx_bounty_submissions_bounty ON bounty_submissions(bounty_id, submitted_at);
-
-  INSERT INTO bounty_submissions (
-    submission_id,
-    bounty_id,
-    solver_agent_id,
-    solver_address,
-    submission_text,
-    proof_url,
-    metadata_json,
-    status,
-    submitted_at,
-    updated_at
-  )
-  SELECT
-    submission_id,
-    bounty_id,
-    solver_agent_id,
-    solver_address,
-    answer,
-    NULL,
-    '{}',
-    status,
-    submitted_at,
-    updated_at
-  FROM bounty_submissions_old;
-
-  CREATE TABLE bounty_results (
-    bounty_id TEXT PRIMARY KEY REFERENCES bounties(bounty_id) ON DELETE CASCADE,
-    winning_submission_id TEXT,
-    decision TEXT NOT NULL CHECK(decision IN ('accepted','rejected')),
-    confidence REAL NOT NULL,
-    judge_reason TEXT NOT NULL,
-    payout_tx_hash TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  INSERT INTO bounty_results (
-    bounty_id,
-    winning_submission_id,
-    decision,
-    confidence,
-    judge_reason,
-    payout_tx_hash,
-    created_at,
-    updated_at
-  )
-  SELECT
-    bounty_id,
-    winning_submission_id,
-    decision,
-    confidence,
-    judge_reason,
-    payout_tx_hash,
-    created_at,
-    updated_at
-  FROM bounty_results_old;
-
-  DROP TABLE bounty_results_old;
-  DROP TABLE bounty_submissions_old;
-  DROP TABLE bounties_old;
-`;
-
-export const MIGRATION_V14 = `
-  CREATE TABLE IF NOT EXISTS settlement_receipts (
-    receipt_id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
-    subject_id TEXT NOT NULL,
-    receipt_json TEXT NOT NULL,
-    receipt_hash TEXT NOT NULL,
-    artifact_url TEXT,
-    payment_tx_hash TEXT,
-    payout_tx_hash TEXT,
-    settlement_tx_hash TEXT,
-    settlement_receipt_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_settlement_subject
-    ON settlement_receipts(kind, subject_id);
-`;
-
-export const MIGRATION_V15 = `
-  CREATE TABLE IF NOT EXISTS settlement_callbacks (
-    callback_id TEXT PRIMARY KEY,
-    receipt_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
-    subject_id TEXT NOT NULL,
-    contract_address TEXT NOT NULL,
-    payload_mode TEXT NOT NULL CHECK(payload_mode IN ('canonical_receipt','receipt_hash')),
-    payload_hex TEXT NOT NULL,
-    payload_hash TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 3,
-    callback_tx_hash TEXT,
-    callback_receipt_json TEXT,
-    last_error TEXT,
-    next_attempt_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_settlement_callback_receipt
-    ON settlement_callbacks(receipt_id);
-
-  CREATE INDEX IF NOT EXISTS idx_settlement_callback_status
-    ON settlement_callbacks(status, kind, next_attempt_at);
-`;
-
-export const MIGRATION_V16 = `
-  CREATE TABLE IF NOT EXISTS market_bindings (
-    binding_id TEXT PRIMARY KEY,
-    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
-    subject_id TEXT NOT NULL,
-    receipt_json TEXT NOT NULL,
-    receipt_hash TEXT NOT NULL,
-    callback_target TEXT,
-    callback_tx_hash TEXT,
-    callback_receipt_json TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_market_binding_subject
-    ON market_bindings(kind, subject_id);
-
-  CREATE TABLE IF NOT EXISTS market_contract_callbacks (
-    callback_id TEXT PRIMARY KEY,
-    binding_id TEXT NOT NULL,
-    kind TEXT NOT NULL CHECK(kind IN ('bounty','observation','oracle')),
-    subject_id TEXT NOT NULL,
-    contract_address TEXT NOT NULL,
-    package_name TEXT NOT NULL,
-    function_signature TEXT NOT NULL,
-    payload_mode TEXT NOT NULL CHECK(payload_mode IN ('canonical_binding','binding_hash')),
-    payload_hex TEXT NOT NULL,
-    payload_hash TEXT NOT NULL,
-    status TEXT NOT NULL CHECK(status IN ('pending','confirmed','failed')),
-    attempt_count INTEGER NOT NULL DEFAULT 0,
-    max_attempts INTEGER NOT NULL DEFAULT 3,
-    callback_tx_hash TEXT,
-    callback_receipt_json TEXT,
-    last_error TEXT,
-    next_attempt_at TEXT,
-    created_at TEXT NOT NULL,
-    updated_at TEXT NOT NULL
-  );
-
-  CREATE UNIQUE INDEX IF NOT EXISTS idx_market_callback_binding
-    ON market_contract_callbacks(binding_id);
-
-  CREATE INDEX IF NOT EXISTS idx_market_callback_status
-    ON market_contract_callbacks(status, kind, next_attempt_at);
-`;

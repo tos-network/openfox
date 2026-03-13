@@ -27,13 +27,13 @@ import {
   MESSAGE_LIMITS,
 } from "../types.js";
 import type { ChildLifecycleState, RuntimeClient, ExecResult } from "../types.js";
-import { MIGRATION_V7 } from "../state/schema.js";
 import {
   MockRuntimeClient,
   MockSocialClient,
   createTestIdentity,
   createTestConfig,
 } from "./mocks.js";
+import { CREATE_TABLES } from "../state/schema.js";
 
 // Mock fs module for constitution tests
 vi.mock("fs", async (importOriginal) => {
@@ -60,40 +60,7 @@ function createTestRawDb(): InstanceType<typeof Database> {
   const db = new Database(":memory:");
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-
-  // Create minimal schema needed for lifecycle tests
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schema_version (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-
-    CREATE TABLE IF NOT EXISTS children (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      address TEXT NOT NULL DEFAULT '',
-      sandbox_id TEXT NOT NULL DEFAULT '',
-      genesis_prompt TEXT NOT NULL DEFAULT '',
-      creator_message TEXT,
-      funded_amount_cents INTEGER NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'spawning',
-      created_at TEXT NOT NULL DEFAULT (datetime('now')),
-      last_checked TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_children_status ON children(status);
-
-    CREATE TABLE IF NOT EXISTS kv (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
-
-  // Apply V7 migration
-  db.exec(MIGRATION_V7);
-  db.prepare("INSERT INTO schema_version (version) VALUES (7)").run();
-
+  db.exec(CREATE_TABLES);
   return db;
 }
 
@@ -764,18 +731,10 @@ describe("pruneDeadChildren", () => {
 
 // ─── Schema Migration ───────────────────────────────────────────
 
-describe("MIGRATION_V7", () => {
-  it("creates child_lifecycle_events table", () => {
-    const db = new Database(":memory:");
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS schema_version (
-        version INTEGER PRIMARY KEY,
-        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-    db.exec(MIGRATION_V7);
+describe("child_lifecycle_events table", () => {
+  it("table exists and accepts valid inserts", () => {
+    const db = createTestRawDb();
 
-    // Check table exists by inserting
     const stmt = db.prepare(
       "INSERT INTO child_lifecycle_events (id, child_id, from_state, to_state) VALUES (?, ?, ?, ?)",
     );
@@ -791,33 +750,8 @@ describe("MIGRATION_V7", () => {
     db.close();
   });
 
-  it("creates onchain_transactions table", () => {
-    const db = new Database(":memory:");
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS schema_version (
-        version INTEGER PRIMARY KEY,
-        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-    db.exec(MIGRATION_V7);
-
-    const stmt = db.prepare(
-      "INSERT INTO onchain_transactions (id, tx_hash, chain, operation, status) VALUES (?, ?, ?, ?, ?)",
-    );
-    expect(() => stmt.run("tx-1", "0xhash", "eip155:8453", "register", "pending")).not.toThrow();
-
-    db.close();
-  });
-
   it("enforces to_state CHECK constraint", () => {
-    const db = new Database(":memory:");
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS schema_version (
-        version INTEGER PRIMARY KEY,
-        applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-      );
-    `);
-    db.exec(MIGRATION_V7);
+    const db = createTestRawDb();
 
     const stmt = db.prepare(
       "INSERT INTO child_lifecycle_events (id, child_id, from_state, to_state) VALUES (?, ?, ?, ?)",

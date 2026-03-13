@@ -19,7 +19,6 @@ import {
   createTestIdentity,
 } from "./mocks.js";
 import type { OpenFoxDatabase, GenesisConfig } from "../types.js";
-import { MIGRATION_V7 } from "../state/schema.js";
 
 // Mock fs for constitution propagation
 vi.mock("fs", async (importOriginal) => {
@@ -211,8 +210,6 @@ describe("SandboxCleanup", () => {
   beforeEach(() => {
     runtime = new MockRuntimeClient();
     db = createTestDb();
-    // Apply lifecycle events migration
-    db.raw.exec(MIGRATION_V7);
     lifecycle = new ChildLifecycle(db.raw);
   });
 
@@ -265,7 +262,6 @@ describe("pruneDeadChildren", () => {
 
   beforeEach(() => {
     db = createTestDb();
-    db.raw.exec(MIGRATION_V7);
     runtime = new MockRuntimeClient();
   });
 

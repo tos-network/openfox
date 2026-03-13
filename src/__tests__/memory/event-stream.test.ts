@@ -1,12 +1,12 @@
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { MIGRATION_V9 } from "../../state/schema.js";
 import {
   EventStream,
   estimateTokens,
   type EventType,
 } from "../../memory/event-stream.js";
+import { CREATE_TABLES } from "../../state/schema.js";
 
 let db: BetterSqlite3.Database;
 let stream: EventStream;
@@ -15,7 +15,7 @@ function createTestDb(): BetterSqlite3.Database {
   const testDb = new Database(":memory:");
   testDb.pragma("journal_mode = WAL");
   testDb.pragma("foreign_keys = ON");
-  testDb.exec(MIGRATION_V9);
+  testDb.exec(CREATE_TABLES);
   return testDb;
 }
 

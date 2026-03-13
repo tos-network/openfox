@@ -28,8 +28,8 @@ import {
   getCurrentSoulVersion,
   getLatestSoulHistory,
 } from "../state/database.js";
-import { MIGRATION_V5 } from "../state/schema.js";
 import type { SoulModel, SoulHistoryRow } from "../types.js";
+import { CREATE_TABLES } from "../state/schema.js";
 
 // ─── Test Helpers ───────────────────────────────────────────────
 
@@ -37,44 +37,7 @@ function createTestDb(): Database.Database {
   const db = new Database(":memory:");
   db.pragma("journal_mode = WAL");
   db.pragma("foreign_keys = ON");
-  // Create schema_version table
-  db.exec(`CREATE TABLE IF NOT EXISTS schema_version (
-    version INTEGER PRIMARY KEY,
-    applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-  )`);
-  // Apply V5 migration (soul_history + memory tables)
-  db.exec(MIGRATION_V5);
-  db.exec("INSERT INTO schema_version (version) VALUES (5)");
-
-  // Create minimal tables needed for reflection evidence gathering
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tool_calls (
-      id TEXT PRIMARY KEY,
-      turn_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      arguments TEXT NOT NULL DEFAULT '{}',
-      result TEXT NOT NULL DEFAULT '',
-      duration_ms INTEGER NOT NULL DEFAULT 0,
-      error TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-    CREATE TABLE IF NOT EXISTS inbox_messages (
-      id TEXT PRIMARY KEY,
-      from_address TEXT NOT NULL,
-      content TEXT NOT NULL,
-      received_at TEXT NOT NULL DEFAULT (datetime('now')),
-      processed_at TEXT,
-      reply_to TEXT
-    );
-    CREATE TABLE IF NOT EXISTS transactions (
-      id TEXT PRIMARY KEY,
-      type TEXT NOT NULL,
-      amount_cents INTEGER,
-      balance_after_cents INTEGER,
-      description TEXT NOT NULL DEFAULT '',
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
-    );
-  `);
+  db.exec(CREATE_TABLES);
   return db;
 }
 
@@ -736,34 +699,9 @@ describe("Soul Tools", () => {
 
 // ─── Schema Migration ───────────────────────────────────────────
 
-describe("Schema Migration - MIGRATION_V5", () => {
-  it("creates soul_history table", () => {
-    const db = new Database(":memory:");
-    db.exec(`CREATE TABLE IF NOT EXISTS schema_version (
-      version INTEGER PRIMARY KEY,
-      applied_at TEXT NOT NULL DEFAULT (datetime('now'))
-    )`);
-
-    db.exec(MIGRATION_V5);
-
-    // Check that soul_history exists
-    const tables = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='soul_history'")
-      .all();
-    expect(tables).toHaveLength(1);
-
-    // Check that the index exists
-    const indices = db
-      .prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='idx_soul_version'")
-      .all();
-    expect(indices).toHaveLength(1);
-
-    db.close();
-  });
-
+describe("Schema Migration - soul_history", () => {
   it("soul_history CHECK constraints enforce valid change_source", () => {
-    const db = new Database(":memory:");
-    db.exec(MIGRATION_V5);
+    const db = createTestDb();
 
     // Valid source should work
     db.prepare(

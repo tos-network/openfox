@@ -8,7 +8,6 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
-import { MIGRATION_V6 } from "../state/schema.js";
 import {
   inferenceInsertCost,
   inferenceGetSessionCosts,
@@ -32,6 +31,7 @@ import {
   TASK_TIMEOUTS,
 } from "../inference/types.js";
 import type { ModelRegistryRow, InferenceCostRow, ModelStrategyConfig } from "../types.js";
+import { CREATE_TABLES } from "../state/schema.js";
 
 let db: BetterSqlite3.Database;
 
@@ -39,7 +39,7 @@ function createTestDb(): BetterSqlite3.Database {
   const testDb = new Database(":memory:");
   testDb.pragma("journal_mode = WAL");
   testDb.pragma("foreign_keys = ON");
-  testDb.exec(MIGRATION_V6);
+  testDb.exec(CREATE_TABLES);
   return testDb;
 }
 
@@ -764,7 +764,7 @@ describe("Static Model Baseline", () => {
 
 // ─── Schema Tests ─────────────────────────────────────────────────
 
-describe("Schema MIGRATION_V6", () => {
+describe("Schema tables for inference", () => {
   it("creates inference_costs table", () => {
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='inference_costs'").all();
     expect(tables.length).toBe(1);
@@ -794,10 +794,6 @@ describe("Schema MIGRATION_V6", () => {
     expect(columns).toContain("cost_per_1k_input");
     expect(columns).toContain("tier_minimum");
     expect(columns).toContain("parameter_style");
-  });
-
-  it("is idempotent (can run twice)", () => {
-    expect(() => db.exec(MIGRATION_V6)).not.toThrow();
   });
 });
 

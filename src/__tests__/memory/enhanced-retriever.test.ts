@@ -1,9 +1,9 @@
 import Database from "better-sqlite3";
 import type BetterSqlite3 from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { MIGRATION_V5, MIGRATION_V10 } from "../../state/schema.js";
 import { KnowledgeStore, type KnowledgeCategory } from "../../memory/knowledge-store.js";
 import type { ContextUtilization } from "../../memory/context-manager.js";
+import { CREATE_TABLES } from "../../state/schema.js";
 
 let db: BetterSqlite3.Database;
 let store: KnowledgeStore;
@@ -13,14 +13,7 @@ function createTestDb(): BetterSqlite3.Database {
   const testDb = new Database(":memory:");
   testDb.pragma("journal_mode = WAL");
   testDb.pragma("foreign_keys = ON");
-  testDb.exec(MIGRATION_V5);
-  testDb.exec(MIGRATION_V10);
-  testDb.exec(`
-    CREATE TABLE IF NOT EXISTS turns (
-      id TEXT PRIMARY KEY,
-      thinking TEXT NOT NULL
-    )
-  `);
+  testDb.exec(CREATE_TABLES);
   return testDb;
 }
 
@@ -345,7 +338,7 @@ describe("EnhancedRetriever", () => {
       tokenCount: 20,
     });
 
-    db.prepare("INSERT INTO turns (id, thinking) VALUES (?, ?)").run(
+    db.prepare("INSERT INTO turns (id, timestamp, state, thinking) VALUES (?, datetime('now'), 'running', ?)").run(
       "turn-42",
       "Used incident-runbook during troubleshooting.",
     );
