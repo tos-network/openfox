@@ -893,7 +893,372 @@ This emits:
 - `membership.remove.committed`
 - `epoch.rotated`
 
-## 13. Out of Scope for v0
+## 13. SQLite Storage Model
+
+`Group v0` should live in the main local OpenFox SQLite database, not in a
+separate ad hoc file.
+
+The local database should serve two roles at once:
+
+- durable append-only storage for signed group events
+- fast materialized views for community UX and policy checks
+
+The authoritative local source is still the event log.
+The other tables are reducer-maintained state projections.
+
+### 13.1 Storage Principles
+
+- `group_events` is the canonical local record of what this node has accepted
+- `groups`, `group_members`, `group_channels`, and similar tables are
+  materialized state derived from events
+- reducers should update materialized tables in the same SQLite transaction that
+  records a newly accepted event
+- proposal approval counts, mute state, current roles, and pinned announcement
+  should be queryable without replaying the full event history
+- snapshots are accelerators, not authorities
+
+### 13.2 Recommended Tables
+
+- `groups`
+  current manifest and group-wide policy summary
+- `group_channels`
+  current channel registry
+- `group_members`
+  current or recently ended membership state
+- `group_member_roles`
+  active role projection
+- `group_events`
+  append-only signed event log
+- `group_proposals`
+  materialized pending invite, removal, role, and policy proposals
+- `group_join_requests`
+  materialized pending self-service join requests
+- `group_announcements`
+  materialized announcement surface
+- `group_messages`
+  materialized current message timeline
+- `group_message_reactions`
+  active reaction set
+- `group_snapshots`
+  locally cached or published state snapshots
+- `group_sync_state`
+  per-peer or per-relay sync cursors
+- `group_epoch_keys`
+  local key-delivery bookkeeping for epoch rotation
+
+### 13.3 Suggested SQLite DDL
+
+```sql
+CREATE TABLE IF NOT EXISTS groups (
+  group_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  visibility TEXT NOT NULL CHECK(visibility IN ('private','listed','public')),
+  join_mode TEXT NOT NULL CHECK(join_mode IN ('invite_only','request_approval')),
+  status TEXT NOT NULL CHECK(status IN ('active','archived')) DEFAULT 'active',
+  max_members INTEGER NOT NULL DEFAULT 256,
+  tns_name TEXT,
+  tags_json TEXT NOT NULL DEFAULT '[]',
+  avatar_artifact_cid TEXT,
+  rules_artifact_cid TEXT,
+  creator_address TEXT NOT NULL,
+  creator_agent_id TEXT,
+  current_epoch INTEGER NOT NULL DEFAULT 1,
+  current_policy_hash TEXT NOT NULL,
+  current_members_root TEXT NOT NULL,
+  pinned_announcement_id TEXT,
+  latest_snapshot_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_groups_visibility
+  ON groups(visibility, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_channels (
+  channel_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  visibility TEXT NOT NULL DEFAULT 'group',
+  status TEXT NOT NULL CHECK(status IN ('active','archived')) DEFAULT 'active',
+  created_by_address TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  archived_at TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_group_channels_name
+  ON group_channels(group_id, name);
+
+CREATE TABLE IF NOT EXISTS group_members (
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  member_address TEXT NOT NULL,
+  member_agent_id TEXT,
+  member_tns_name TEXT,
+  display_name TEXT,
+  membership_state TEXT NOT NULL CHECK(
+    membership_state IN ('active','left','removed','banned')
+  ) DEFAULT 'active',
+  joined_via TEXT NOT NULL CHECK(
+    joined_via IN ('genesis','invite','join_request')
+  ),
+  joined_at TEXT NOT NULL,
+  left_at TEXT,
+  mute_until TEXT,
+  last_event_id TEXT NOT NULL,
+  PRIMARY KEY (group_id, member_address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_members_state
+  ON group_members(group_id, membership_state, joined_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_member_roles (
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  member_address TEXT NOT NULL,
+  role TEXT NOT NULL,
+  active INTEGER NOT NULL CHECK(active IN (0,1)) DEFAULT 1,
+  granted_by_address TEXT NOT NULL,
+  granted_at TEXT NOT NULL,
+  revoked_at TEXT,
+  last_event_id TEXT NOT NULL,
+  PRIMARY KEY (group_id, member_address, role)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_member_roles_active
+  ON group_member_roles(group_id, role, active);
+
+CREATE TABLE IF NOT EXISTS group_events (
+  event_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  epoch INTEGER NOT NULL,
+  channel_id TEXT,
+  actor_address TEXT NOT NULL,
+  actor_agent_id TEXT,
+  parent_event_ids_json TEXT NOT NULL DEFAULT '[]',
+  payload_json TEXT NOT NULL,
+  signature TEXT NOT NULL,
+  event_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT,
+  received_at TEXT NOT NULL DEFAULT (datetime('now')),
+  source_kind TEXT NOT NULL CHECK(
+    source_kind IN ('local','peer','gateway','relay','snapshot')
+  ) DEFAULT 'local',
+  reducer_status TEXT NOT NULL CHECK(
+    reducer_status IN ('accepted','pending','rejected')
+  ) DEFAULT 'accepted',
+  rejection_reason TEXT
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_group_events_hash
+  ON group_events(group_id, event_hash);
+
+CREATE INDEX IF NOT EXISTS idx_group_events_created
+  ON group_events(group_id, created_at ASC);
+
+CREATE INDEX IF NOT EXISTS idx_group_events_kind
+  ON group_events(group_id, kind, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_proposals (
+  proposal_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  proposal_kind TEXT NOT NULL CHECK(
+    proposal_kind IN (
+      'invite',
+      'membership_remove',
+      'role_grant',
+      'role_revoke',
+      'policy_update'
+    )
+  ),
+  target_address TEXT,
+  target_agent_id TEXT,
+  target_tns_name TEXT,
+  target_roles_json TEXT NOT NULL DEFAULT '[]',
+  opened_by_address TEXT NOT NULL,
+  opened_event_id TEXT NOT NULL,
+  approval_count INTEGER NOT NULL DEFAULT 0,
+  required_approvals INTEGER NOT NULL DEFAULT 1,
+  invite_accepted_at TEXT,
+  status TEXT NOT NULL CHECK(
+    status IN ('open','revoked','expired','committed','rejected')
+  ) DEFAULT 'open',
+  reason TEXT,
+  expires_at TEXT,
+  committed_event_id TEXT,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_proposals_open
+  ON group_proposals(group_id, status, updated_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_join_requests (
+  request_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  applicant_address TEXT NOT NULL,
+  applicant_agent_id TEXT,
+  applicant_tns_name TEXT,
+  requested_roles_json TEXT NOT NULL DEFAULT '[]',
+  request_message TEXT NOT NULL DEFAULT '',
+  opened_event_id TEXT NOT NULL,
+  approval_count INTEGER NOT NULL DEFAULT 0,
+  required_approvals INTEGER NOT NULL DEFAULT 1,
+  status TEXT NOT NULL CHECK(
+    status IN ('open','withdrawn','rejected','expired','committed')
+  ) DEFAULT 'open',
+  committed_event_id TEXT,
+  expires_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_join_requests_open
+  ON group_join_requests(group_id, status, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_announcements (
+  announcement_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  channel_id TEXT REFERENCES group_channels(channel_id) ON DELETE SET NULL,
+  event_id TEXT NOT NULL UNIQUE,
+  title TEXT NOT NULL,
+  body_text TEXT NOT NULL,
+  pinned INTEGER NOT NULL CHECK(pinned IN (0,1)) DEFAULT 0,
+  posted_by_address TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  redacted_at TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_announcements_created
+  ON group_announcements(group_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_messages (
+  message_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  channel_id TEXT NOT NULL REFERENCES group_channels(channel_id) ON DELETE CASCADE,
+  original_event_id TEXT NOT NULL UNIQUE,
+  latest_event_id TEXT NOT NULL,
+  sender_address TEXT NOT NULL,
+  sender_agent_id TEXT,
+  reply_to_message_id TEXT,
+  ciphertext TEXT NOT NULL,
+  preview_text TEXT,
+  mentions_json TEXT NOT NULL DEFAULT '[]',
+  reaction_summary_json TEXT NOT NULL DEFAULT '{}',
+  redacted INTEGER NOT NULL CHECK(redacted IN (0,1)) DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_messages_timeline
+  ON group_messages(group_id, channel_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS group_message_reactions (
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  message_id TEXT NOT NULL REFERENCES group_messages(message_id) ON DELETE CASCADE,
+  reactor_address TEXT NOT NULL,
+  reaction_code TEXT NOT NULL,
+  event_id TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (group_id, message_id, reactor_address, reaction_code)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_message_reactions_message
+  ON group_message_reactions(group_id, message_id, created_at ASC);
+
+CREATE TABLE IF NOT EXISTS group_snapshots (
+  snapshot_id TEXT PRIMARY KEY,
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  as_of_event_id TEXT NOT NULL,
+  snapshot_hash TEXT NOT NULL,
+  snapshot_cid TEXT,
+  members_json TEXT NOT NULL,
+  roles_json TEXT NOT NULL,
+  channels_json TEXT NOT NULL,
+  announcements_json TEXT NOT NULL,
+  current_epoch INTEGER NOT NULL,
+  published_by_address TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_snapshots_recent
+  ON group_snapshots(group_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS group_sync_state (
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  peer_ref TEXT NOT NULL,
+  source_kind TEXT NOT NULL CHECK(
+    source_kind IN ('peer','gateway','relay','storage')
+  ),
+  last_event_id TEXT,
+  last_snapshot_id TEXT,
+  last_sync_at TEXT,
+  last_success_at TEXT,
+  last_error TEXT,
+  PRIMARY KEY (group_id, peer_ref, source_kind)
+);
+
+CREATE TABLE IF NOT EXISTS group_epoch_keys (
+  group_id TEXT NOT NULL REFERENCES groups(group_id) ON DELETE CASCADE,
+  epoch INTEGER NOT NULL,
+  recipient_address TEXT NOT NULL,
+  wrapped_key_ciphertext TEXT NOT NULL,
+  key_hash TEXT NOT NULL,
+  source_event_id TEXT NOT NULL,
+  delivered_at TEXT,
+  PRIMARY KEY (group_id, epoch, recipient_address)
+);
+
+CREATE INDEX IF NOT EXISTS idx_group_epoch_keys_pending
+  ON group_epoch_keys(group_id, epoch, delivered_at);
+```
+
+### 13.4 Reducer Rules for Local State
+
+Local reducers should apply accepted events like this:
+
+- `group.created`
+  inserts the first `groups` row and default channels
+- `channel.created` and `channel.archived`
+  update `group_channels`
+- `membership.add.committed`
+  inserts or reactivates a `group_members` row and active roles
+- `membership.leave.committed`
+  marks the member as `left`
+- `membership.remove.committed`
+  marks the member as `removed`
+- `moderation.member.banned`
+  marks the member as `banned`
+- `membership.role.grant.committed`
+  upserts active rows in `group_member_roles`
+- `membership.role.revoke.committed`
+  sets matching role rows to inactive
+- `announcement.posted`, `announcement.pinned`, `announcement.unpinned`
+  update `group_announcements` and `groups.pinned_announcement_id`
+- `message.posted`, `message.reply.posted`, `message.edited`, `message.redacted`
+  update `group_messages`
+- `message.reaction.added`, `message.reaction.removed`
+  update `group_message_reactions` and refresh `reaction_summary_json`
+- `snapshot.published`
+  inserts `group_snapshots`
+- `epoch.rotated`
+  updates `groups.current_epoch` and creates delivery rows in `group_epoch_keys`
+
+### 13.5 Practical Notes
+
+- `group_events` should never be rewritten after acceptance; corrections should
+  arrive as new events
+- pending proposals and join requests should still exist in `group_events`; the
+  dedicated tables are only indexed projections
+- `group_messages.preview_text` should remain optional because some deployments
+  may want message bodies to stay opaque locally unless the node can decrypt
+  them
+- `max_members` should be enforced during reducer processing of
+  `membership.add.committed`
+- a later implementation may split hot message tables from colder governance
+  tables, but `v0` should start with one SQLite database for simplicity
+
+## 14. Out of Scope for v0
 
 The following are intentionally deferred:
 
@@ -907,7 +1272,7 @@ The following are intentionally deferred:
 
 These can be added in later versions without changing the event-sourced core.
 
-## 14. Summary
+## 15. Summary
 
 `Group v0` should be treated as a signed, replicated community object.
 
