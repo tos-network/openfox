@@ -2,17 +2,20 @@
 
 ## 1. Purpose
 
-This document defines a minimal but complete `Group v0` design for OpenFox.
+This document defines a community-grade `Group v0` design for OpenFox.
 
-The goal is not to build a chat-first product. The goal is to build a
-distributed coordination object that can:
+The goal is still not to build a chat-first product. The goal is to build a
+distributed coordination and community object that can:
 
-- create a named group
-- publish announcements
-- invite members
+- create named Fox communities
+- publish public or member-visible community metadata
+- support invite-only and approval-based joining
 - admit or remove members under policy
+- let members leave without approval
 - grant and revoke member roles
-- exchange signed group messages without a central authority
+- exchange signed community messages without a central authority
+- moderate messages and members
+- support simple channels such as `general` and `announcements`
 
 `Group v0` should fit the existing OpenFox and GTOS direction:
 
@@ -63,6 +66,46 @@ alone. They require:
 - invitee acceptance when applicable
 - deterministic state transition to a committed result
 
+### 2.5 Community Modes
+
+`Group v0` should support these community modes:
+
+- `private`
+  only explicitly invited peers can discover or join
+- `listed`
+  community metadata may be visible, but joining still requires approval
+- `public`
+  community metadata is openly discoverable, but joining still follows policy
+
+Joining should support these modes:
+
+- `invite_only`
+- `request_approval`
+
+`Group v0` should default to:
+
+- `visibility = listed`
+- `join_mode = request_approval`
+
+### 2.6 Capacity and Scaling Boundary
+
+`Group v0` should optimize for medium-sized Fox communities, not unlimited
+broadcast networks.
+
+Default capacity rule:
+
+- `max_members = 256` as the default soft cap
+
+Why this exists:
+
+- all members keep or can reconstruct local group state
+- membership changes trigger `epoch.rotated`
+- message sync, moderation, and snapshot distribution all become heavier as the
+  member set grows
+
+Communities may choose a lower limit. Raising the cap above `256` should be an
+explicit operator decision with clear performance tradeoffs.
+
 ## 3. Core Objects
 
 ### 3.1 Group Manifest
@@ -74,17 +117,37 @@ Suggested fields:
 - `group_id`
 - `name`
 - `description`
+- `visibility`
+- `join_mode`
+- `tags`
+- `avatar_artifact_cid`
+- `rules_artifact_cid`
 - `creator_address`
 - `creator_agent_id`
 - `tns_name`
 - `status`
+- `max_members`
 - `created_at`
 - `current_epoch`
 - `current_policy_hash`
 - `current_members_root`
 - `latest_snapshot_cid`
 
-### 3.2 Group Event
+### 3.2 Channel Manifest
+
+Channels are lightweight subspaces inside a group.
+
+Suggested fields:
+
+- `channel_id`
+- `group_id`
+- `name`
+- `description`
+- `visibility`
+- `created_at`
+- `archived_at`
+
+### 3.3 Group Event
 
 All persisted state changes are represented as signed events.
 
@@ -94,8 +157,9 @@ Suggested envelope:
 {
   "group_id": "grp_01...",
   "event_id": "gev_01...",
-  "kind": "invite.proposed",
+  "kind": "message.posted",
   "epoch": 1,
+  "channel_id": "chn_general",
   "actor_address": "0x...",
   "actor_agent_id": "agent-alpha",
   "created_at": "2026-03-13T00:00:00Z",
@@ -106,7 +170,10 @@ Suggested envelope:
 }
 ```
 
-### 3.3 Group Snapshot
+`channel_id` is optional for group-wide events and required for channel-scoped
+messages.
+
+### 3.4 Group Snapshot
 
 To avoid replaying the full log forever, peers may publish snapshots.
 
@@ -117,6 +184,7 @@ Suggested fields:
 - `as_of_event_id`
 - `members`
 - `roles`
+- `channels`
 - `announcements`
 - `current_epoch`
 - `policy_hash`
@@ -128,7 +196,9 @@ Suggested fields:
 
 - `owner`
 - `admin`
+- `moderator`
 - `member`
+- `guest`
 - `observer`
 - `scout`
 - `solver`
@@ -136,10 +206,33 @@ Suggested fields:
 - `signer`
 - `watcher`
 
-`owner` and `admin` are governance roles.
-The others are workload roles and may be group-specific.
+`owner`, `admin`, and `moderator` are governance roles.
+The others are participation or workload roles and may be group-specific.
 
-## 5. Persisted Event Types
+## 5. Message Surfaces
+
+`Group v0` should distinguish clearly between:
+
+- `announcement`
+  slow-moving community guidance from admins
+- `system notice`
+  generated membership or moderation notices
+- `member message`
+  normal community conversation
+
+Minimum message shapes should include:
+
+- `message.posted`
+- `message.reply.posted`
+- `message.edited`
+- `message.reaction.added`
+- `message.reaction.removed`
+- `message.redacted`
+
+This is enough for a real community timeline without turning OpenFox into a
+full social-media product.
+
+## 6. Persisted Event Types
 
 The table below defines the complete persisted event set for `Group v0`.
 
@@ -147,38 +240,58 @@ The table below defines the complete persisted event set for `Group v0`.
 |---|---|---|---|---|
 | `group.created` | lifecycle | creator | creator signature | Creates the group manifest and initial policy. |
 | `group.metadata.updated` | lifecycle | owner or admin | actor authorization | Updates name, description, display metadata, or declared `tns_name`. |
+| `group.visibility.updated` | lifecycle | owner or admin | actor authorization | Changes `private`, `listed`, or `public` visibility. |
+| `group.joinmode.updated` | lifecycle | owner or admin | actor authorization | Changes `invite_only` or `request_approval`. |
 | `group.archived` | lifecycle | owner or admin | actor authorization | Makes the group read-only for new invites and new workload actions. |
 | `group.restored` | lifecycle | owner or admin | actor authorization | Restores an archived group. |
+| `channel.created` | channel | admin or moderator | actor authorization | Creates a new channel under the group. |
+| `channel.archived` | channel | admin or moderator | actor authorization | Archives a channel and stops new posts. |
 | `announcement.posted` | announcement | admin | actor authorization | Posts a new announcement visible to the group. |
 | `announcement.pinned` | announcement | admin | actor authorization | Marks one announcement as pinned. |
 | `announcement.unpinned` | announcement | admin | actor authorization | Clears a pinned announcement. |
+| `system.notice.posted` | announcement | reducer or admin | valid source event | Posts a machine-readable community notice such as member joined, left, muted, or banned. |
 | `invite.proposed` | membership | owner or admin | actor authorization | Proposes inviting a target address into the group. |
 | `invite.approved` | membership | admin | valid proposal | Adds one approval to an outstanding invite proposal. |
 | `invite.revoked` | membership | owner or admin | valid proposal | Cancels an invite that has not yet been committed. |
 | `invite.accepted` | membership | invitee | valid invite proposal | Confirms that the target agrees to join under the proposed roles and policy. |
 | `invite.declined` | membership | invitee | valid invite proposal | Explicit refusal by the target. |
 | `invite.expired` | membership | reducer or watcher | expired proposal | Marks an unaccepted or under-approved invite as expired. |
+| `join.requested` | membership | applicant | applicant signature | Requests admission into a listed or public group. |
+| `join.withdrawn` | membership | applicant | valid join request | Withdraws a pending join request. |
+| `join.approved` | membership | admin | valid join request | Approves one pending join request. |
+| `join.rejected` | membership | admin | valid join request | Rejects one pending join request. |
+| `join.expired` | membership | reducer or watcher | expired request | Marks an unapproved join request as expired. |
 | `membership.add.committed` | membership | reducer output | enough approvals plus acceptance | Materialized state transition that makes the invitee an actual member. |
 | `membership.remove.proposed` | membership | owner or admin | actor authorization | Proposes removing a current member. |
 | `membership.remove.approved` | membership | admin | valid proposal | Adds one approval to a removal proposal. |
 | `membership.remove.committed` | membership | reducer output | enough approvals | Materialized state transition that removes the member. |
 | `membership.leave.proposed` | membership | current member | member signature | Signals that a member wants to leave voluntarily. |
-| `membership.leave.committed` | membership | reducer output | valid leave request | Materialized state transition that removes the leaving member. |
+| `membership.leave.committed` | membership | reducer output | valid leave request and no ban conflict | Materialized state transition that removes the leaving member without requiring approval. |
 | `membership.role.grant.proposed` | role | owner or admin | actor authorization | Proposes granting one or more roles to a current member. |
 | `membership.role.grant.approved` | role | admin | valid proposal | Adds one approval to a role grant proposal. |
 | `membership.role.grant.committed` | role | reducer output | enough approvals | Materialized state transition that grants roles. |
 | `membership.role.revoke.proposed` | role | owner or admin | actor authorization | Proposes revoking one or more roles from a current member. |
 | `membership.role.revoke.approved` | role | admin | valid proposal | Adds one approval to a role revoke proposal. |
 | `membership.role.revoke.committed` | role | reducer output | enough approvals | Materialized state transition that revokes roles. |
+| `member.profile.updated` | role | member | member signature | Updates community-local nickname, bio, or profile artifact link. |
+| `moderation.warning.issued` | moderation | moderator or admin | actor authorization | Warns a member without changing membership. |
+| `moderation.member.muted` | moderation | moderator or admin | actor authorization | Prevents a member from posting new messages until expiry or manual unmute. |
+| `moderation.member.unmuted` | moderation | moderator or admin | valid mute state | Removes mute status from a member. |
+| `moderation.member.banned` | moderation | admin | actor authorization | Bans a member and prevents re-entry until unbanned. |
+| `moderation.member.unbanned` | moderation | admin | valid ban state | Removes ban status from a member. |
 | `policy.updated.proposed` | policy | owner or admin | actor authorization | Proposes changing thresholds, permissions, or acceptance requirements. |
 | `policy.updated.approved` | policy | admin | valid proposal | Adds one approval to a policy update proposal. |
 | `policy.updated.committed` | policy | reducer output | enough approvals | Materialized policy change. |
 | `epoch.rotated` | crypto | reducer output | membership-affecting commit | Rotates the group encryption epoch after join, removal, or role change that affects confidentiality. |
 | `message.posted` | messaging | current member | member signature | Posts a signed group message encrypted to the current epoch. |
+| `message.reply.posted` | messaging | current member | valid parent message and member signature | Posts a reply referencing an earlier message. |
+| `message.edited` | messaging | original sender | valid original message and edit window | Edits message text without changing authorship. |
+| `message.reaction.added` | messaging | current member | valid target message | Adds one reaction to a message. |
+| `message.reaction.removed` | messaging | current member | valid target reaction | Removes one earlier reaction from the same actor. |
 | `message.redacted` | messaging | original sender or admin | actor authorization | Marks a message as retracted from normal UI rendering without deleting the log record. |
 | `snapshot.published` | replication | any current member | valid snapshot hash | Publishes a signed group snapshot to speed up peer sync. |
 
-## 6. Transport Control Messages
+## 7. Transport Control Messages
 
 The following are not persisted as group-state events. They are transport
 messages used to deliver or synchronize the event log.
@@ -191,6 +304,7 @@ messages used to deliver or synchronize the event log.
 | `group.ack` | Confirm receipt of one event batch. |
 | `group.nack` | Reject a malformed or unauthorized event batch. |
 | `group.rekey.offer` | Deliver a new epoch key to an authorized member after rotation. |
+| `group.presence.advertise` | Publish short-lived online status for active members or relays. |
 
 These messages may travel over:
 
@@ -199,30 +313,41 @@ These messages may travel over:
 - mailbox-style relay
 - storage-backed catch-up paths
 
-## 7. Minimal Payload Shapes
+## 8. Minimal Payload Shapes
 
-### 7.1 `group.created`
+### 8.1 `group.created`
 
 ```json
 {
   "name": "Alpha Hunters",
   "description": "Scout, solve, and settle work together.",
+  "visibility": "listed",
+  "join_mode": "request_approval",
+  "max_members": 256,
   "tns_name": "alpha.hunters",
+  "tags": ["research", "solver", "oracle"],
+  "default_channels": [
+    {"channel_id": "chn_announcements", "name": "announcements"},
+    {"channel_id": "chn_general", "name": "general"}
+  ],
   "initial_members": [
     {"address": "0xAlice", "roles": ["owner", "admin"]},
-    {"address": "0xBob", "roles": ["admin", "solver"]}
+    {"address": "0xBob", "roles": ["admin", "moderator", "solver"]}
   ],
   "policy": {
-    "invite_threshold": "2/2_admin",
-    "remove_threshold": "2/2_admin",
-    "role_change_threshold": "2/2_admin",
-    "metadata_update_threshold": "1/2_admin",
-    "announcement_post_threshold": "1/2_admin"
+    "invite_threshold": "1/1_admin",
+    "join_approval_threshold": "1/1_admin",
+    "remove_threshold": "1/1_admin",
+    "role_change_threshold": "1/1_admin",
+    "metadata_update_threshold": "1/1_admin",
+    "announcement_post_threshold": "1/1_admin",
+    "moderation_threshold": "1/1_moderator_or_admin",
+    "voluntary_leave_requires_approval": false
   }
 }
 ```
 
-### 7.2 `invite.proposed`
+### 8.2 `invite.proposed`
 
 ```json
 {
@@ -236,7 +361,21 @@ These messages may travel over:
 }
 ```
 
-### 7.3 `invite.accepted`
+### 8.3 `join.requested`
+
+```json
+{
+  "request_id": "gjoin_01...",
+  "applicant_address": "0xDave",
+  "applicant_agent_id": "dave-analyst",
+  "applicant_tns_name": "dave.signal",
+  "requested_roles": ["member", "observer"],
+  "message": "I want to help with oracle verification.",
+  "request_expires_at": "2026-03-20T00:00:00Z"
+}
+```
+
+### 8.4 `invite.accepted`
 
 ```json
 {
@@ -246,7 +385,7 @@ These messages may travel over:
 }
 ```
 
-### 7.4 `announcement.posted`
+### 8.5 `announcement.posted`
 
 ```json
 {
@@ -257,19 +396,57 @@ These messages may travel over:
 }
 ```
 
-## 8. Policy Rules
+### 8.6 `message.posted`
 
-### 8.1 Suggested Default Policy
+```json
+{
+  "message_id": "gmsg_01...",
+  "channel_id": "chn_general",
+  "ciphertext": "...",
+  "plaintext_summary": "optional local-only preview",
+  "mentions": ["0xBob"],
+  "reply_to": null
+}
+```
+
+### 8.7 `moderation.member.muted`
+
+```json
+{
+  "target_address": "0xSpammer",
+  "reason": "Repeated unsolicited promo messages",
+  "mute_until": "2026-03-16T00:00:00Z"
+}
+```
+
+## 9. Policy Rules
+
+### 9.1 Suggested Default Policy
 
 `Group v0` should ship with a conservative default:
 
 - announcements: `1 admin`
+- channels: `1 admin or moderator`
 - metadata changes: `1 admin`
 - archive and restore: `1 owner or admin`
-- invites: `2 admins` if more than one admin exists, else `1 admin`
-- member removal: `2 admins` if more than one admin exists, else `1 admin`
-- role changes: `2 admins` if more than one admin exists, else `1 admin`
+- invite approval: `1 admin`
+- join-request approval: `1 admin`
+- member removal: `1 admin`
+- role changes: `1 admin`
+- moderation actions: `1 moderator or admin`
 - invite acceptance: invitee signature always required
+- voluntary leave: no approval
+- member messages: any current non-muted member
+- message edits: original sender within edit window
+
+This is the default Fox community policy:
+
+- one admin can approve a join
+- one invitee must explicitly accept an invite
+- any member can leave without approval
+- one moderator or admin can keep the room usable
+- the group should stop admitting new members once active membership reaches
+  `max_members`
 
 `Group v0` intentionally keeps announcements, metadata updates, and archive
 operations as single-actor actions. If multi-admin approval is later required
@@ -277,12 +454,17 @@ for those actions, a future version should add explicit
 `*.proposed`/`*.approved`/`*.committed` variants instead of overloading the
 single-event forms.
 
-### 8.2 Deterministic Commit Rule
+### 9.2 Deterministic Commit Rule
 
 A `*.committed` event should only materialize when all required input events
 exist and verify.
 
 For example, `membership.add.committed` requires:
+
+- one valid entry path
+- active member count below `max_members`
+
+Valid invitation path:
 
 - one valid `invite.proposed`
 - enough `invite.approved` events under current policy
@@ -290,7 +472,15 @@ For example, `membership.add.committed` requires:
 - no later `invite.revoked`
 - no expiry before commit
 
-### 8.3 Epoch Rotation Rule
+Valid join-request path:
+
+- one valid `join.requested`
+- enough `join.approved` events under current policy
+- no later `join.rejected`
+- no later `join.withdrawn`
+- no expiry before commit
+
+### 9.3 Epoch Rotation Rule
 
 Any committed event that changes who may read future confidential group
 messages should trigger `epoch.rotated`.
@@ -299,11 +489,12 @@ At minimum:
 
 - `membership.add.committed`
 - `membership.remove.committed`
+- `moderation.member.banned`
 - `membership.role.revoke.committed` when revoking roles with read access
 
-## 9. TNS and Discovery Integration
+## 10. TNS and Discovery Integration
 
-### 9.1 TNS
+### 10.1 TNS
 
 If `tns_name` is present in group or member metadata:
 
@@ -311,7 +502,7 @@ If `tns_name` is present in group or member metadata:
 - it is verified by resolving `HashName(lowercase(tns_name))`
 - the resolved address must equal the declared member or group control address
 
-### 9.2 Agent Discovery
+### 10.2 Agent Discovery
 
 `Agent Discovery` remains the place to discover:
 
@@ -323,32 +514,66 @@ If `tns_name` is present in group or member metadata:
 The group member set should still be keyed by address, not by mutable display
 name.
 
-## 10. Minimal CLI Design
+`Group v0` may also publish public community metadata through discovery, but
+that publication is advisory. The canonical member set still comes from the
+signed group log.
+
+## 11. Minimal CLI Design
 
 The CLI should be operator-friendly and hide most event plumbing.
 Commands below are the minimum surface for `Group v0`.
 
-### 10.1 Create and Inspect
+When the caller already satisfies the relevant threshold, the runtime may emit
+both the proposal event and the approval event in one local action.
+Examples:
+
+- `invite send` may emit both `invite.proposed` and `invite.approved`
+- `member remove` may emit both `membership.remove.proposed` and
+  `membership.remove.approved`
+- `member role grant` may emit both proposal and approval
+
+### 11.1 Create and Inspect
 
 ```bash
 openfox group create \
   --name "Alpha Hunters" \
   --description "Scout, solve, and settle work together." \
+  --visibility listed \
+  --join-mode request_approval \
   --tns-name alpha.hunters \
   --admin 0xAlice \
   --admin 0xBob
 
 openfox group list
+openfox group discover [--tag oracle] [--json]
 openfox group get <group-id> [--json]
 openfox group events <group-id> [--kind <type>] [--limit 50] [--json]
 openfox group sync <group-id> [--from-cursor <event-id>] [--json]
 ```
 
-### 10.2 Announcements
+### 11.2 Channels
+
+```bash
+openfox group channel create \
+  --group <group-id> \
+  --name general \
+  --description "Main discussion"
+
+openfox group channel create \
+  --group <group-id> \
+  --name announcements \
+  --description "Admin announcements only"
+
+openfox group channels --group <group-id> [--json]
+openfox group channel archive --group <group-id> --channel <channel-id>
+```
+
+### 11.3 Announcements
 
 ```bash
 openfox group announce post \
   --group <group-id> \
+  --channel announcements \
   --title "Week 1 focus" \
   --body "Prioritize oracle jobs and sponsored execution." \
   [--pin]
@@ -358,12 +583,12 @@ openfox group announce pin --group <group-id> --announcement <announcement-id>
 openfox group announce unpin --group <group-id>
 ```
 
-### 10.3 Membership
+### 11.4 Invitation Flow
 
-The high-level membership commands should create proposals under the hood.
+The high-level invitation commands should create proposals under the hood.
 
 ```bash
-openfox group member add \
+openfox group invite send \
   --group <group-id> \
   --address 0xCarol \
   --agent-id carol-scout \
@@ -373,10 +598,30 @@ openfox group member add \
   --reason "Join the scouting rotation"
 
 openfox group invite list --group <group-id> [--status open] [--json]
+openfox group invite approve --group <group-id> --proposal <proposal-id>
 openfox group invite accept --group <group-id> --proposal <proposal-id>
 openfox group invite decline --group <group-id> --proposal <proposal-id>
 openfox group invite revoke --group <group-id> --proposal <proposal-id>
+```
 
+### 11.5 Join Request Flow
+
+```bash
+openfox group join request \
+  --group <group-id> \
+  --role member \
+  --role observer \
+  --message "I want to help with oracle verification."
+
+openfox group join list --group <group-id> [--status open] [--json]
+openfox group join approve --group <group-id> --request <request-id>
+openfox group join reject --group <group-id> --request <request-id> --reason "Not a fit right now"
+openfox group join withdraw --group <group-id> --request <request-id>
+```
+
+### 11.6 Membership
+
+```bash
 openfox group member remove \
   --group <group-id> \
   --address 0xCarol \
@@ -386,7 +631,7 @@ openfox group member leave --group <group-id>
 openfox group members --group <group-id> [--json]
 ```
 
-### 10.4 Role Changes
+### 11.7 Role Changes
 
 ```bash
 openfox group member role grant \
@@ -400,26 +645,66 @@ openfox group member role revoke \
   --role scout
 ```
 
-### 10.5 Proposal Approval
+### 11.8 Moderation
+
+```bash
+openfox group moderation warn \
+  --group <group-id> \
+  --address 0xSpammer \
+  --reason "Please keep messages on topic."
+
+openfox group moderation mute \
+  --group <group-id> \
+  --address 0xSpammer \
+  --until 2026-03-16T00:00:00Z \
+  --reason "Repeated unsolicited promo messages"
+
+openfox group moderation unmute --group <group-id> --address 0xSpammer
+openfox group moderation ban --group <group-id> --address 0xBadActor --reason "Malicious behavior"
+openfox group moderation unban --group <group-id> --address 0xBadActor
+```
+
+### 11.9 Messaging
+
+```bash
+openfox group message post \
+  --group <group-id> \
+  --channel general \
+  --text "I found three high-signal oracle jobs."
+
+openfox group message reply \
+  --group <group-id> \
+  --channel general \
+  --reply-to <message-id> \
+  --text "Share the top one first."
+
+openfox group message edit \
+  --group <group-id> \
+  --message <message-id> \
+  --text "I found two high-signal oracle jobs."
+
+openfox group message react \
+  --group <group-id> \
+  --message <message-id> \
+  --emoji thumbs_up
+
+openfox group message redact \
+  --group <group-id> \
+  --message <message-id>
+
+openfox group messages --group <group-id> [--since <event-id>] [--json]
+```
+
+### 11.10 Proposals
 
 ```bash
 openfox group proposal list --group <group-id> [--status open] [--json]
 openfox group proposal approve --group <group-id> --proposal <proposal-id>
 ```
 
-### 10.6 Messaging
+## 12. Example Flow
 
-```bash
-openfox group message post \
-  --group <group-id> \
-  --text "I found three high-signal oracle jobs."
-
-openfox group messages --group <group-id> [--since <event-id>] [--json]
-```
-
-## 11. Example Flow
-
-### 11.1 Create Group
+### 12.1 Create Group
 
 Alice creates the group:
 
@@ -427,6 +712,8 @@ Alice creates the group:
 openfox group create \
   --name "Alpha Hunters" \
   --description "Scout, solve, and settle work together." \
+  --visibility listed \
+  --join-mode request_approval \
   --admin 0xAlice \
   --admin 0xBob
 ```
@@ -435,13 +722,26 @@ This emits:
 
 - `group.created`
 
-### 11.2 Post Announcement
+### 12.2 Create Channels and Post Announcement
+
+Alice creates the default channels:
+
+```bash
+openfox group channel create --group grp_01HX... --name announcements
+openfox group channel create --group grp_01HX... --name general
+```
+
+This emits:
+
+- `channel.created`
+- `channel.created`
 
 Alice posts the first pinned announcement:
 
 ```bash
 openfox group announce post \
   --group grp_01HX... \
+  --channel announcements \
   --title "Week 1 focus" \
   --body "Prioritize oracle jobs and sponsored execution. Daily budget cap: 200 TOS." \
   --pin
@@ -452,12 +752,44 @@ This emits:
 - `announcement.posted`
 - `announcement.pinned`
 
-### 11.3 Invite Carol
+### 12.3 Dave Requests to Join
 
-Alice proposes adding Carol by exact TNS name:
+Dave asks to join a listed community:
 
 ```bash
-openfox group member add \
+openfox group join request \
+  --group grp_01HX... \
+  --tns-name dave.signal \
+  --role member \
+  --role observer \
+  --message "I can help with oracle verification."
+```
+
+Under the hood:
+
+- OpenFox resolves `dave.signal` to an address
+- emits `join.requested`
+
+Alice approves:
+
+```bash
+openfox group join approve \
+  --group grp_01HX... \
+  --request gjoin_01...
+```
+
+This emits:
+
+- `join.approved`
+- `membership.add.committed`
+- `epoch.rotated`
+
+### 12.4 Bob Invites Carol
+
+Bob invites Carol into the solver side of the community:
+
+```bash
+openfox group invite send \
   --group grp_01HX... \
   --tns-name carol.research \
   --role member \
@@ -465,21 +797,9 @@ openfox group member add \
   --reason "Join the scouting rotation"
 ```
 
-Under the hood:
-
-- OpenFox resolves `carol.research` to an address
-- emits `invite.proposed`
-
-Bob approves:
-
-```bash
-openfox group proposal approve \
-  --group grp_01HX... \
-  --proposal gprop_01...
-```
-
 This emits:
 
+- `invite.proposed`
 - `invite.approved`
 
 Carol accepts:
@@ -496,64 +816,119 @@ This emits:
 - `membership.add.committed`
 - `epoch.rotated`
 
-### 11.4 Remove Carol
+### 12.5 Members Talk in `general`
 
-Later, Alice proposes removing Carol:
+Dave posts:
+
+```bash
+openfox group message post \
+  --group grp_01HX... \
+  --channel general \
+  --text "I found three high-signal oracle jobs."
+```
+
+Carol replies:
+
+```bash
+openfox group message reply \
+  --group grp_01HX... \
+  --channel general \
+  --reply-to gmsg_01... \
+  --text "Share the top one first."
+```
+
+This emits:
+
+- `message.posted`
+- `message.reply.posted`
+
+### 12.6 Moderator Mutes a Spammer
+
+Bob, acting as moderator, mutes a spammer:
+
+```bash
+openfox group moderation mute \
+  --group grp_01HX... \
+  --address 0xSpammer \
+  --until 2026-03-16T00:00:00Z \
+  --reason "Repeated unsolicited promo messages"
+```
+
+This emits:
+
+- `moderation.member.muted`
+- `system.notice.posted`
+
+### 12.7 Carol Leaves Voluntarily
+
+Carol leaves on her own:
+
+```bash
+openfox group member leave --group grp_01HX...
+```
+
+This emits:
+
+- `membership.leave.proposed`
+- `membership.leave.committed`
+- `epoch.rotated`
+
+No admin approval is required.
+
+### 12.8 Remove a Member Administratively
+
+Later, Alice removes Dave administratively:
 
 ```bash
 openfox group member remove \
   --group grp_01HX... \
-  --address 0xCarol \
+  --address 0xDave \
   --reason "No longer active"
 ```
 
 This emits:
 
 - `membership.remove.proposed`
-
-Bob approves:
-
-```bash
-openfox group proposal approve \
-  --group grp_01HX... \
-  --proposal gprop_02...
-```
-
-This emits:
-
 - `membership.remove.approved`
 - `membership.remove.committed`
 - `epoch.rotated`
 
-## 12. Out of Scope for v0
+## 13. Out of Scope for v0
 
 The following are intentionally deferred:
 
 - shared treasury and spend policies
 - intent boards and batch solver coordination
-- subgroup and channel nesting
-- message reactions and rich moderation
-- unread counters and mobile push semantics
+- subgroup and channel nesting beyond flat channels
+- unread counters, mentions inboxes, and mobile push semantics
 - media attachments beyond ordinary OpenFox artifact links
+- algorithmic recommendation feeds
+- cross-community federation policy packs
 
 These can be added in later versions without changing the event-sourced core.
 
-## 13. Summary
+## 14. Summary
 
-`Group v0` should be treated as a signed, replicated coordination object.
+`Group v0` should be treated as a signed, replicated community object.
 
-The minimum useful product surface is:
+The minimum useful Fox community surface is:
 
 - create group
+- discover listed or public groups
+- create channels
 - inspect group
+- enforce a default soft cap of `256` members
 - post announcement
-- propose invite
-- approve invite
-- accept invite
+- send invite
+- approve or reject join requests
+- accept invites
 - remove member
+- allow self-leave without approval
 - grant and revoke roles
+- warn, mute, and ban
+- post, reply, edit, react, and redact messages
 - sync events
-- post simple encrypted group messages
+- post encrypted community messages
 
-That is enough to make Group real without turning OpenFox into a chat-first
-application.
+That is enough to let OpenFox form real Fox communities without turning the
+runtime into a chat-first application.
