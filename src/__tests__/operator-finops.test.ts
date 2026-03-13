@@ -11,7 +11,7 @@ describe("operator finops snapshots", () => {
     const db = createTestDb();
     const config = createTestConfig();
     const counterparty =
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143";
 
     try {
       db.upsertX402Payment({
@@ -95,15 +95,15 @@ describe("operator finops snapshots", () => {
           subjectId: "b1",
           publisherAddress: config.walletAddress,
           payoutTxHash:
-            "0x4444444444444444444444444444444444444444444444444444444444444444",
+            "0xb20d45fcf230c1d4053087f6df71ef5a43960ff5f61d976acb1fcfb4c40d9a10",
           resultHash:
-            "0x5555555555555555555555555555555555555555555555555555555555555555",
+            "0xffd5a4c82ff6c618d999d2315b4ffa704f7689e5b9f02d3597591aa4ef4b6b09",
           createdAt: "2026-03-11T04:00:00.000Z",
         },
         receiptHash:
           "0x6666666666666666666666666666666666666666666666666666666666666666",
         payoutTxHash:
-          "0x4444444444444444444444444444444444444444444444444444444444444444",
+          "0xb20d45fcf230c1d4053087f6df71ef5a43960ff5f61d976acb1fcfb4c40d9a10",
         createdAt: "2026-03-11T04:00:00.000Z",
         updatedAt: "2026-03-11T04:00:00.000Z",
       });
@@ -138,7 +138,7 @@ describe("operator finops snapshots", () => {
           createdAt: "2026-03-11T05:00:00.000Z",
         },
         receiptHash:
-          "0x9999999999999999999999999999999999999999999999999999999999999999",
+          "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
         createdAt: "2026-03-11T05:00:00.000Z",
         updatedAt: "2026-03-11T05:00:00.000Z",
       });
@@ -148,13 +148,13 @@ describe("operator finops snapshots", () => {
         kind: "oracle",
         subjectId: "o1",
         contractAddress:
-          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         packageName: "market.pkg",
         functionSignature: "apply(bytes)",
         payloadMode: "canonical_binding",
         payloadHex: "0xabcd",
         payloadHash:
-          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
         status: "failed",
         attemptCount: 2,
         maxAttempts: 3,

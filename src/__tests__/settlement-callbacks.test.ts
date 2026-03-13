@@ -37,7 +37,7 @@ describe("settlement callbacks", () => {
 
     sendNativeTransferMock.mockResolvedValue({
       txHash:
-        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
       receipt: { status: "0x1" },
     });
 
@@ -45,7 +45,7 @@ describe("settlement callbacks", () => {
       db,
       rpcUrl: "http://127.0.0.1:8545",
       privateKey:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       config: {
         ...DEFAULT_SETTLEMENT_CONFIG.callbacks,
         enabled: true,
@@ -53,7 +53,7 @@ describe("settlement callbacks", () => {
           ...DEFAULT_SETTLEMENT_CONFIG.callbacks.bounty,
           enabled: true,
           contractAddress:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         },
       },
       now: () => new Date("2026-03-09T00:00:00.000Z"),
@@ -64,7 +64,7 @@ describe("settlement callbacks", () => {
     expect(result.action).toBe("confirmed");
     expect(result.callback?.status).toBe("confirmed");
     expect(result.callback?.callbackTxHash).toBe(
-      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
     );
     expect(sendNativeTransferMock).toHaveBeenCalledTimes(1);
     expect(
@@ -86,12 +86,12 @@ describe("settlement callbacks", () => {
     });
     db.upsertSettlementReceipt(settlement);
     db.upsertSettlementCallback({
-      callbackId: `${settlement.receiptId}:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`,
+      callbackId: `${settlement.receiptId}:0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2`,
       receiptId: settlement.receiptId,
       kind: settlement.kind,
       subjectId: settlement.subjectId,
       contractAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       payloadMode: "canonical_receipt",
       payloadHex: "0x1234",
       payloadHash:
@@ -114,7 +114,7 @@ describe("settlement callbacks", () => {
       db,
       rpcUrl: "http://127.0.0.1:8545",
       privateKey:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       config: {
         ...DEFAULT_SETTLEMENT_CONFIG.callbacks,
         enabled: true,
@@ -122,7 +122,7 @@ describe("settlement callbacks", () => {
           ...DEFAULT_SETTLEMENT_CONFIG.callbacks.observation,
           enabled: true,
           contractAddress:
-            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
         },
       },
       now: () => new Date("2026-03-09T00:05:00.000Z"),

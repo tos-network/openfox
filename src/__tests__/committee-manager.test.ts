@@ -16,9 +16,9 @@ describe("committee manager", () => {
       thresholdM: 2,
       payoutTotalWei: "9",
       members: [
-        { memberId: "agent-a", payoutAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" },
-        { memberId: "agent-b", payoutAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
-        { memberId: "agent-c", payoutAddress: "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" },
+        { memberId: "agent-a", payoutAddress: "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143" },
+        { memberId: "agent-b", payoutAddress: "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2" },
+        { memberId: "agent-c", payoutAddress: "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed" },
       ],
     });
 
@@ -28,7 +28,7 @@ describe("committee manager", () => {
       decision: "accept",
       metadata: { verificationMode: "native_attestation" },
       resultHash: `0x${"1".repeat(64)}`,
-      payoutAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      payoutAddress: "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     });
     manager.recordVote({
       runId: run.runId,
@@ -36,7 +36,7 @@ describe("committee manager", () => {
       decision: "accept",
       metadata: { verificationMode: "native_attestation" },
       resultHash: `0x${"1".repeat(64)}`,
-      payoutAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      payoutAddress: "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
     });
     manager.markMemberFailed({
       runId: run.runId,
@@ -52,13 +52,13 @@ describe("committee manager", () => {
     expect(tallied.tally?.payoutAllocations).toEqual([
       {
         memberId: "agent-a",
-        payoutAddress: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        payoutAddress: "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         amountWei: "5",
         reason: `accepted:${`0x${"1".repeat(64)}`}`,
       },
       {
         memberId: "agent-b",
-        payoutAddress: "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        payoutAddress: "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
         amountWei: "4",
         reason: `accepted:${`0x${"1".repeat(64)}`}`,
       },

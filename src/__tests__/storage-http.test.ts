@@ -55,7 +55,7 @@ describe("storage provider server", () => {
       bundleKind: "artifact.bundle",
       providerAddress: identity.address,
       requesterAddress:
-        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
       sizeBytes: built.bytes.byteLength,
       ttlSeconds: 86400,
       amountWei: "1000",

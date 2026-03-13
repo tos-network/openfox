@@ -42,7 +42,7 @@ describe("market contract callbacks", () => {
       db,
       rpcUrl: "http://127.0.0.1:8545",
       privateKey:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       config: {
         ...DEFAULT_MARKET_CONTRACT_CONFIG,
         enabled: true,
@@ -50,7 +50,7 @@ describe("market contract callbacks", () => {
           ...DEFAULT_MARKET_CONTRACT_CONFIG.bounty,
           enabled: true,
           contractAddress:
-            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
           packageName: "TaskMarket",
           functionSignature: "bind(bytes)",
         },

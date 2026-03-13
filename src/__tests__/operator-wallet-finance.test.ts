@@ -23,11 +23,11 @@ describe("operator wallet and finance snapshots", () => {
     const hour = "2027-03-11 12";
     const hostAddress = config.walletAddress;
     const solverAddress =
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143";
     const otherHostAddress =
-      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+      "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2";
     const providerAddress =
-      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+      "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed";
 
     try {
       db.insertBounty({
@@ -127,7 +127,7 @@ describe("operator wallet and finance snapshots", () => {
         confidence: 0.99,
         judgeReason: "paid",
         payoutTxHash:
-          "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
         createdAt: "2027-03-10T02:00:00.000Z",
         updatedAt: "2027-03-11T05:00:00.000Z",
       });
@@ -163,7 +163,7 @@ describe("operator wallet and finance snapshots", () => {
         confidence: 0.97,
         judgeReason: "paid out",
         payoutTxHash:
-          "0x2222222222222222222222222222222222222222222222222222222222222222",
+          "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
         createdAt: "2027-03-09T02:00:00.000Z",
         updatedAt: "2027-03-11T04:00:00.000Z",
       });

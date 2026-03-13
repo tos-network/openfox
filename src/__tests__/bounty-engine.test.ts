@@ -5,9 +5,9 @@ import type { BountyConfig, OpenFoxIdentity } from "../types.js";
 import { DEFAULT_BOUNTY_CONFIG } from "../types.js";
 
 const HOST_ADDRESS =
-  "0x1111111111111111111111111111111111111111111111111111111111111111";
+  "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02";
 const SOLVER_ADDRESS =
-  "0x2222222222222222222222222222222222222222222222222222222222222222";
+  "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6";
 
 function createIdentity(): OpenFoxIdentity {
   return {
@@ -251,13 +251,13 @@ describe("bounty engine", () => {
               subjectId: input.subjectId,
               publisherAddress: HOST_ADDRESS,
               resultHash:
-                "0x1111111111111111111111111111111111111111111111111111111111111111",
+                "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
               createdAt: "2027-03-09T00:00:00.000Z",
             },
             receiptHash:
-              "0x2222222222222222222222222222222222222222222222222222222222222222",
+              "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
             settlementTxHash:
-              "0x3333333333333333333333333333333333333333333333333333333333333333",
+              "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
             createdAt: "2027-03-09T00:00:00.000Z",
             updatedAt: "2027-03-09T00:00:00.000Z",
           };

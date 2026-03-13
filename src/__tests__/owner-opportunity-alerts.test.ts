@@ -55,7 +55,7 @@ describe("owner opportunity alerts", () => {
           bountyId: "bounty-1",
           providerAgentId: "agent-host",
           providerAddress:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
           grossValueWei: "200000000000000000",
           estimatedCostWei: "10000000000000000",
           marginWei: "190000000000000000",
@@ -136,7 +136,7 @@ describe("owner opportunity alerts", () => {
           baseUrl: "https://oracle.example.com/resolve",
           providerAgentId: "oracle-agent-1",
           providerAddress:
-            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
           grossValueWei: "20000000000000000",
           estimatedCostWei: "1000000000000000",
           marginWei: "19000000000000000",
@@ -184,7 +184,7 @@ describe("owner opportunity alerts", () => {
       db.upsertOwnerOpportunityAlert({
         alertId: "alert-1",
         opportunityHash:
-          "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
         kind: "bounty",
         providerClass: "task_market",
         trustTier: "org_trusted",
@@ -246,7 +246,7 @@ describe("owner opportunity alerts", () => {
       db.upsertOwnerOpportunityAlert({
         alertId: "alert-2",
         opportunityHash:
-          "0x2222222222222222222222222222222222222222222222222222222222222222",
+          "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
         kind: "provider",
         providerClass: "oracle",
         trustTier: "org_trusted",

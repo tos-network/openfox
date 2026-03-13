@@ -41,7 +41,7 @@ describe("artifact capture server", () => {
           return {
             quote_id: `quote-${input.cid}`,
             provider_address:
-              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             requester_address: identity.address,
             cid: input.cid,
             bundle_kind: input.bundleKind,

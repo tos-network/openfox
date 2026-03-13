@@ -7,7 +7,7 @@ const getTransactionReceiptMock = vi.fn();
 vi.mock("../identity/wallet.js", () => ({
   loadWalletPrivateKey: vi.fn(
     () =>
-      "0x1111111111111111111111111111111111111111111111111111111111111111",
+      "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
   ),
 }));
 
@@ -19,7 +19,7 @@ vi.mock("../chain/client.js", () => ({
   },
   sendNativeTransfer: vi.fn(async () => ({
     txHash:
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     receipt: null,
   })),
 }));
@@ -65,16 +65,16 @@ describe("heartbeat settlement retry task", () => {
     });
     db.upsertSettlementReceipt(settlement);
     db.upsertSettlementCallback({
-      callbackId: `${settlement.receiptId}:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`,
+      callbackId: `${settlement.receiptId}:0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2`,
       receiptId: settlement.receiptId,
       kind: settlement.kind,
       subjectId: settlement.subjectId,
       contractAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       payloadMode: "canonical_receipt",
       payloadHex: "0x1234",
       payloadHash:
-        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
       status: "pending",
       attemptCount: 1,
       maxAttempts: 3,
@@ -131,7 +131,7 @@ describe("heartbeat settlement retry task", () => {
               payloadMode: "canonical_receipt",
               maxAttempts: 3,
               contractAddress:
-                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
             },
           },
         },

@@ -6,9 +6,9 @@ import { DEFAULT_BOUNTY_CONFIG } from "../types.js";
 import type { OpenFoxIdentity } from "../types.js";
 
 const HOST_ADDRESS =
-  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143";
 const SOLVER_ADDRESS =
-  "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2";
 
 function createIdentity(): OpenFoxIdentity {
   return {
@@ -71,13 +71,13 @@ describe("bounty http server", () => {
               subjectId: input.subjectId,
               publisherAddress: HOST_ADDRESS,
               resultHash:
-                "0x1111111111111111111111111111111111111111111111111111111111111111",
+                "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
               createdAt: "2026-03-09T00:00:00.000Z",
             },
             receiptHash:
-              "0x2222222222222222222222222222222222222222222222222222222222222222",
+              "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
             settlementTxHash:
-              "0x3333333333333333333333333333333333333333333333333333333333333333",
+              "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
             createdAt: "2026-03-09T00:00:00.000Z",
             updatedAt: "2026-03-09T00:00:00.000Z",
           };
@@ -160,7 +160,7 @@ describe("bounty http server", () => {
       expect(resultPayload.result.payoutTxHash).toBe("0xreward");
       expect(resultPayload.settlement.receiptId).toBe(`bounty:${bounty.bountyId}`);
       expect(resultPayload.settlement.settlementTxHash).toBe(
-        "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
       );
 
       const campaignStatus = await fetch(`${server.url}/campaigns/${campaign.campaignId}`);
@@ -195,7 +195,7 @@ describe("bounty http server", () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             solver_address:
-              "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+              "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
             submission_text: "你好",
           }),
         },

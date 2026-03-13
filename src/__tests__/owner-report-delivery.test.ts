@@ -67,7 +67,7 @@ describe("owner report delivery", () => {
     return {
       alertId,
       opportunityHash:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       kind: "bounty",
       providerClass: "task_market",
       trustTier: "org_trusted",

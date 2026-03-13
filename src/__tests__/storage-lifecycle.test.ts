@@ -18,9 +18,9 @@ describe("storage lifecycle helpers", () => {
         bundleHash: "0xabc",
         bundleKind: "artifact.bundle",
         providerAddress:
-          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         requesterAddress:
-          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
         sizeBytes: 10,
         ttlSeconds: 60,
         amountWei: "1",
@@ -43,9 +43,9 @@ describe("storage lifecycle helpers", () => {
         bundleHash: "0xabc",
         bundleKind: "artifact.bundle",
         providerAddress:
-          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         requesterAddress:
-          "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
         sizeBytes: 10,
         ttlSeconds: 60,
         amountWei: "1",
@@ -75,11 +75,11 @@ describe("storage lifecycle helpers", () => {
         get_url: "http://provider.test/storage/get/bafytest",
         head_url: "http://provider.test/storage/head/bafytest",
         provider_address:
-          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         payment_status: "confirmed",
       },
       requesterAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       providerBaseUrl: "http://provider.test/storage",
       requestKey: "storage:test:key",
     });
@@ -106,10 +106,10 @@ describe("storage lifecycle helpers", () => {
         get_url: "http://provider.test/storage/get/bafytest",
         head_url: "http://provider.test/storage/head/bafytest",
         provider_address:
-          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
       },
       requesterAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       providerBaseUrl: "http://provider.test/storage",
     });
     expect(renewal.providerBaseUrl).toBe("http://provider.test/storage");

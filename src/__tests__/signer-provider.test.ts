@@ -22,21 +22,21 @@ async function postJson(url: string, body: unknown): Promise<{
 function buildPaymentRecord(overrides?: Partial<X402PaymentRecord>): X402PaymentRecord {
   const now = new Date().toISOString();
   return {
-    paymentId: "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex,
+    paymentId: "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02" as Hex,
     serviceKind: "signer",
     requestKey: "signer:test",
     requestHash:
-      "0x2222222222222222222222222222222222222222222222222222222222222222" as Hex,
+      "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6" as Hex,
     payerAddress:
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as `0x${string}`,
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143" as `0x${string}`,
     providerAddress:
-      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as `0x${string}`,
+      "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2" as `0x${string}`,
     chainId: "1666",
     txNonce: "1",
     txHash:
-      "0x3333333333333333333333333333333333333333333333333333333333333333" as Hex,
+      "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022" as Hex,
     rawTransaction:
-      "0x4444444444444444444444444444444444444444444444444444444444444444" as Hex,
+      "0xb20d45fcf230c1d4053087f6df71ef5a43960ff5f61d976acb1fcfb4c40d9a10" as Hex,
     amountWei: "5",
     confirmationPolicy: "receipt",
     status: "confirmed",
@@ -88,7 +88,7 @@ describe("signer provider", () => {
           policyId: "policy-test",
           walletAddress: identity.address,
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999" as `0x${string}`,
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01" as `0x${string}`,
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -121,10 +121,10 @@ describe("signer provider", () => {
             rawTransaction:
               "0xdeadbeef" as Hex,
             txHash:
-              "0x5555555555555555555555555555555555555555555555555555555555555555" as Hex,
+              "0xffd5a4c82ff6c618d999d2315b4ffa704f7689e5b9f02d3597591aa4ef4b6b09" as Hex,
           },
           txHash:
-            "0x5555555555555555555555555555555555555555555555555555555555555555" as Hex,
+            "0xffd5a4c82ff6c618d999d2315b4ffa704f7689e5b9f02d3597591aa4ef4b6b09" as Hex,
           receipt: { status: "0x1", blockNumber: "0x10" },
         };
       },
@@ -134,11 +134,11 @@ describe("signer provider", () => {
         identity: {
           kind: "tos",
           value:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         },
       },
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "7",
       reason: "unit-test",
     });
@@ -152,13 +152,13 @@ describe("signer provider", () => {
         identity: {
           kind: "tos",
           value:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         },
       },
       request_nonce: "abc12345",
       request_expires_at: Math.floor(Date.now() / 1000) + 300,
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "7",
       reason: "unit-test",
     };
@@ -204,7 +204,7 @@ describe("signer provider", () => {
           trustTier: "self_hosted",
           policyId: "policy-test",
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999" as `0x${string}`,
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01" as `0x${string}`,
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -227,7 +227,7 @@ describe("signer provider", () => {
         identity: {
           kind: "tos",
           value:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         },
       },
       target:
@@ -265,7 +265,7 @@ describe("signer provider", () => {
           trustTier: "self_hosted",
           policyId: "policy-test",
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999" as `0x${string}`,
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01" as `0x${string}`,
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",

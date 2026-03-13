@@ -88,7 +88,7 @@ function insertFailedPaymasterAuthorizations(providerAddress: `0x${string}`) {
     policyHash:
       "0x8888888888888888888888888888888888888888888888888888888888888888",
     scopeHash:
-      "0x9999999999999999999999999999999999999999999999999999999999999999",
+      "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
     trustTier: "self_hosted",
     requestNonce: `${index + 1}`,
     requestExpiresAt: Date.now() + 60_000,
@@ -140,7 +140,7 @@ describe("operator autopilot", () => {
     const db = createTestDb();
     const config = createAutopilotConfig();
     const providerAddress =
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143" as const;
 
     for (const record of insertFailedPaymasterAuthorizations(providerAddress)) {
       db.upsertPaymasterAuthorization(record);

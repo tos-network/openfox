@@ -106,7 +106,7 @@ describe("wallet operator", () => {
           jsonrpc: "2.0",
           id: 1,
           result: [
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
           ],
         }),
       } as unknown as Response)
@@ -126,7 +126,7 @@ describe("wallet operator", () => {
 
     expect(result.mode).toBe("local");
     expect(result.from).toBe(
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     );
     expect(result.txHash).toBe("0xlocalfund");
     expect(global.fetch).toHaveBeenNthCalledWith(

@@ -478,7 +478,7 @@ describe("doctor report formatting", () => {
             trustTier: "self_hosted",
             policyId: "",
             sponsorAddress:
-              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             allowedWallets: [],
             allowedTargets: [],
             allowedFunctionSelectors: [],
@@ -520,7 +520,7 @@ describe("doctor report formatting", () => {
             trustTier: "self_hosted",
             policyId: "policy-test",
             sponsorAddress:
-              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             allowedWallets: [],
             allowedTargets: [
               "0x8888888888888888888888888888888888888888888888888888888888888888",

@@ -31,7 +31,7 @@ describe("artifact manager", () => {
           return {
             quote_id: "quote-1",
             provider_address:
-              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             requester_address: identity.address,
             cid: "bafynews",
             bundle_kind: "public_news.capture",
@@ -131,7 +131,7 @@ describe("artifact manager", () => {
           return {
             quote_id: "quote-vote",
             provider_address:
-              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             requester_address: identity.address,
             cid: "bafyvote",
             bundle_kind: "committee.vote",
@@ -221,7 +221,7 @@ describe("artifact manager", () => {
           return {
             quote_id: `quote-${input.cid}`,
             provider_address:
-              "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             requester_address: identity.address,
             cid: input.cid,
             bundle_kind: input.bundleKind,
@@ -296,9 +296,9 @@ describe("artifact manager", () => {
               createdAt,
             },
             summaryHash:
-              "0x1111111111111111111111111111111111111111111111111111111111111111",
+              "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
             anchorTxHash:
-              "0x2222222222222222222222222222222222222222222222222222222222222222",
+              "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
             anchorReceipt: { status: "0x1" },
             createdAt,
             updatedAt: createdAt,

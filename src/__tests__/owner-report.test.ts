@@ -121,7 +121,7 @@ describe("owner reports", () => {
         campaignId: "campaign-1",
         providerAgentId: "host-agent-1",
         providerAddress:
-          "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
         grossValueWei: "50000000000000000",
         estimatedCostWei: "1000000000000000",
         marginWei: "49000000000000000",
@@ -265,11 +265,11 @@ describe("owner reports", () => {
             summary: "Resolved to yes.",
             price_wei: "40",
             settlement_tx_hash:
-              "0x3333333333333333333333333333333333333333333333333333333333333333",
+              "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
             market_callback_tx_hash:
-              "0x4444444444444444444444444444444444444444444444444444444444444444",
+              "0xb20d45fcf230c1d4053087f6df71ef5a43960ff5f61d976acb1fcfb4c40d9a10",
             binding_hash:
-              "0x5555555555555555555555555555555555555555555555555555555555555555",
+              "0xffd5a4c82ff6c618d999d2315b4ffa704f7689e5b9f02d3597591aa4ef4b6b09",
           },
           createdAt: "2026-03-11T00:10:00.000Z",
         }),

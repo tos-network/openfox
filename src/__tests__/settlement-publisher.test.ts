@@ -24,12 +24,12 @@ describe("settlement publisher", () => {
       db,
       rpcUrl: "http://127.0.0.1:8545",
       privateKey:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       config: {
         ...DEFAULT_SETTLEMENT_CONFIG,
         enabled: true,
         sinkAddress:
-          "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          "0xa65c6a8098b54b791cf3a2582b3e07b704d087d56f8f8fbdba35995dae0b8241",
       },
       publisherAddress: identity.address,
       now: () => new Date("2026-03-09T00:00:00.000Z"),
@@ -41,7 +41,7 @@ describe("settlement publisher", () => {
       publisherAddress: identity.address,
       capability: "task.result",
       solverAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       result: { decision: "accepted", confidence: 0.97 },
       artifactUrl: "/bounties/bounty-1/result",
     });
@@ -52,7 +52,7 @@ describe("settlement publisher", () => {
       publisherAddress: identity.address,
       capability: "task.result",
       solverAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       result: { confidence: 0.97, decision: "accepted" },
       artifactUrl: "/bounties/bounty-1/result",
     });

@@ -124,21 +124,21 @@ function toJsonSignature(signature: Signature): Record<string, unknown> {
 function buildPaymentRecord(overrides?: Partial<X402PaymentRecord>): X402PaymentRecord {
   const now = new Date().toISOString();
   return {
-    paymentId: "0x1111111111111111111111111111111111111111111111111111111111111111" as Hex,
+    paymentId: "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02" as Hex,
     serviceKind: "paymaster",
     requestKey: "paymaster:test",
     requestHash:
-      "0x2222222222222222222222222222222222222222222222222222222222222222" as Hex,
+      "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6" as Hex,
     payerAddress:
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     providerAddress:
-      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
     chainId: "1666",
     txNonce: "1",
     txHash:
-      "0x3333333333333333333333333333333333333333333333333333333333333333" as Hex,
+      "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022" as Hex,
     rawTransaction:
-      "0x4444444444444444444444444444444444444444444444444444444444444444" as Hex,
+      "0xb20d45fcf230c1d4053087f6df71ef5a43960ff5f61d976acb1fcfb4c40d9a10" as Hex,
     amountWei: "5",
     confirmationPolicy: "receipt",
     status: "confirmed",
@@ -286,7 +286,7 @@ afterEach(async () => {
           delegateIdentity: "delegate:test",
           allowedWallets: [requester.address],
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999",
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -326,7 +326,7 @@ afterEach(async () => {
           rawTransaction:
             "0xdeadbeef" as Hex,
           txHash:
-            "0x5555555555555555555555555555555555555555555555555555555555555555" as Hex,
+            "0xffd5a4c82ff6c618d999d2315b4ffa704f7689e5b9f02d3597591aa4ef4b6b09" as Hex,
           receipt: { status: "0x1", blockNumber: "0x10" },
         };
       },
@@ -341,7 +341,7 @@ afterEach(async () => {
       },
       wallet_address: requester.address,
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "7",
       reason: "unit-test",
     });
@@ -357,7 +357,7 @@ afterEach(async () => {
       nonce: 9n,
       gas: BigInt(String(quote.json.gas)),
       to:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value: 7n,
       data: "0x",
       from: requester.address,
@@ -382,7 +382,7 @@ afterEach(async () => {
       request_expires_at: Math.floor(Date.now() / 1000) + 300,
       execution_nonce: "9",
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "7",
       gas: String(quote.json.gas),
       data: "0x",
@@ -450,7 +450,7 @@ afterEach(async () => {
           sponsorAddress: identity.address,
           allowedWallets: [],
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999",
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -473,7 +473,7 @@ afterEach(async () => {
         identity: {
           kind: "tos",
           value:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         },
       },
       target:
@@ -541,7 +541,7 @@ afterEach(async () => {
           sponsorAddress: identity.address,
           allowedWallets: [requester.address],
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999",
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -568,7 +568,7 @@ afterEach(async () => {
       },
       wallet_address: requester.address,
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "1",
     });
     expect(quote.status).toBe(200);
@@ -578,7 +578,7 @@ afterEach(async () => {
       nonce: 1n,
       gas: BigInt(String(quote.json.gas)),
       to:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value: 1n,
       data: "0x",
       from: requester.address,
@@ -606,7 +606,7 @@ afterEach(async () => {
         request_expires_at: Math.floor(Date.now() / 1000) + 300,
         execution_nonce: "1",
         target:
-          "0x9999999999999999999999999999999999999999999999999999999999999999",
+          "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
         value_wei: "1",
         gas: String(quote.json.gas),
         data: "0x",
@@ -627,7 +627,7 @@ afterEach(async () => {
       "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as Hex;
     const providerIdentity = createIdentity(providerKey);
     const requesterAddress =
-      "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" as Address;
+      "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed" as Address;
     const requester = createEd25519Requester(requesterAddress);
     const rpc = await startRpcServer({
       signerProfiles: {
@@ -675,7 +675,7 @@ afterEach(async () => {
           delegateIdentity: "delegate:test",
           allowedWallets: [requester.account.address],
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999",
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -685,12 +685,12 @@ afterEach(async () => {
     });
     const payment = buildPaymentRecord({
       paymentId:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Hex,
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143" as Hex,
       requestKey: "paymaster:ed25519",
       requestHash:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Hex,
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2" as Hex,
       txHash:
-        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc" as Hex,
+        "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed" as Hex,
     });
     db.upsertX402Payment(payment);
 
@@ -729,7 +729,7 @@ afterEach(async () => {
       },
       wallet_address: requester.account.address,
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "7",
       reason: "ed25519-test",
     });
@@ -743,7 +743,7 @@ afterEach(async () => {
       nonce: 9n,
       gas: BigInt(String(quote.json.gas)),
       to:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value: 7n,
       data: "0x",
       from: requester.account.address,
@@ -768,7 +768,7 @@ afterEach(async () => {
       request_expires_at: Math.floor(Date.now() / 1000) + 300,
       execution_nonce: "9",
       target:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       value_wei: "7",
       gas: String(quote.json.gas),
       data: "0x",
@@ -860,7 +860,7 @@ afterEach(async () => {
             delegateIdentity: "delegate:test",
             allowedWallets: [requester.account.address],
             allowedTargets: [
-              "0x9999999999999999999999999999999999999999999999999999999999999999",
+              "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
             ],
             allowedFunctionSelectors: [],
             maxValueWei: "1000",
@@ -910,7 +910,7 @@ afterEach(async () => {
         },
         wallet_address: requester.account.address,
         target:
-          "0x9999999999999999999999999999999999999999999999999999999999999999",
+          "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
         value_wei: "7",
         reason: `${signerType}-test`,
       });
@@ -924,7 +924,7 @@ afterEach(async () => {
         nonce: 9n,
         gas: BigInt(String(quote.json.gas)),
         to:
-          "0x9999999999999999999999999999999999999999999999999999999999999999",
+          "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
         value: 7n,
         data: "0x",
         from: requester.account.address,
@@ -949,7 +949,7 @@ afterEach(async () => {
         request_expires_at: Math.floor(Date.now() / 1000) + 300,
         execution_nonce: "9",
         target:
-          "0x9999999999999999999999999999999999999999999999999999999999999999",
+          "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
         value_wei: "7",
         gas: String(quote.json.gas),
         data: "0x",

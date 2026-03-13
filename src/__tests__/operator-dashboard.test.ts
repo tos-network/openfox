@@ -92,7 +92,7 @@ describe("operator dashboard", () => {
         ],
         counterparties: [
           {
-            address: "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            address: "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             kind: "customer",
             confirmedRevenueWei: "8000000000000000000",
             confirmedCostWei: "0",

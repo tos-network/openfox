@@ -54,19 +54,19 @@ describe("heartbeat x402 retry task", () => {
     const runtime = new MockRuntimeClient();
     db.upsertX402Payment({
       paymentId:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
       serviceKind: "observation",
       requestKey: "observation:req:1",
       requestHash:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       payerAddress:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       providerAddress:
-        "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
       chainId: "1666",
       txNonce: "1",
       txHash:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
       rawTransaction:
         "0x1234",
       amountWei: "1000",
@@ -86,7 +86,7 @@ describe("heartbeat x402 retry task", () => {
     getTransactionReceiptMock.mockResolvedValue({ status: "0x1" });
     getTransactionByHashMock.mockResolvedValue(null);
     sendRawTransactionMock.mockResolvedValue(
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     );
 
     const taskCtx: HeartbeatLegacyContext = {
@@ -114,7 +114,7 @@ describe("heartbeat x402 retry task", () => {
 
     expect(result.shouldWake).toBe(false);
     const updated = db.getX402Payment(
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     );
     expect(updated?.status).toBe("confirmed");
     const summary = JSON.parse(db.getKV("last_x402_payment_retry") || "{}");

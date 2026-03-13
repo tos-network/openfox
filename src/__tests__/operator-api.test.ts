@@ -156,7 +156,7 @@ describe("operator api", () => {
         periodEnd: now,
         generatedAt: now,
         address:
-          "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
         realizedRevenueWei: "1200",
         realizedCostWei: "300",
         realizedNetWei: "900",
@@ -308,7 +308,7 @@ describe("operator api", () => {
       policyHash:
         "0x8888888888888888888888888888888888888888888888888888888888888888",
       scopeHash:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       trustTier: "self_hosted",
       requestNonce: "1",
       requestExpiresAt: Date.now() + 60_000,
@@ -430,7 +430,7 @@ describe("operator api", () => {
           walletAddress:
             "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999",
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -455,7 +455,7 @@ describe("operator api", () => {
           trustTier: "self_hosted",
           policyId: "paymaster-policy",
           sponsorAddress:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
           delegateIdentity: "delegate:paymaster",
           allowedWallets: [],
           allowedTargets: [
@@ -737,17 +737,17 @@ describe("operator api", () => {
         {
           memberId: "agent-a",
           payoutAddress:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         },
         {
           memberId: "agent-b",
           payoutAddress:
-            "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
         },
         {
           memberId: "agent-c",
           payoutAddress:
-            "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+            "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
         },
       ],
     });
@@ -757,7 +757,7 @@ describe("operator api", () => {
       decision: "accept",
       resultHash: `0x${"1".repeat(64)}`,
       payoutAddress:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
     });
     committee.recordVote({
       runId: evidenceRun.runId,
@@ -765,7 +765,7 @@ describe("operator api", () => {
       decision: "accept",
       resultHash: `0x${"1".repeat(64)}`,
       payoutAddress:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
     });
     committee.markMemberFailed({
       runId: evidenceRun.runId,
@@ -1365,7 +1365,7 @@ describe("operator api", () => {
         installedAt: "2026-03-11T18:00:00.000Z",
       });
       const providerAddress =
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143" as const;
       db.upsertPaymasterAuthorization(
         createFailedPaymasterAuthorization("auto-1", providerAddress),
       );

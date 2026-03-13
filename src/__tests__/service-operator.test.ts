@@ -176,7 +176,7 @@ describe("service operator", () => {
           walletAddress:
             "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef",
           allowedTargets: [
-            "0x9999999999999999999999999999999999999999999999999999999999999999",
+            "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
           ],
           allowedFunctionSelectors: [],
           maxValueWei: "1000",
@@ -201,7 +201,7 @@ describe("service operator", () => {
           trustTier: "self_hosted",
           policyId: "paymaster-policy",
           sponsorAddress:
-            "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
           delegateIdentity: "delegate:paymaster",
           allowedWallets: [],
           allowedTargets: [

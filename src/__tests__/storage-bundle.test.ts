@@ -35,14 +35,14 @@ describe("storage bundle", () => {
       inputPath,
       bundleKind: "artifact.bundle",
       createdBy:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
       createdAt: "2026-03-09T00:00:00.000Z",
     });
     const second = await buildBundleFromInput({
       inputPath,
       bundleKind: "artifact.bundle",
       createdBy:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
       createdAt: "2026-03-09T00:00:00.000Z",
     });
 
@@ -62,7 +62,7 @@ describe("storage bundle", () => {
       inputPath,
       bundleKind: "artifact.bundle",
       createdBy:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
     });
     const finalized = await finalizeBundle(built.bundle);
     const outputPath = path.join(dir, `${finalized.cid}.json`);

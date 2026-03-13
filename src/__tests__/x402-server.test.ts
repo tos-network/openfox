@@ -103,7 +103,7 @@ describe("x402 server payment manager", () => {
               jsonrpc: "2.0",
               id: body.id,
               result:
-                "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
             }),
             { status: 200 },
           );
@@ -197,7 +197,7 @@ describe("x402 server payment manager", () => {
               jsonrpc: "2.0",
               id: body.id,
               result:
-                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
             }),
             { status: 200 },
           );

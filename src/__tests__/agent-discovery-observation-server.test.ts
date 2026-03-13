@@ -138,7 +138,7 @@ describe("agent discovery observation server", () => {
             receiptHash:
               "0x1212121212121212121212121212121212121212121212121212121212121212",
             callbackTarget:
-              "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+              "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
             callbackTxHash:
               "0x3434343434343434343434343434343434343434343434343434343434343434",
             callbackReceipt: { status: "0x1" },
@@ -152,12 +152,12 @@ describe("agent discovery observation server", () => {
           return {
             action: "confirmed",
             callback: {
-              callbackId: `${record.bindingId}:0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb`,
+              callbackId: `${record.bindingId}:0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2`,
               bindingId: record.bindingId,
               kind: record.kind,
               subjectId: record.subjectId,
               contractAddress:
-                "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+                "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
               packageName: "ObservationMarket",
               functionSignature: "bind(bytes)",
               payloadMode: "canonical_binding",
@@ -192,13 +192,13 @@ describe("agent discovery observation server", () => {
               subjectId: input.subjectId,
               publisherAddress: config.walletAddress!,
               resultHash:
-                "0x1111111111111111111111111111111111111111111111111111111111111111",
+                "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
               createdAt: "2026-03-09T00:00:00.000Z",
             },
             receiptHash:
-              "0x2222222222222222222222222222222222222222222222222222222222222222",
+              "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
             settlementTxHash:
-              "0x3333333333333333333333333333333333333333333333333333333333333333",
+              "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
             createdAt: "2026-03-09T00:00:00.000Z",
             updatedAt: "2026-03-09T00:00:00.000Z",
           };
@@ -298,10 +298,10 @@ describe("agent discovery observation server", () => {
       );
       expect(firstBody.receipt_id).toBe(`observation:${firstBody.job_id}`);
       expect(firstBody.receipt_hash).toBe(
-        "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
       );
       expect(firstBody.settlement_tx_hash).toBe(
-        "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
       );
       expect(submittedPayments).toBe(1);
 

@@ -9,7 +9,7 @@ const TEST_PRIVATE_KEY =
 const TEST_TOS_RPC_URL = "http://tos-rpc.local";
 const TEST_API_URL = "https://paid.example.com/resource";
 const TEST_PAY_TO =
-  "0x1111111111111111111111111111111111111111111111111111111111111111";
+  "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02";
 
 const originalFetch = globalThis.fetch;
 const originalHome = process.env.HOME;

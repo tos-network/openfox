@@ -17,18 +17,18 @@ describe("operator reporting", () => {
     const db = createTestDb();
     const now = new Date().toISOString();
     const providerAddress =
-      "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as const;
+      "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143" as const;
     const otherProvider =
-      "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as const;
+      "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2" as const;
 
     db.upsertStorageLease({
       leaseId: "lease-1",
       cid: "cid-1",
       bundleHash:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       bundleKind: "artifact.bundle",
       requesterAddress:
-        "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
       providerAddress,
       providerBaseUrl: "https://storage-1.example.com/storage",
       sizeBytes: 100,
@@ -41,10 +41,10 @@ describe("operator reporting", () => {
         leaseId: "lease-1",
         cid: "cid-1",
         bundleHash:
-          "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
         bundleKind: "artifact.bundle",
         requesterAddress:
-          "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          "0xc9b7083ed72ae7501f0f76c6fa2737ea3643ce0a7c85b2d81f4a2d030aea04ed",
         providerAddress,
         sizeBytes: 100,
         ttlSeconds: 3600,
@@ -55,7 +55,7 @@ describe("operator reporting", () => {
           "0x01",
       },
       receiptHash:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       createdAt: now,
       updatedAt: now,
     } satisfies StorageLeaseRecord);
@@ -66,7 +66,7 @@ describe("operator reporting", () => {
       status: "failed",
       challengeNonce: "n1",
       responseHash:
-        "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
       checkedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -79,7 +79,7 @@ describe("operator reporting", () => {
       leaseId: "lease-1",
       cid: "cid-1",
       bundleHash:
-        "0x3333333333333333333333333333333333333333333333333333333333333333",
+        "0xfb43d57082cdcd5103e2d7593ab60734eeee43e7c023635d644c37105b69c022",
       providerBaseUrl: "https://artifacts.example.com",
       providerAddress: otherProvider,
       requesterAddress:
@@ -94,20 +94,20 @@ describe("operator reporting", () => {
       quoteId: "quote-1",
       requestKey: "signer:req:1",
       requestHash:
-        "0x4444444444444444444444444444444444444444444444444444444444444444",
+        "0xb20d45fcf230c1d4053087f6df71ef5a43960ff5f61d976acb1fcfb4c40d9a10",
       providerAddress,
       walletAddress:
         "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
       requesterAddress:
-        "0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+        "0xa65c6a8098b54b791cf3a2582b3e07b704d087d56f8f8fbdba35995dae0b8241",
       targetAddress:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       valueWei: "0",
       dataHex: "0x",
       gas: "21000",
       policyId: "policy-1",
       policyHash:
-        "0x5555555555555555555555555555555555555555555555555555555555555555",
+        "0xffd5a4c82ff6c618d999d2315b4ffa704f7689e5b9f02d3597591aa4ef4b6b09",
       scopeHash:
         "0x6666666666666666666666666666666666666666666666666666666666666666",
       trustTier: "self_hosted",
@@ -143,7 +143,7 @@ describe("operator reporting", () => {
       policyHash:
         "0x8888888888888888888888888888888888888888888888888888888888888888",
       scopeHash:
-        "0x9999999999999999999999999999999999999999999999999999999999999999",
+        "0x74ad93496274ddc81b6336c6fb3f32e17127f96a57dfafa05d87eadcb40b4d01",
       trustTier: "self_hosted",
       requestNonce: "1",
       requestExpiresAt: Date.now() + 60_000,
@@ -210,12 +210,12 @@ describe("operator reporting", () => {
       leaseId: "lease-health-1",
       cid: "cid-health-1",
       bundleHash:
-        "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
       bundleKind: "artifact.bundle",
       requesterAddress:
-        "0x1111111111111111111111111111111111111111111111111111111111111111",
+        "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
       providerAddress:
-        "0x2222222222222222222222222222222222222222222222222222222222222222",
+        "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
       providerBaseUrl: "https://storage.example.com/storage",
       sizeBytes: 200,
       ttlSeconds: 3600,
@@ -227,12 +227,12 @@ describe("operator reporting", () => {
         leaseId: "lease-health-1",
         cid: "cid-health-1",
         bundleHash:
-          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "0x12252ae6b5d22fa4f58b295fe42cdb782f41881025d22645816d196b4f2e5143",
         bundleKind: "artifact.bundle",
         requesterAddress:
-          "0x1111111111111111111111111111111111111111111111111111111111111111",
+          "0x752a3d0f953b4ae91fca3bf4c1b93863c1884902f778aa65ff6e3aa02f730d02",
         providerAddress:
-          "0x2222222222222222222222222222222222222222222222222222222222222222",
+          "0x976eafa23799bc976e0d3da2d651f1caac6b3bcc292380de921560142fbba9e6",
         sizeBytes: 200,
         ttlSeconds: 3600,
         amountWei: "1",
@@ -241,7 +241,7 @@ describe("operator reporting", () => {
         providerSignature: "0x01",
       },
       receiptHash:
-        "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "0xdca90de7e66cec3a5c7683922036c75aa691b36b473f162b905590f8031217c2",
       createdAt: now,
       updatedAt: now,
     } satisfies StorageLeaseRecord);
