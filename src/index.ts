@@ -7,7 +7,7 @@
  * the heartbeat daemon + agent loop.
  */
 
-import { getWallet, getOpenFoxDir } from "./identity/wallet.js";
+import { getWallet, getOpenFoxDir, loadWalletAccount } from "./identity/wallet.js";
 import { provision, loadApiKeyFromConfig } from "./identity/provision.js";
 import { loadConfig, resolvePath } from "./config.js";
 import { createDatabase } from "./state/database.js";
@@ -312,6 +312,31 @@ import {
   getStoredOracleJob,
   listStoredOracleJobs,
 } from "./agent-discovery/oracle-summary.js";
+import {
+  acceptGroupInvite,
+  createGroup,
+  createGroupChannel,
+  editGroupMessage,
+  getGroupDetail,
+  leaveGroup,
+  listGroupAnnouncements,
+  listGroupChannels,
+  listGroupEvents,
+  listGroupMessages,
+  listGroupMembers,
+  listGroups,
+  listGroupProposals,
+  muteGroupMember,
+  postGroupAnnouncement,
+  postGroupMessage,
+  reactGroupMessage,
+  redactGroupMessage,
+  removeGroupMember,
+  sendGroupInvite,
+  type GroupVisibility,
+  type GroupJoinMode,
+  unmuteGroupMember,
+} from "./group/store.js";
 
 const logger = createLogger("main");
 const VERSION = "0.2.1";
@@ -573,6 +598,11 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  if (args[0] === "group") {
+    await handleGroupCommand(args.slice(1));
+    process.exit(0);
+  }
+
   if (args[0] === "signer") {
     await handleSignerCommand(args.slice(1));
     process.exit(0);
@@ -647,6 +677,7 @@ Usage:
   openfox committee ...  Inspect and manage M-of-N committee workflows
   openfox signer ...     Use delegated signer-provider execution
   openfox paymaster ...  Use native sponsored execution through a paymaster-provider
+  openfox group ...      Create and inspect local Fox communities
   openfox fleet ...      Inspect multiple OpenFox nodes through operator APIs
   openfox autopilot ...  Inspect and control bounded operator automation
   openfox dashboard ...  Build fleet dashboard snapshots and exports
@@ -889,6 +920,53 @@ function readCsvOption(args: string[], flag: string): string[] | undefined {
     .map((value) => value.trim())
     .filter(Boolean);
   return values.length ? values : undefined;
+}
+
+function readGroupIdArg(args: string[], positionalIndex?: number): string | undefined {
+  if (readOption(args, "--group")) {
+    return readOption(args, "--group");
+  }
+  if (typeof positionalIndex !== "number") {
+    return undefined;
+  }
+  return args[positionalIndex]?.trim() || undefined;
+}
+
+function readGroupVisibilityOption(args: string[]): GroupVisibility | undefined {
+  const raw = readOption(args, "--visibility");
+  if (!raw) return undefined;
+  if (raw !== "private" && raw !== "listed" && raw !== "public") {
+    throw new Error("Invalid --visibility value: expected private, listed, or public");
+  }
+  return raw;
+}
+
+function readGroupJoinModeOption(args: string[]): GroupJoinMode | undefined {
+  const raw = readOption(args, "--join-mode");
+  if (!raw) return undefined;
+  if (raw !== "invite_only" && raw !== "request_approval") {
+    throw new Error(
+      "Invalid --join-mode value: expected invite_only or request_approval",
+    );
+  }
+  return raw;
+}
+
+function parseGroupChannelSpecs(
+  args: string[],
+): Array<{ name: string; description?: string }> {
+  return collectRepeatedOption(args, "--channel")
+    .map((entry) => {
+      const separator = entry.indexOf(":");
+      if (separator === -1) {
+        return { name: entry.trim() };
+      }
+      return {
+        name: entry.slice(0, separator).trim(),
+        description: entry.slice(separator + 1).trim(),
+      };
+    })
+    .filter((entry) => entry.name.length > 0);
 }
 
 function readSignerTrustTierOption(
@@ -4866,6 +4944,525 @@ Usage:
     }
 
     throw new Error(`Unknown committee command: ${command}`);
+  } finally {
+    db.close();
+  }
+}
+
+async function handleGroupCommand(args: string[]): Promise<void> {
+  const command = args[0] || "list";
+  const asJson = args.includes("--json");
+  if (args.includes("--help") || args.includes("-h") || command === "help") {
+    logger.info(`
+OpenFox group
+
+Usage:
+  openfox group list [--limit N] [--json]
+  openfox group get <group-id> [--json]
+  openfox group events <group-id> [--limit N] [--json]
+  openfox group members --group <group-id> [--json]
+  openfox group channels --group <group-id> [--json]
+  openfox group create --name "<text>" [--description "<text>"] [--visibility <private|listed|public>] [--join-mode <invite_only|request_approval>] [--tag <tag>]... [--channel <name[:description]>]... [--max-members N] [--tns-name <name>] [--json]
+  openfox group channel create --group <group-id> --name "<name>" [--description "<text>"] [--visibility <scope>] [--json]
+  openfox group announce post --group <group-id> --title "<text>" --body "<text>" [--channel <name>] [--pin] [--json]
+  openfox group announce list --group <group-id> [--limit N] [--json]
+  openfox group invite send --group <group-id> --address <addr> [--agent-id <id>] [--tns-name <name>] [--role <role>]... [--reason "<text>"] [--json]
+  openfox group invite list --group <group-id> [--status <open|committed|revoked|expired|rejected>] [--json]
+  openfox group invite accept --group <group-id> --proposal <proposal-id> [--display-name "<text>"] [--json]
+  openfox group member leave --group <group-id> [--json]
+  openfox group member remove --group <group-id> --address <addr> [--reason "<text>"] [--json]
+  openfox group message post --group <group-id> [--channel <name>] --text "<text>" [--mention <addr>]... [--json]
+  openfox group message reply --group <group-id> [--channel <name>] --reply-to <message-id> --text "<text>" [--mention <addr>]... [--json]
+  openfox group message edit --group <group-id> --message <message-id> --text "<text>" [--mention <addr>]... [--json]
+  openfox group message react --group <group-id> --message <message-id> --emoji <code> [--json]
+  openfox group message redact --group <group-id> --message <message-id> [--json]
+  openfox group messages --group <group-id> [--channel <name>] [--limit N] [--json]
+  openfox group moderation mute --group <group-id> --address <addr> --until <iso> [--reason "<text>"] [--json]
+  openfox group moderation unmute --group <group-id> --address <addr> [--json]
+`);
+    return;
+  }
+
+  const config = loadConfig();
+  if (!config) {
+    throw new Error("OpenFox is not configured. Run openfox --setup first.");
+  }
+
+  const db = createDatabase(resolvePath(config.dbPath));
+  try {
+    if (command === "list") {
+      const items = listGroups(db, readNumberOption(args, "--limit", 25));
+      if (asJson) {
+        logger.info(JSON.stringify(items, null, 2));
+        return;
+      }
+      logger.info("=== OPENFOX GROUPS ===");
+      if (!items.length) {
+        logger.info("No groups yet.");
+        return;
+      }
+      for (const item of items) {
+        const memberCount = db.raw
+          .prepare(
+            `SELECT COUNT(*) AS count
+             FROM group_members
+             WHERE group_id = ? AND membership_state = 'active'`,
+          )
+          .get(item.groupId) as { count: number };
+        logger.info(`${item.groupId}  ${item.name}`);
+        logger.info(
+          `  visibility=${item.visibility} join_mode=${item.joinMode} members=${memberCount.count} updated=${item.updatedAt}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "get") {
+      const groupId = readGroupIdArg(args, 1);
+      if (!groupId) {
+        throw new Error("Usage: openfox group get <group-id>");
+      }
+      const detail = getGroupDetail(db, groupId);
+      if (!detail) {
+        throw new Error(`Group not found: ${groupId}`);
+      }
+      logger.info(JSON.stringify(detail, null, 2));
+      return;
+    }
+
+    if (command === "events") {
+      const groupId = readGroupIdArg(args, 1);
+      if (!groupId) {
+        throw new Error("Usage: openfox group events <group-id> [--limit N]");
+      }
+      const items = listGroupEvents(db, groupId, readNumberOption(args, "--limit", 25));
+      if (asJson) {
+        logger.info(JSON.stringify(items, null, 2));
+        return;
+      }
+      logger.info(`=== OPENFOX GROUP EVENTS ${groupId} ===`);
+      for (const item of items) {
+        logger.info(`${item.createdAt}  ${item.kind}  ${item.eventId}`);
+      }
+      return;
+    }
+
+    if (command === "members") {
+      const groupId = readGroupIdArg(args);
+      if (!groupId) {
+        throw new Error("Usage: openfox group members --group <group-id>");
+      }
+      logger.info(JSON.stringify(listGroupMembers(db, groupId), null, 2));
+      return;
+    }
+
+    if (command === "channels") {
+      const groupId = readGroupIdArg(args);
+      if (!groupId) {
+        throw new Error("Usage: openfox group channels --group <group-id>");
+      }
+      logger.info(JSON.stringify(listGroupChannels(db, groupId), null, 2));
+      return;
+    }
+
+    if (command === "create") {
+      const name = readOption(args, "--name");
+      if (!name) {
+        throw new Error("Usage: openfox group create --name \"<text>\" [--description \"<text>\"]");
+      }
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      const result = await createGroup({
+        db,
+        account,
+        input: {
+          name,
+          description: readOption(args, "--description"),
+          visibility: readGroupVisibilityOption(args),
+          joinMode: readGroupJoinModeOption(args),
+          maxMembers: readNumberOption(args, "--max-members", 256),
+          tnsName: readOption(args, "--tns-name"),
+          tags: collectRepeatedOption(args, "--tag"),
+          actorAddress: config.walletAddress,
+          actorAgentId: config.agentId,
+          creatorDisplayName: config.name,
+          defaultChannels: parseGroupChannelSpecs(args),
+        },
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "channel") {
+      const subcommand = args[1] || "help";
+      if (subcommand !== "create") {
+        throw new Error(`Unknown group channel command: ${subcommand}`);
+      }
+      const groupId = readGroupIdArg(args, 2);
+      const name = readOption(args, "--name");
+      if (!groupId || !name) {
+        throw new Error(
+          "Usage: openfox group channel create --group <group-id> --name \"<name>\"",
+        );
+      }
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      const result = await createGroupChannel({
+        db,
+        account,
+        input: {
+          groupId,
+          name,
+          description: readOption(args, "--description"),
+          visibility: readOption(args, "--visibility"),
+          actorAddress: config.walletAddress,
+          actorAgentId: config.agentId,
+        },
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "announce") {
+      const subcommand = args[1] || "list";
+      if (subcommand === "list") {
+        const groupId = readGroupIdArg(args, 2);
+        if (!groupId) {
+          throw new Error("Usage: openfox group announce list --group <group-id>");
+        }
+        const items = listGroupAnnouncements(
+          db,
+          groupId,
+          readNumberOption(args, "--limit", 20),
+        );
+        logger.info(JSON.stringify(items, null, 2));
+        return;
+      }
+      if (subcommand !== "post") {
+        throw new Error(`Unknown group announce command: ${subcommand}`);
+      }
+      const groupId = readGroupIdArg(args, 2);
+      const title = readOption(args, "--title");
+      const bodyText = readOption(args, "--body");
+      if (!groupId || !title || !bodyText) {
+        throw new Error(
+          "Usage: openfox group announce post --group <group-id> --title \"<text>\" --body \"<text>\"",
+        );
+      }
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      const result = await postGroupAnnouncement({
+        db,
+        account,
+        input: {
+          groupId,
+          title,
+          bodyText,
+          channelName: readOption(args, "--channel"),
+          pin: args.includes("--pin"),
+          actorAddress: config.walletAddress,
+          actorAgentId: config.agentId,
+        },
+      });
+      logger.info(JSON.stringify(result, null, 2));
+      return;
+    }
+
+    if (command === "invite") {
+      const subcommand = args[1] || "list";
+      if (subcommand === "list") {
+        const groupId = readGroupIdArg(args, 2);
+        if (!groupId) {
+          throw new Error("Usage: openfox group invite list --group <group-id>");
+        }
+        const status = readOption(args, "--status") as
+          | "open"
+          | "committed"
+          | "revoked"
+          | "expired"
+          | "rejected"
+          | undefined;
+        const items = listGroupProposals(db, groupId, {
+          proposalKind: "invite",
+          status,
+          limit: readNumberOption(args, "--limit", 25),
+        });
+        logger.info(JSON.stringify(items, null, 2));
+        return;
+      }
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      if (subcommand === "send") {
+        const groupId = readGroupIdArg(args, 2);
+        const targetAddress = readOption(args, "--address");
+        if (!groupId || !targetAddress) {
+          throw new Error(
+            "Usage: openfox group invite send --group <group-id> --address <addr>",
+          );
+        }
+        const result = await sendGroupInvite({
+          db,
+          account,
+          input: {
+            groupId,
+            targetAddress,
+            targetAgentId: readOption(args, "--agent-id"),
+            targetTnsName: readOption(args, "--tns-name"),
+            targetRoles: collectRepeatedOption(args, "--role"),
+            reason: readOption(args, "--reason"),
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (subcommand === "accept") {
+        const groupId = readGroupIdArg(args, 2);
+        const proposalId = readOption(args, "--proposal");
+        if (!groupId || !proposalId) {
+          throw new Error(
+            "Usage: openfox group invite accept --group <group-id> --proposal <proposal-id>",
+          );
+        }
+        const result = await acceptGroupInvite({
+          db,
+          account,
+          input: {
+            groupId,
+            proposalId,
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+            displayName: readOption(args, "--display-name") || config.name,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      throw new Error(`Unknown group invite command: ${subcommand}`);
+    }
+
+    if (command === "member") {
+      const subcommand = args[1] || "help";
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      if (subcommand === "leave") {
+        const groupId = readGroupIdArg(args, 2);
+        if (!groupId) {
+          throw new Error("Usage: openfox group member leave --group <group-id>");
+        }
+        const result = await leaveGroup({
+          db,
+          account,
+          input: {
+            groupId,
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (subcommand === "remove") {
+        const groupId = readGroupIdArg(args, 2);
+        const targetAddress = readOption(args, "--address");
+        if (!groupId || !targetAddress) {
+          throw new Error(
+            "Usage: openfox group member remove --group <group-id> --address <addr>",
+          );
+        }
+        const result = await removeGroupMember({
+          db,
+          account,
+          input: {
+            groupId,
+            targetAddress,
+            reason: readOption(args, "--reason"),
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      throw new Error(`Unknown group member command: ${subcommand}`);
+    }
+
+    if (command === "messages") {
+      const groupId = readGroupIdArg(args, 1);
+      if (!groupId) {
+        throw new Error("Usage: openfox group messages --group <group-id> [--channel <name>]");
+      }
+      const items = listGroupMessages(db, groupId, {
+        channelName: readOption(args, "--channel"),
+        limit: readNumberOption(args, "--limit", 50),
+      });
+      logger.info(JSON.stringify(items, null, 2));
+      return;
+    }
+
+    if (command === "message") {
+      const subcommand = args[1] || "help";
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      const groupId = readGroupIdArg(args, 2);
+      if (!groupId) {
+        throw new Error("Usage: openfox group message <subcommand> --group <group-id> ...");
+      }
+      if (subcommand === "post" || subcommand === "reply") {
+        const text = readOption(args, "--text");
+        if (!text) {
+          throw new Error("Usage: openfox group message post --group <group-id> --text \"<text>\"");
+        }
+        const result = await postGroupMessage({
+          db,
+          account,
+          input: {
+            groupId,
+            text,
+            channelName: readOption(args, "--channel"),
+            replyToMessageId: subcommand === "reply" ? readOption(args, "--reply-to") : undefined,
+            mentions: collectRepeatedOption(args, "--mention"),
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (subcommand === "edit") {
+        const messageId = readOption(args, "--message");
+        const text = readOption(args, "--text");
+        if (!messageId || !text) {
+          throw new Error(
+            "Usage: openfox group message edit --group <group-id> --message <message-id> --text \"<text>\"",
+          );
+        }
+        const result = await editGroupMessage({
+          db,
+          account,
+          input: {
+            groupId,
+            messageId,
+            text,
+            mentions: collectRepeatedOption(args, "--mention"),
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (subcommand === "react") {
+        const messageId = readOption(args, "--message");
+        const reactionCode = readOption(args, "--emoji");
+        if (!messageId || !reactionCode) {
+          throw new Error(
+            "Usage: openfox group message react --group <group-id> --message <message-id> --emoji <code>",
+          );
+        }
+        const result = await reactGroupMessage({
+          db,
+          account,
+          input: {
+            groupId,
+            messageId,
+            reactionCode,
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (subcommand === "redact") {
+        const messageId = readOption(args, "--message");
+        if (!messageId) {
+          throw new Error(
+            "Usage: openfox group message redact --group <group-id> --message <message-id>",
+          );
+        }
+        const result = await redactGroupMessage({
+          db,
+          account,
+          input: {
+            groupId,
+            messageId,
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      throw new Error(`Unknown group message command: ${subcommand}`);
+    }
+
+    if (command === "moderation") {
+      const subcommand = args[1] || "help";
+      const account = loadWalletAccount();
+      if (!account) {
+        throw new Error("OpenFox wallet not found. Run openfox --init first.");
+      }
+      const groupId = readGroupIdArg(args, 2);
+      const targetAddress = readOption(args, "--address");
+      if (!groupId || !targetAddress) {
+        throw new Error(
+          "Usage: openfox group moderation <mute|unmute> --group <group-id> --address <addr>",
+        );
+      }
+      if (subcommand === "mute") {
+        const until = readOption(args, "--until");
+        if (!until) {
+          throw new Error(
+            "Usage: openfox group moderation mute --group <group-id> --address <addr> --until <iso>",
+          );
+        }
+        const result = await muteGroupMember({
+          db,
+          account,
+          input: {
+            groupId,
+            targetAddress,
+            until,
+            reason: readOption(args, "--reason"),
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      if (subcommand === "unmute") {
+        const result = await unmuteGroupMember({
+          db,
+          account,
+          input: {
+            groupId,
+            targetAddress,
+            actorAddress: config.walletAddress,
+            actorAgentId: config.agentId,
+          },
+        });
+        logger.info(JSON.stringify(result, null, 2));
+        return;
+      }
+      throw new Error(`Unknown group moderation command: ${subcommand}`);
+    }
+
+    throw new Error(`Unknown group command: ${command}`);
   } finally {
     db.close();
   }
