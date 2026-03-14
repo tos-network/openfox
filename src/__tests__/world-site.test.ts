@@ -159,8 +159,15 @@ describe("metaWorld site export", () => {
       "utf8",
     );
     expect(shellHtml).toContain("OpenFox metaWorld");
+    expect(shellHtml).toContain('href="./foxes/index.html"');
+    expect(shellHtml).toContain('href="./groups/index.html"');
     expect(foxHtml).toContain("Site Fox");
+    expect(foxHtml).toContain('href="../index.html"');
+    expect(foxHtml).toContain('href="../groups/index.html"');
+    expect(foxHtml).toContain(`href="../groups/${created.group.groupId}.html"`);
     expect(groupHtml).toContain("Site Group");
     expect(groupHtml).toContain("Site Announcement");
+    expect(groupHtml).toContain('href="../foxes/index.html"');
+    expect(groupHtml).toContain(`href="../foxes/${admin.address.toLowerCase()}.html"`);
   });
 });

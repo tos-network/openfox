@@ -50,6 +50,7 @@ function renderDirectoryPage(params: {
   generatedAt: string;
   metrics: Array<{ label: string; value: string | number }>;
   entries: Array<{ title: string; subtitle: string; href: string }>;
+  navLinks: Array<{ label: string; href: string }>;
 }): string {
   const listItems = params.entries
     .map(
@@ -64,6 +65,7 @@ function renderDirectoryPage(params: {
     lede: params.lede,
     generatedAt: params.generatedAt,
     metrics: params.metrics,
+    navLinks: params.navLinks,
     sections: [
       `<section class="panel">
         <div class="section-head">
@@ -101,6 +103,16 @@ export async function exportMetaWorldSite(params: {
   const outputDir = params.outputDir;
   const foxLimit = Math.max(1, params.foxLimit ?? 50);
   const groupLimit = Math.max(1, params.groupLimit ?? 50);
+  const shellFoxLinks = Object.fromEntries(
+    buildWorldFoxDirectorySnapshot(params.db, params.config, {
+      limit: foxLimit,
+    }).items.map((item) => [item.address, `./foxes/${item.address}.html`]),
+  );
+  const shellGroupLinks = Object.fromEntries(
+    buildWorldGroupDirectorySnapshot(params.db, {
+      limit: groupLimit,
+    }).items.map((item) => [item.groupId, `./groups/${item.groupId}.html`]),
+  );
 
   const shellSnapshot = buildMetaWorldShellSnapshot({
     db: params.db,
@@ -129,7 +141,12 @@ export async function exportMetaWorldSite(params: {
 
   await fs.writeFile(
     path.join(outputDir, "index.html"),
-    buildMetaWorldShellHtml(shellSnapshot),
+    buildMetaWorldShellHtml(shellSnapshot, {
+      foxDirectoryHref: "./foxes/index.html",
+      groupDirectoryHref: "./groups/index.html",
+      foxHrefsByAddress: shellFoxLinks,
+      groupHrefsById: shellGroupLinks,
+    }),
     "utf8",
   );
 
@@ -147,7 +164,17 @@ export async function exportMetaWorldSite(params: {
     const relativePath = `foxes/${item.address}.html`;
     await fs.writeFile(
       path.join(outputDir, relativePath),
-      buildFoxPageHtml(snapshot),
+      buildFoxPageHtml(snapshot, {
+        homeHref: "../index.html",
+        foxDirectoryHref: "./index.html",
+        groupDirectoryHref: "../groups/index.html",
+        groupHrefsById: Object.fromEntries(
+          Object.entries(shellGroupLinks).map(([groupId, href]) => [
+            groupId,
+            href.replace("./groups/", "../groups/"),
+          ]),
+        ),
+      }),
       "utf8",
     );
     foxPages.push({
@@ -170,7 +197,17 @@ export async function exportMetaWorldSite(params: {
     const relativePath = `groups/${item.groupId}.html`;
     await fs.writeFile(
       path.join(outputDir, relativePath),
-      buildGroupPageHtml(snapshot),
+      buildGroupPageHtml(snapshot, {
+        homeHref: "../index.html",
+        foxDirectoryHref: "../foxes/index.html",
+        groupDirectoryHref: "./index.html",
+        foxHrefsByAddress: Object.fromEntries(
+          Object.entries(shellFoxLinks).map(([address, href]) => [
+            address,
+            href.replace("./foxes/", "../foxes/"),
+          ]),
+        ),
+      }),
       "utf8",
     );
     groupPages.push({
@@ -192,6 +229,11 @@ export async function exportMetaWorldSite(params: {
         { label: "Fox pages", value: foxPages.length },
         { label: "Generated at", value: generatedAt.slice(0, 19) },
       ],
+      navLinks: [
+        { label: "World Shell", href: "../index.html" },
+        { label: "Fox Directory", href: "./index.html" },
+        { label: "Group Directory", href: "../groups/index.html" },
+      ],
       entries: foxDirectory.items.map((item) => ({
         title: item.displayName,
         subtitle: `${item.presenceStatus || "offline"} · groups=${item.activeGroupCount}`,
@@ -212,6 +254,11 @@ export async function exportMetaWorldSite(params: {
       metrics: [
         { label: "Group pages", value: groupPages.length },
         { label: "Generated at", value: generatedAt.slice(0, 19) },
+      ],
+      navLinks: [
+        { label: "World Shell", href: "../index.html" },
+        { label: "Fox Directory", href: "../foxes/index.html" },
+        { label: "Group Directory", href: "./index.html" },
       ],
       entries: groupDirectory.items.map((item) => ({
         title: item.name,

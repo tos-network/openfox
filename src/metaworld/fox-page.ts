@@ -312,14 +312,28 @@ export function buildFoxPageSnapshot(params: {
   };
 }
 
-export function buildFoxPageHtml(snapshot: FoxPageSnapshot): string {
+export function buildFoxPageHtml(
+  snapshot: FoxPageSnapshot,
+  options?: {
+    homeHref?: string;
+    foxDirectoryHref?: string;
+    groupDirectoryHref?: string;
+    groupHrefsById?: Record<string, string>;
+  },
+): string {
   const roleSummary = Object.entries(snapshot.roleSummary)
     .map(([role, count]) => `${escapeHtml(role)}=${count}`)
     .join(", ");
   const groupItems = snapshot.fox.groups
     .slice(0, 12)
     .map(
-      (group) => `<li><strong>${escapeHtml(group.name)}</strong><span>${escapeHtml(group.membershipState)} · ${escapeHtml(group.roles.join(", ") || "no roles")}</span></li>`,
+      (group) => {
+        const href = options?.groupHrefsById?.[group.groupId];
+        const label = href
+          ? `<a href="${escapeHtml(href)}">${escapeHtml(group.name)}</a>`
+          : escapeHtml(group.name);
+        return `<li><strong>${label}</strong><span>${escapeHtml(group.membershipState)} · ${escapeHtml(group.roles.join(", ") || "no roles")}</span></li>`;
+      },
     )
     .join("");
   const presenceItems = snapshot.presence
@@ -342,7 +356,11 @@ export function buildFoxPageHtml(snapshot: FoxPageSnapshot): string {
     .slice(0, 8)
     .map(
       (item) => `<article class="list-card">
-  <div class="meta-row"><span>${escapeHtml(item.createdAt)}</span><span>${escapeHtml(item.groupName)}</span></div>
+  <div class="meta-row"><span>${escapeHtml(item.createdAt)}</span><span>${
+    options?.groupHrefsById?.[item.groupId]
+      ? `<a href="${escapeHtml(options.groupHrefsById[item.groupId])}">${escapeHtml(item.groupName)}</a>`
+      : escapeHtml(item.groupName)
+  }</span></div>
   <h4>${escapeHtml(item.title)}</h4>
   <p>${escapeHtml(item.bodyText)}</p>
 </article>`,
@@ -352,7 +370,11 @@ export function buildFoxPageHtml(snapshot: FoxPageSnapshot): string {
     .slice(0, 8)
     .map(
       (item) => `<article class="list-card">
-  <div class="meta-row"><span>${escapeHtml(item.updatedAt)}</span><span>${escapeHtml(item.groupName)}${item.channelName ? ` · #${escapeHtml(item.channelName)}` : ""}</span></div>
+  <div class="meta-row"><span>${escapeHtml(item.updatedAt)}</span><span>${
+    options?.groupHrefsById?.[item.groupId]
+      ? `<a href="${escapeHtml(options.groupHrefsById[item.groupId])}">${escapeHtml(item.groupName)}</a>`
+      : escapeHtml(item.groupName)
+  }${item.channelName ? ` · #${escapeHtml(item.channelName)}` : ""}</span></div>
   <h4>${escapeHtml(item.senderAgentId || item.senderAddress)}</h4>
   <p>${escapeHtml(item.previewText || item.ciphertext || "")}</p>
 </article>`,
@@ -438,6 +460,11 @@ export function buildFoxPageHtml(snapshot: FoxPageSnapshot): string {
     heading: snapshot.fox.displayName,
     lede: `Identity, presence, memberships, activity, and authored community output for ${snapshot.fox.displayName}.`,
     generatedAt: snapshot.generatedAt,
+    navLinks: [
+      { label: "World Shell", href: options?.homeHref ?? "../index.html" },
+      { label: "Fox Directory", href: options?.foxDirectoryHref ?? "./index.html" },
+      { label: "Group Directory", href: options?.groupDirectoryHref ?? "../groups/index.html" },
+    ],
     metrics: [
       { label: "Active groups", value: snapshot.stats.activeGroupCount },
       { label: "Presence records", value: snapshot.stats.presenceCount },

@@ -119,7 +119,15 @@ export function buildGroupPageSnapshot(
   };
 }
 
-export function buildGroupPageHtml(snapshot: GroupPageSnapshot): string {
+export function buildGroupPageHtml(
+  snapshot: GroupPageSnapshot,
+  options?: {
+    homeHref?: string;
+    foxDirectoryHref?: string;
+    groupDirectoryHref?: string;
+    foxHrefsByAddress?: Record<string, string>;
+  },
+): string {
   const tagItems = snapshot.group.tags
     .slice(0, 20)
     .map((tag) => `<li>${escapeHtml(tag)}</li>`)
@@ -133,7 +141,13 @@ export function buildGroupPageHtml(snapshot: GroupPageSnapshot): string {
   const memberItems = snapshot.members
     .slice(0, 12)
     .map(
-      (member) => `<li><strong>${escapeHtml(member.displayName || member.memberAgentId || member.memberAddress)}</strong><span>${escapeHtml(member.membershipState)} · ${escapeHtml(member.roles.join(", ") || "no roles")}</span></li>`,
+      (member) => {
+        const href = options?.foxHrefsByAddress?.[member.memberAddress];
+        const label = href
+          ? `<a href="${escapeHtml(href)}">${escapeHtml(member.displayName || member.memberAgentId || member.memberAddress)}</a>`
+          : escapeHtml(member.displayName || member.memberAgentId || member.memberAddress);
+        return `<li><strong>${label}</strong><span>${escapeHtml(member.membershipState)} · ${escapeHtml(member.roles.join(", ") || "no roles")}</span></li>`;
+      },
     )
     .join("");
   const announcementItems = snapshot.announcements
@@ -151,7 +165,11 @@ export function buildGroupPageHtml(snapshot: GroupPageSnapshot): string {
     .map(
       (item) => `<article class="list-card">
   <div class="meta-row"><span>${escapeHtml(item.updatedAt)}</span><span>#${escapeHtml(snapshot.channels.find((channel) => channel.channelId === item.channelId)?.name || item.channelId)}</span></div>
-  <h4>${escapeHtml(item.senderAgentId || item.senderAddress)}</h4>
+  <h4>${
+    options?.foxHrefsByAddress?.[item.senderAddress]
+      ? `<a href="${escapeHtml(options.foxHrefsByAddress[item.senderAddress])}">${escapeHtml(item.senderAgentId || item.senderAddress)}</a>`
+      : escapeHtml(item.senderAgentId || item.senderAddress)
+  }</h4>
   <p>${escapeHtml(item.previewText || item.ciphertext || "")}</p>
 </article>`,
     )
@@ -169,7 +187,13 @@ export function buildGroupPageHtml(snapshot: GroupPageSnapshot): string {
   const presenceItems = snapshot.presence
     .slice(0, 10)
     .map(
-      (item) => `<li><strong>${escapeHtml(item.displayName || item.agentId || item.actorAddress)}</strong><span>${escapeHtml(item.effectiveStatus)}${item.summary ? ` · ${escapeHtml(item.summary)}` : ""}</span></li>`,
+      (item) => {
+        const href = options?.foxHrefsByAddress?.[item.actorAddress];
+        const label = href
+          ? `<a href="${escapeHtml(href)}">${escapeHtml(item.displayName || item.agentId || item.actorAddress)}</a>`
+          : escapeHtml(item.displayName || item.agentId || item.actorAddress);
+        return `<li><strong>${label}</strong><span>${escapeHtml(item.effectiveStatus)}${item.summary ? ` · ${escapeHtml(item.summary)}` : ""}</span></li>`;
+      },
     )
     .join("");
   const roleSummary = Object.entries(snapshot.roleSummary)
@@ -261,6 +285,11 @@ export function buildGroupPageHtml(snapshot: GroupPageSnapshot): string {
     heading: snapshot.group.name,
     lede: `Community snapshot for ${snapshot.group.name}, including members, channels, announcements, presence, and recent group activity.`,
     generatedAt: snapshot.generatedAt,
+    navLinks: [
+      { label: "World Shell", href: options?.homeHref ?? "../index.html" },
+      { label: "Fox Directory", href: options?.foxDirectoryHref ?? "../foxes/index.html" },
+      { label: "Group Directory", href: options?.groupDirectoryHref ?? "./index.html" },
+    ],
     metrics: [
       { label: "Active members", value: snapshot.stats.activeMemberCount },
       { label: "Channels", value: snapshot.stats.channelCount },

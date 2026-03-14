@@ -3,6 +3,11 @@ export interface MetaWorldPageMetric {
   value: string | number;
 }
 
+export interface MetaWorldPageLink {
+  label: string;
+  href: string;
+}
+
 export function escapeHtml(value: unknown): string {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -18,6 +23,7 @@ export function renderMetaWorldPageFrame(params: {
   lede: string;
   generatedAt?: string;
   metrics: MetaWorldPageMetric[];
+  navLinks?: MetaWorldPageLink[];
   sections: string[];
 }): string {
   const metrics = params.metrics
@@ -26,6 +32,11 @@ export function renderMetaWorldPageFrame(params: {
   <strong>${escapeHtml(metric.value)}</strong>
   <span>${escapeHtml(metric.label)}</span>
 </div>`,
+    )
+    .join("");
+  const nav = (params.navLinks ?? [])
+    .map(
+      (link) => `<a href="${escapeHtml(link.href)}">${escapeHtml(link.label)}</a>`,
     )
     .join("");
 
@@ -60,6 +71,21 @@ export function renderMetaWorldPageFrame(params: {
       max-width: 1220px;
       margin: 0 auto;
       padding: 32px 24px 72px;
+    }
+    .topnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .topnav a {
+      text-decoration: none;
+      color: var(--accent);
+      background: rgba(255,255,255,0.66);
+      border: 1px solid rgba(14,107,84,0.16);
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 14px;
     }
     .hero {
       display: grid;
@@ -151,6 +177,9 @@ export function renderMetaWorldPageFrame(params: {
       color: var(--muted);
       line-height: 1.45;
     }
+    a {
+      color: var(--accent);
+    }
     .directory-list, .compact-list, .tag-list {
       list-style: none;
       margin: 14px 0 0;
@@ -190,6 +219,7 @@ export function renderMetaWorldPageFrame(params: {
 </head>
 <body>
   <div class="shell">
+    ${nav ? `<nav class="topnav">${nav}</nav>` : ""}
     <section class="hero">
       <article class="panel hero-card">
         <div class="eyebrow">${escapeHtml(params.eyebrow)}</div>

@@ -29,6 +29,13 @@ export interface MetaWorldShellSnapshot {
   activeGroups: GroupPageSnapshot[];
 }
 
+export interface MetaWorldShellHtmlOptions {
+  foxDirectoryHref?: string;
+  groupDirectoryHref?: string;
+  foxHrefsByAddress?: Record<string, string>;
+  groupHrefsById?: Record<string, string>;
+}
+
 function escapeHtml(value: string): string {
   return value
     .replaceAll("&", "&amp;")
@@ -60,7 +67,10 @@ function renderBoardSection(
 </section>`;
 }
 
-function renderGroupSection(page: GroupPageSnapshot): string {
+function renderGroupSection(
+  page: GroupPageSnapshot,
+  options?: MetaWorldShellHtmlOptions,
+): string {
   const roleSummary = Object.entries(page.roleSummary)
     .map(([role, count]) => `${escapeHtml(role)}=${count}`)
     .join(", ");
@@ -76,9 +86,13 @@ function renderGroupSection(page: GroupPageSnapshot): string {
       (item) => `<li><strong>${escapeHtml(item.senderAgentId || item.senderAddress)}</strong><span>${escapeHtml(item.previewText || item.ciphertext || "")}</span></li>`,
     )
     .join("");
+  const groupHref = options?.groupHrefsById?.[page.group.groupId];
+  const title = groupHref
+    ? `<a href="${escapeHtml(groupHref)}">${escapeHtml(page.group.name)}</a>`
+    : escapeHtml(page.group.name);
   return `<section class="panel group-panel">
   <div class="section-head">
-    <h3>${escapeHtml(page.group.name)}</h3>
+    <h3>${title}</h3>
     <span>${escapeHtml(page.group.visibility)} · ${escapeHtml(page.group.joinMode)}</span>
   </div>
   <p class="lede">${escapeHtml(page.group.description || "No description set yet.")}</p>
@@ -179,7 +193,10 @@ export function buildMetaWorldShellSnapshot(params: {
   };
 }
 
-export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): string {
+export function buildMetaWorldShellHtml(
+  snapshot: MetaWorldShellSnapshot,
+  options?: MetaWorldShellHtmlOptions,
+): string {
   const notificationItems = snapshot.notifications.items
     .slice(0, 8)
     .map(
@@ -203,13 +220,25 @@ export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): strin
   const foxDirectory = snapshot.directories.foxes.items
     .slice(0, 10)
     .map(
-      (item) => `<li><strong>${escapeHtml(item.displayName)}</strong><span>${escapeHtml(item.presenceStatus || "offline")} · groups=${item.activeGroupCount}</span></li>`,
+      (item) => {
+        const href = options?.foxHrefsByAddress?.[item.address];
+        const label = href
+          ? `<a href="${escapeHtml(href)}">${escapeHtml(item.displayName)}</a>`
+          : escapeHtml(item.displayName);
+        return `<li><strong>${label}</strong><span>${escapeHtml(item.presenceStatus || "offline")} · groups=${item.activeGroupCount}</span></li>`;
+      },
     )
     .join("");
   const groupDirectory = snapshot.directories.groups.items
     .slice(0, 10)
     .map(
-      (item) => `<li><strong>${escapeHtml(item.name)}</strong><span>${item.activeMemberCount} members · ${escapeHtml(item.visibility)}</span></li>`,
+      (item) => {
+        const href = options?.groupHrefsById?.[item.groupId];
+        const label = href
+          ? `<a href="${escapeHtml(href)}">${escapeHtml(item.name)}</a>`
+          : escapeHtml(item.name);
+        return `<li><strong>${label}</strong><span>${item.activeMemberCount} members · ${escapeHtml(item.visibility)}</span></li>`;
+      },
     )
     .join("");
   const presenceItems = snapshot.presence.items
@@ -218,7 +247,15 @@ export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): strin
       (item) => `<li><strong>${escapeHtml(item.displayName || item.agentId || item.actorAddress)}</strong><span>${escapeHtml(item.effectiveStatus)}${item.groupName ? ` · ${escapeHtml(item.groupName)}` : ""}</span></li>`,
     )
     .join("");
-  const groupPanels = snapshot.activeGroups.map(renderGroupSection).join("");
+  const groupPanels = snapshot.activeGroups
+    .map((page) => renderGroupSection(page, options))
+    .join("");
+  const foxDirectoryTitle = options?.foxDirectoryHref
+    ? `<a href="${escapeHtml(options.foxDirectoryHref)}">Fox Directory</a>`
+    : "Fox Directory";
+  const groupDirectoryTitle = options?.groupDirectoryHref
+    ? `<a href="${escapeHtml(options.groupDirectoryHref)}">Group Directory</a>`
+    : "Group Directory";
 
   return `<!doctype html>
 <html lang="en">
@@ -251,6 +288,21 @@ export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): strin
       max-width: 1400px;
       margin: 0 auto;
       padding: 32px 24px 72px;
+    }
+    .topnav {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+    .topnav a {
+      text-decoration: none;
+      color: var(--accent);
+      background: rgba(255,255,255,0.66);
+      border: 1px solid rgba(14,107,84,0.16);
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 14px;
     }
     .hero {
       display: grid;
@@ -380,6 +432,7 @@ export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): strin
     .group-panel { margin-bottom: 18px; }
     .accent { color: var(--accent); }
     .accent-2 { color: var(--accent-2); }
+    a { color: var(--accent); }
     @media (max-width: 980px) {
       .hero, .main-grid, .duo, .quad, .split { grid-template-columns: 1fr; }
       h1 { font-size: 34px; }
@@ -389,6 +442,19 @@ export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): strin
 </head>
 <body>
   <div class="shell">
+    <nav class="topnav">
+      <a href="./index.html">World Shell</a>
+      ${
+        options?.foxDirectoryHref
+          ? `<a href="${escapeHtml(options.foxDirectoryHref)}">Fox Directory</a>`
+          : ""
+      }
+      ${
+        options?.groupDirectoryHref
+          ? `<a href="${escapeHtml(options.groupDirectoryHref)}">Group Directory</a>`
+          : ""
+      }
+    </nav>
     <section class="hero">
       <article class="panel hero-card">
         <div class="eyebrow">OpenFox metaWorld v1</div>
@@ -467,14 +533,14 @@ export function buildMetaWorldShellHtml(snapshot: MetaWorldShellSnapshot): strin
     <section class="duo">
       <section class="panel">
         <div class="section-head">
-          <h3>Fox Directory</h3>
+          <h3>${foxDirectoryTitle}</h3>
           <span>${snapshot.directories.foxes.items.length} visible</span>
         </div>
         <ul class="directory-list">${foxDirectory || '<li class="empty">No Fox profiles yet.</li>'}</ul>
       </section>
       <section class="panel">
         <div class="section-head">
-          <h3>Group Directory</h3>
+          <h3>${groupDirectoryTitle}</h3>
           <span>${snapshot.directories.groups.items.length} visible</span>
         </div>
         <ul class="directory-list">${groupDirectory || '<li class="empty">No groups yet.</li>'}</ul>
