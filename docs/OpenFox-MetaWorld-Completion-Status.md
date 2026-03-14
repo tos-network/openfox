@@ -2,43 +2,47 @@
 
 ## Summary
 
-`OpenFox metaWorld` is not `100%` complete.
+`OpenFox metaWorld v1` is nearly complete.
 
-The current codebase already implements most of the `runtime`, `projection`,
-`page`, and `static-site` layer of `metaWorld v1`.
+The current codebase implements the `runtime`, `projection`, `page`,
+`static-site`, `sync`, `interactive web shell`, `moderation/safety`,
+`public identity`, and `social discovery` layers of `metaWorld v1`.
 
-What is still missing is the `replicated multi-node world layer`, the
-`interactive product shell`, and several `community safety and discovery`
-surfaces that turn the current static/exportable world into a fully networked
-product world.
+What is still missing is `packaged multi-node demo environments` (Task 106)
+that let operators launch and validate a real local multi-node Fox world without
+hand assembly.
 
 ## Status Table
 
 | Area | Completed | Not Completed | Next Phase Must Do |
 | --- | --- | --- | --- |
-| Group runtime backbone | Local SQLite Group state, reducer logic, event persistence, members, roles, proposals, join requests, announcements, messages, reactions, mute/ban state, and epoch rotation are implemented. | Cross-node Group replication and replay-safe sync are not complete. | Add peer/gateway/relay/storage Group sync plus multi-node replication tests. |
-| Group lifecycle | CLI flows for create, inspect, events, channels, invites, join requests, leave, remove, mute, ban, unban, and messages are implemented. | Real distributed lifecycle across multiple OpenFox nodes is not complete. | Add replicated membership lifecycle with event catch-up, snapshots, and cursor tracking. |
-| Community communication | Channels, announcements, replies, edits, reactions, redaction, mute, unmute, ban, and unban exist. | Warning/report/appeal flows, anti-spam controls, and moderation queue UX are not complete. | Add richer moderation and safety workflows. |
-| Fox identity and directory | Fox profile snapshots, Group page snapshots, world directory snapshots, and TNS-aware identity fields are implemented. | Public profile editing/publishing flows, richer profile metadata, avatars, and reputation summaries are not complete. | Add public profile publishing, media fields, and reputation summaries. |
-| World activity layer | World feed, presence, notifications, and derived activity projections are implemented. | Follow/subscription logic, richer notification tuning, and recommendation/ranking layers are not complete. | Add follows, subscriptions, and discovery ranking over world activity. |
-| Group boards | Work, opportunity, artifact, and settlement boards are implemented as world/group projections. | Personalized or followed-Group board views are not complete. | Add subscription-aware board filtering and higher-level board navigation. |
-| World shell and pages | World shell snapshot, Fox page, Group page, HTML renderers, and CLI export flows are implemented. | A live routed web app shell is not complete. | Add an interactive web shell with router, live refresh, and action entry points. |
+| Group runtime backbone | Local SQLite Group state, reducer logic, event persistence, members, roles, proposals, join requests, announcements, messages, reactions, mute/ban state, and epoch rotation are implemented. | — | — |
+| Group sync and replication | Replay-safe sync protocol with offer/bundle/snapshot semantics, peer HTTP/gateway relay/storage market transports, heartbeat-driven periodic sync, per-peer cursor tracking, and conflict resolution (lower event ID wins) are implemented. (Task 101 ✅) | Full production multi-node replication stress testing. | Add packaged multi-node demo and replication validation suites. |
+| Group lifecycle | CLI flows for create, inspect, events, channels, invites, join requests, leave, remove, mute, ban, unban, and messages are implemented. Sync lifecycle with event catch-up, snapshots, and cursor tracking is implemented. (Task 101 ✅) | — | — |
+| Community communication | Channels, announcements, replies, edits, reactions, redaction, mute, unmute, ban, and unban exist. | — | — |
+| Community moderation and safety | Warnings with auto-escalation (3 mild → mute, 2 moderate → mute 24h, 1 severe → ban), report system with category-based reporting and resolution actions, appeal system that reverses mute/ban on approval, anti-spam rate limiting, and content filtering are implemented. 8 CLI subcommands added. (Task 103 ✅) | — | — |
+| Fox identity and directory | Fox profile snapshots, Group page snapshots, world directory snapshots, TNS-aware identity fields, public profile publishing with bio/avatar/website/tags/social links, reputation summaries, and storage market publishing with CID-based resolution are implemented. Directory integration shows published metadata. (Task 104 ✅) | — | — |
+| World activity layer | World feed, presence, notifications, derived activity projections, follow/unfollow foxes and groups, event-kind subscriptions, personalized feed (weighted by follows/groups/time/reactions), and recommended foxes/groups are implemented. (Task 105 ✅) | — | — |
+| World search and discovery | Unified world search across foxes, groups, and board items with relevance ranking (exact > prefix > word-boundary > contains) is implemented. (Task 105 ✅) | — | — |
+| Group boards | Work, opportunity, artifact, and settlement boards are implemented as world/group projections. | — | — |
+| World shell and pages | World shell snapshot, Fox page, Group page, HTML renderers, and CLI export flows are implemented. A live interactive HTTP web server with HTML + JSON API routes, dark-theme responsive layout, client-side SPA router with `history.pushState` navigation and 30-second auto-refresh, and `openfox world serve` is implemented. (Task 102 ✅) | — | — |
 | Static site export | `site export`, `manifest.json`, `content-index.json`, `routes.json`, fox pages, group pages, and directory pages are implemented. | Hosted/static deployment templates and packaged demo environments are not complete. | Add packaged demo/dev templates and deployable metaWorld bundles. |
-| Productized metaworld | The codebase now has a real metaworld kernel and static site plane. | A fully networked, interactive, community-safe, production-facing metaworld is not complete. | Finish replication, interactive web UX, moderation/safety, richer discovery, and multi-node validation. |
+| Productized metaworld | The codebase now has a real metaworld with sync, interactive web shell, moderation/safety, public identity, and social discovery. | Packaged multi-node demo environments for quick operator validation. | Finish Task 106: packaged multi-node metaWorld demos and validation. |
 
 ## Practical Conclusion
 
 Today the most accurate statement is:
 
-`OpenFox metaWorld v1 runtime and static site layers are largely implemented, but the fully interactive and replicated product layer is not complete yet.`
+`OpenFox metaWorld v1 is largely complete. The runtime, sync, interactive web shell, moderation, public identity, and social discovery layers are all implemented. The remaining gap is packaged multi-node demo environments (Task 106).`
 
-## Immediate Next Phase
+## Completed Phase (Tasks 101-105)
 
-The next phase should focus on:
+1. ✅ replicated Group sync and multi-node validation (Task 101)
+2. ✅ interactive web shell and router (Task 102)
+3. ✅ richer moderation and safety workflows (Task 103)
+4. ✅ public profile publishing and reputation summaries (Task 104)
+5. ✅ follow/subscription/search/ranking for world discovery (Task 105)
 
-1. replicated Group sync and multi-node validation
-2. interactive web shell and router
-3. richer moderation and safety workflows
-4. public profile publishing and reputation summaries
-5. follow/subscription/search/ranking for world discovery
-6. packaged multi-node demo and deployment validation
+## Remaining
+
+6. packaged multi-node demo and deployment validation (Task 106 — proposed)

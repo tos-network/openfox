@@ -457,27 +457,78 @@ building OpenFox into a TOS-native agent platform.
   - Goal: Expose profiles, Groups, feeds, boards, and world navigation through
     one world-facing shell, Fox/Group pages, and static site bundle that sit
     above the existing runtime and operator infrastructure.
-- [ ] Task 101: Add Group sync and replicated lifecycle validation
-  - Status: Proposed
+- [x] Task 101: Add Group sync and replicated lifecycle validation
+  - Status: Complete
   - Goal: Let real OpenFox nodes replicate Group state through peer, gateway,
     relay, or storage-backed paths with replay-safe sync and multi-node
     validation.
-- [ ] Task 102: Add interactive metaWorld web shell and router
-  - Status: Proposed
+  - Delivered:
+    - `src/group/sync.ts` — sync offer/bundle/snapshot protocol with replay-safe
+      event application and conflict resolution (lower event ID wins)
+    - `src/group/sync-transport.ts` — transport abstraction with peer HTTP,
+      gateway relay, and storage market snapshot transports
+    - `src/group/sync-scheduler.ts` — heartbeat-driven periodic group sync with
+      per-peer cursor tracking
+    - `group_sync_peers` schema table for peer endpoint tracking
+    - 17 tests covering round-trip sync, replay safety, snapshot create/apply,
+      conflict resolution, and invalid event rejection
+- [x] Task 102: Add interactive metaWorld web shell and router
+  - Status: Complete
   - Goal: Turn the current static page/export layer into a navigable,
     interactive web shell with real routing, refresh, and action entry points.
-- [ ] Task 103: Add richer moderation and safety workflows
-  - Status: Proposed
+  - Delivered:
+    - `src/metaworld/server.ts` — live HTTP server with HTML routes (home, feed,
+      fox profile, group page, directory, boards, presence, notifications) and
+      JSON API routes (`/api/v1/*`) plus POST action endpoints
+    - `src/metaworld/layout.ts` — dark-theme responsive HTML layout with
+      persistent nav bar
+    - `src/metaworld/router.ts` — client-side SPA router with
+      `history.pushState` navigation and 30-second auto-refresh
+    - `openfox world serve [--port N] [--host <addr>]` CLI command
+    - 26 tests covering all routes, API endpoints, and POST actions
+- [x] Task 103: Add richer moderation and safety workflows
+  - Status: Complete
   - Goal: Extend Group moderation beyond basic mute/ban into warnings, reports,
     appeals, and anti-spam controls.
-- [ ] Task 104: Add public profile publishing and richer world identity
-  - Status: Proposed
+  - Delivered:
+    - `src/group/moderation.ts` — warnings with auto-escalation (3 mild →
+      auto-mute, 2 moderate → auto-mute 24h, 1 severe → auto-ban), report
+      system with resolution actions, appeal system that reverses mute/ban on
+      approval, rate limiting, and content filtering
+    - `group_warnings`, `group_reports`, `group_appeals`, `group_rate_limits`
+      schema tables
+    - 8 new CLI subcommands: warn, warnings, report, reports, resolve-report,
+      appeal, appeals, resolve-appeal
+    - 21 tests covering all moderation flows
+- [x] Task 104: Add public profile publishing and richer world identity
+  - Status: Complete
   - Goal: Let Foxes and Groups publish richer public identity with
     avatar/media/profile metadata and reputation summaries.
-- [ ] Task 105: Add follow, subscription, search, and ranking over the world
-  - Status: Proposed
+  - Delivered:
+    - `src/metaworld/identity.ts` — Fox and Group public profiles with bio,
+      avatar, website, tags, social links; reputation summaries; storage market
+      publishing and CID-based resolution
+    - `fox_profiles` and `group_profiles` schema tables
+    - Integration with existing profile, fox-page, and directory snapshots
+    - CLI commands: profile set/publish/show, group profile publish, reputation
+    - 13 tests covering profile CRUD, publishing, and directory integration
+- [x] Task 105: Add follow, subscription, search, and ranking over the world
+  - Status: Complete
   - Goal: Make world discovery and activity personalized instead of purely
     list-based.
+  - Delivered:
+    - `src/metaworld/follows.ts` — follow/unfollow foxes and groups with counts
+      and follower listing
+    - `src/metaworld/subscriptions.ts` — event-kind subscriptions with matching
+    - `src/metaworld/search.ts` — unified search across foxes, groups, and board
+      items with relevance ranking (exact > prefix > word-boundary > contains)
+    - `src/metaworld/ranking.ts` — personalized feed (follow/group/time/reaction
+      weighted), recommended foxes (shared groups, followed-group activity),
+      recommended groups (tag overlap, followed members, activity)
+    - `world_follows`, `world_subscriptions`, `world_search_index` schema tables
+    - CLI commands: follow, unfollow, following, followers, search, recommended,
+      personalized-feed
+    - 20 tests covering follows, subscriptions, search, ranking, recommendations
 - [ ] Task 106: Add packaged multi-node metaWorld demos and validation
   - Status: Proposed
   - Goal: Let operators launch and validate a real local multi-node Fox world
