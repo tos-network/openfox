@@ -10,6 +10,7 @@ import {
   postGroupMessage,
 } from "../group/store.js";
 import { buildWorldFeedSnapshot, listWorldFeedItems } from "../metaworld/feed.js";
+import { subscribeToFeed } from "../metaworld/subscriptions.js";
 import type {
   ArtifactRecord,
   BountyRecord,
@@ -174,5 +175,70 @@ describe("metaWorld feed", () => {
     expect(items.length).toBeGreaterThanOrEqual(1);
     expect(items.every((item) => item.groupId === created.group.groupId)).toBe(true);
     expect(items.some((item) => item.kind === "bounty_opened")).toBe(false);
+  });
+
+  it("filters feed items by subscriptions when requested", async () => {
+    const account = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const created = await createGroup({
+      db,
+      account,
+      input: {
+        name: "Subscribed Group",
+        actorAddress: account.address,
+      },
+    });
+
+    await postGroupAnnouncement({
+      db,
+      account,
+      input: {
+        groupId: created.group.groupId,
+        title: "Subscribed launch",
+        bodyText: "This should stay visible.",
+        actorAddress: account.address,
+      },
+    });
+    await postGroupMessage({
+      db,
+      account,
+      input: {
+        groupId: created.group.groupId,
+        text: "Subscribed message.",
+        actorAddress: account.address,
+      },
+    });
+
+    db.insertBounty({
+      bountyId: "bounty-feed-subscription",
+      hostAgentId: "host-subscription",
+      hostAddress: account.address.toLowerCase() as `0x${string}`,
+      kind: "question",
+      title: "Bounty that should be filtered",
+      taskPrompt: "ignore me",
+      referenceOutput: "canonical",
+      rewardWei: "1000",
+      submissionDeadline: "2030-01-02T00:00:00.000Z",
+      judgeMode: "local_model",
+      status: "open",
+      createdAt: "2030-01-01T00:00:04.000Z",
+      updatedAt: "2030-01-01T00:00:04.000Z",
+    } satisfies BountyRecord);
+
+    subscribeToFeed(db, {
+      address: account.address,
+      feedKind: "group",
+      targetId: created.group.groupId,
+      notifyOn: ["announcement", "message"],
+    });
+
+    const snapshot = buildWorldFeedSnapshot(db, {
+      limit: 20,
+      subscriberAddress: account.address,
+      subscribedOnly: true,
+    });
+    expect(snapshot.summary).toContain("matching subscriptions");
+    expect(snapshot.items.length).toBeGreaterThanOrEqual(2);
+    expect(snapshot.items.every((item) => item.groupId === created.group.groupId)).toBe(true);
+    expect(snapshot.items.some((item) => item.kind === "bounty_opened")).toBe(false);
   });
 });

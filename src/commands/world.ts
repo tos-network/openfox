@@ -1,7 +1,7 @@
 import { loadConfig, resolvePath } from "../config.js";
 import { createDatabase } from "../state/database.js";
 import { createLogger } from "../observability/logger.js";
-import { readOption, readNumberOption } from "../cli/parse.js";
+import { readCsvOption, readOption, readNumberOption } from "../cli/parse.js";
 import {
   buildWorldFeedSnapshot,
 } from "../metaworld/feed.js";
@@ -53,6 +53,13 @@ import {
   getFollowCounts,
 } from "../metaworld/follows.js";
 import {
+  listSubscriptions,
+  subscribeToFeed,
+  unsubscribe,
+  type SubscriptionEventKind,
+  type SubscriptionFeedKind,
+} from "../metaworld/subscriptions.js";
+import {
   buildSearchResultSnapshot,
 } from "../metaworld/search.js";
 import {
@@ -73,6 +80,44 @@ import path from "path";
 
 const logger = createLogger("world");
 
+function readSubscriptionFeedKind(value: string | undefined): SubscriptionFeedKind | undefined {
+  if (!value) {
+    return undefined;
+  }
+  if (value !== "fox" && value !== "group" && value !== "board") {
+    throw new Error("Invalid subscription kind: expected fox, group, or board");
+  }
+  return value;
+}
+
+function readNotifyOnValues(
+  args: string[],
+  feedKind: SubscriptionFeedKind,
+): SubscriptionEventKind[] {
+  const raw = readCsvOption(args, "--notify-on");
+  const fallbackByKind: Record<SubscriptionFeedKind, SubscriptionEventKind[]> = {
+    fox: ["announcement", "message", "bounty", "artifact", "settlement"],
+    group: ["announcement", "message"],
+    board: ["bounty", "artifact", "settlement"],
+  };
+  const values = raw ?? fallbackByKind[feedKind];
+  const valid: SubscriptionEventKind[] = [
+    "announcement",
+    "message",
+    "bounty",
+    "artifact",
+    "settlement",
+  ];
+  for (const value of values) {
+    if (!valid.includes(value as SubscriptionEventKind)) {
+      throw new Error(
+        `Invalid --notify-on value: ${value}. Expected announcement,message,bounty,artifact,settlement.`,
+      );
+    }
+  }
+  return values as SubscriptionEventKind[];
+}
+
 export async function handleWorldCommand(args: string[]): Promise<void> {
   const command = args[0] || "feed";
   const asJson = args.includes("--json");
@@ -81,7 +126,7 @@ export async function handleWorldCommand(args: string[]): Promise<void> {
 OpenFox world
 
 Usage:
-  openfox world feed [--group <group-id>] [--limit N] [--json]
+  openfox world feed [--group <group-id>] [--subscribed-only] [--limit N] [--json]
   openfox world board list --kind <work|opportunity|artifact|settlement> [--limit N] [--json]
   openfox world directory foxes [--query <text>] [--role <role>] [--limit N] [--json]
   openfox world directory groups [--query <text>] [--visibility <private|listed|public>] [--tag <tag>] [--role <role>] [--limit N] [--json]
@@ -96,7 +141,7 @@ Usage:
   openfox world serve [--port N] [--host <addr>]
   openfox world presence publish [--group <group-id>] [--status <online|busy|away|recently_active>] [--ttl-seconds N] [--summary "<text>"] [--json]
   openfox world presence list [--group <group-id>] [--status <all|online|busy|away|recently_active|expired>] [--include-expired] [--limit N] [--json]
-  openfox world notifications [--group <group-id>] [--status <all|unread>] [--include-dismissed] [--limit N] [--json]
+  openfox world notifications [--group <group-id>] [--status <all|unread>] [--subscribed-only] [--include-dismissed] [--limit N] [--json]
   openfox world notification read --id <notification-id> [--json]
   openfox world notification dismiss --id <notification-id> [--json]
   openfox world follow fox --address <addr> [--json]
@@ -105,6 +150,11 @@ Usage:
   openfox world unfollow group --group <id> [--json]
   openfox world following [--json]
   openfox world followers [--json]
+  openfox world subscribe fox --address <addr> [--notify-on announcement,message,bounty,artifact,settlement] [--json]
+  openfox world subscribe group --group <id> [--notify-on announcement,message] [--json]
+  openfox world subscribe board --board <work|opportunity|artifact|settlement> [--notify-on bounty,artifact,settlement] [--json]
+  openfox world subscriptions [--kind fox|group|board] [--json]
+  openfox world unsubscribe --id <subscription-id> [--json]
   openfox world search <query> [--kind fox|group|board_item] [--limit N] [--json]
   openfox world recommended foxes [--limit N] [--json]
   openfox world recommended groups [--limit N] [--json]
@@ -133,6 +183,8 @@ Usage:
       const snapshot = buildWorldFeedSnapshot(db, {
         groupId: readOption(args, "--group"),
         limit: readNumberOption(args, "--limit", 25),
+        subscriberAddress: config.walletAddress,
+        subscribedOnly: args.includes("--subscribed-only"),
       });
       if (asJson) {
         logger.info(JSON.stringify(snapshot, null, 2));
@@ -159,6 +211,7 @@ Usage:
         groupId: readOption(args, "--group"),
         limit: readNumberOption(args, "--limit", 25),
         unreadOnly: status === "unread",
+        subscribedOnly: args.includes("--subscribed-only"),
         includeDismissed: args.includes("--include-dismissed"),
       });
       if (asJson) {
@@ -845,6 +898,119 @@ Usage:
       for (const follower of followers) {
         logger.info(`  ${follower.followerAddress}  (since ${follower.createdAt})`);
       }
+      return;
+    }
+
+    if (command === "subscribe") {
+      const subcommand = readSubscriptionFeedKind(args[1]);
+      if (!subcommand) {
+        throw new Error("Usage: openfox world subscribe <fox|group|board> ...");
+      }
+      const notifyOn = readNotifyOnValues(args, subcommand);
+      if (subcommand === "fox") {
+        const address = readOption(args, "--address");
+        if (!address) {
+          throw new Error("Usage: openfox world subscribe fox --address <addr>");
+        }
+        const record = subscribeToFeed(db, {
+          address: config.walletAddress,
+          feedKind: "fox",
+          targetId: address,
+          notifyOn,
+        });
+        logger.info(
+          asJson
+            ? JSON.stringify(record, null, 2)
+            : `Subscribed to fox ${record.targetId} for ${record.notifyOn.join(", ")}`,
+        );
+        return;
+      }
+      if (subcommand === "group") {
+        const groupId = readOption(args, "--group");
+        if (!groupId) {
+          throw new Error("Usage: openfox world subscribe group --group <id>");
+        }
+        const record = subscribeToFeed(db, {
+          address: config.walletAddress,
+          feedKind: "group",
+          targetId: groupId,
+          notifyOn,
+        });
+        logger.info(
+          asJson
+            ? JSON.stringify(record, null, 2)
+            : `Subscribed to group ${record.targetId} for ${record.notifyOn.join(", ")}`,
+        );
+        return;
+      }
+      const boardId = readOption(args, "--board");
+      if (!boardId) {
+        throw new Error(
+          "Usage: openfox world subscribe board --board <work|opportunity|artifact|settlement>",
+        );
+      }
+      const normalizedBoardId = boardId.trim();
+      if (
+        normalizedBoardId !== "work" &&
+        normalizedBoardId !== "opportunity" &&
+        normalizedBoardId !== "artifact" &&
+        normalizedBoardId !== "settlement"
+      ) {
+        throw new Error(
+          "Invalid --board value: expected work, opportunity, artifact, or settlement",
+        );
+      }
+      const record = subscribeToFeed(db, {
+        address: config.walletAddress,
+        feedKind: "board",
+        targetId: normalizedBoardId,
+        notifyOn,
+      });
+      logger.info(
+        asJson
+          ? JSON.stringify(record, null, 2)
+          : `Subscribed to board ${record.targetId} for ${record.notifyOn.join(", ")}`,
+      );
+      return;
+    }
+
+    if (command === "subscriptions") {
+      const feedKind = readSubscriptionFeedKind(readOption(args, "--kind"));
+      const subscriptions = listSubscriptions(db, config.walletAddress, {
+        feedKind,
+        limit: readNumberOption(args, "--limit", 50),
+      });
+      if (asJson) {
+        logger.info(JSON.stringify({ subscriptions }, null, 2));
+        return;
+      }
+      logger.info("=== OPENFOX SUBSCRIPTIONS ===");
+      if (!subscriptions.length) {
+        logger.info("No subscriptions configured.");
+        return;
+      }
+      for (const subscription of subscriptions) {
+        logger.info(
+          `${subscription.subscriptionId}  ${subscription.feedKind}:${subscription.targetId}`,
+        );
+        logger.info(`  notify_on=${subscription.notifyOn.join(", ")} created=${subscription.createdAt}`);
+      }
+      return;
+    }
+
+    if (command === "unsubscribe") {
+      const subscriptionId = readOption(args, "--id");
+      if (!subscriptionId) {
+        throw new Error("Usage: openfox world unsubscribe --id <subscription-id>");
+      }
+      const removed = unsubscribe(db, subscriptionId);
+      logger.info(
+        asJson
+          ? JSON.stringify({ removed, subscriptionId }, null, 2)
+          : removed
+            ? `Unsubscribed: ${subscriptionId}`
+            : `Subscription not found: ${subscriptionId}`,
+      );
       return;
     }
 

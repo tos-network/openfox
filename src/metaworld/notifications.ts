@@ -1,4 +1,5 @@
 import type { OpenFoxDatabase } from "../types.js";
+import { hasMatchingSubscriptionForActivity } from "./subscriptions.js";
 
 export type WorldNotificationKind =
   | "group_invite_received"
@@ -118,6 +119,44 @@ function sortItems(
       return a.notificationId.localeCompare(b.notificationId);
     })
     .slice(0, Math.max(1, limit));
+}
+
+function shouldAlwaysIncludeNotification(
+  item: WorldNotificationRecord,
+): boolean {
+  return (
+    item.kind === "group_invite_received" ||
+    item.kind === "group_join_request_pending" ||
+    item.kind === "group_join_request_approved" ||
+    item.kind === "group_moderation_notice"
+  );
+}
+
+function matchesSubscriptionFilter(
+  db: OpenFoxDatabase,
+  actorAddress: string,
+  item: WorldNotificationRecord,
+): boolean {
+  if (shouldAlwaysIncludeNotification(item)) {
+    return true;
+  }
+  switch (item.kind) {
+    case "group_announcement_posted":
+      return hasMatchingSubscriptionForActivity(db, actorAddress, {
+        eventKind: "announcement",
+        actorAddress: item.actorAddress ?? null,
+        groupId: item.groupId ?? null,
+      });
+    case "group_message_mention":
+    case "group_message_reply":
+      return hasMatchingSubscriptionForActivity(db, actorAddress, {
+        eventKind: "message",
+        actorAddress: item.actorAddress ?? null,
+        groupId: item.groupId ?? null,
+      });
+    default:
+      return true;
+  }
 }
 
 function buildInviteNotifications(params: {
@@ -684,6 +723,7 @@ export function listWorldNotifications(
     limit?: number;
     unreadOnly?: boolean;
     includeDismissed?: boolean;
+    subscribedOnly?: boolean;
   },
 ): WorldNotificationRecord[] {
   const actorAddress = normalizeAddressLike(options.actorAddress);
@@ -740,6 +780,9 @@ export function listWorldNotifications(
   const filtered = withState.filter((item) => {
     if (!options.includeDismissed && item.dismissedAt) return false;
     if (options.unreadOnly && item.readAt) return false;
+    if (options.subscribedOnly && !matchesSubscriptionFilter(db, actorAddress, item)) {
+      return false;
+    }
     return true;
   });
   return sortItems(filtered, limit);
@@ -753,18 +796,20 @@ export function buildWorldNotificationsSnapshot(
     limit?: number;
     unreadOnly?: boolean;
     includeDismissed?: boolean;
+    subscribedOnly?: boolean;
   },
 ): WorldNotificationSnapshot {
   const items = listWorldNotifications(db, options);
   const unreadCount = items.filter((item) => !item.readAt).length;
   const groupScope = options.groupId ? ` for ${options.groupId}` : "";
+  const subscriptionScope = options.subscribedOnly ? " matching subscriptions" : "";
   return {
     generatedAt: nowIso(),
     unreadCount,
     items,
     summary: items.length
-      ? `World notifications${groupScope} contain ${items.length} item(s), ${unreadCount} unread.`
-      : `World notifications${groupScope} are currently empty.`,
+      ? `World notifications${groupScope}${subscriptionScope} contain ${items.length} item(s), ${unreadCount} unread.`
+      : `World notifications${groupScope}${subscriptionScope} are currently empty.`,
   };
 }
 

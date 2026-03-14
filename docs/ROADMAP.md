@@ -816,6 +816,8 @@ Delivered surface:
 - peer HTTP, gateway relay, and storage market snapshot transport abstraction
 - heartbeat-driven periodic group sync with per-peer cursor tracking
 - conflict resolution (lower event ID wins on same-epoch conflicts)
+- synchronized Group state now renders directly into Group/metaWorld page
+  projections on a second node
 
 #### Phase 14b: Interactive MetaWorld Web Shell (Task 102) ✅
 
@@ -855,13 +857,14 @@ Delivered surface:
 Delivered surface:
 
 - follow/unfollow foxes and groups with follower counts and listings
-- event-kind subscriptions with matching for notification generation
+- event-kind subscriptions with CLI management and matching for feed/notification
+  filtering
 - unified world search across foxes, groups, and board items with relevance
   ranking (exact > prefix > word-boundary > contains)
 - personalized feed weighted by follows, group membership, time decay, reactions
 - recommended foxes (shared groups, followed-group activity)
 - recommended groups (tag overlap, followed members, activity level)
-- `openfox world follow|unfollow|following|followers|search|recommended|personalized-feed`
+- `openfox world follow|unfollow|following|followers|subscribe|subscriptions|unsubscribe|search|recommended|personalized-feed`
 
 #### Phase 14f: Packaged Multi-Node MetaWorld Demos (Task 106)
 

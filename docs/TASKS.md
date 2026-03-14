@@ -470,8 +470,9 @@ building OpenFox into a TOS-native agent platform.
     - `src/group/sync-scheduler.ts` — heartbeat-driven periodic group sync with
       per-peer cursor tracking
     - `group_sync_peers` schema table for peer endpoint tracking
-    - 17 tests covering round-trip sync, replay safety, snapshot create/apply,
-      conflict resolution, and invalid event rejection
+    - 18 tests covering round-trip sync, replay safety, snapshot create/apply,
+      conflict resolution, invalid event rejection, and page rendering from
+      synchronized Group state on a second node
 - [x] Task 102: Add interactive metaWorld web shell and router
   - Status: Complete
   - Goal: Turn the current static page/export layer into a navigable,
@@ -519,16 +520,20 @@ building OpenFox into a TOS-native agent platform.
   - Delivered:
     - `src/metaworld/follows.ts` — follow/unfollow foxes and groups with counts
       and follower listing
-    - `src/metaworld/subscriptions.ts` — event-kind subscriptions with matching
+    - `src/metaworld/subscriptions.ts` — event-kind subscriptions with matching,
+      CLI management, and feed/notification filtering
     - `src/metaworld/search.ts` — unified search across foxes, groups, and board
       items with relevance ranking (exact > prefix > word-boundary > contains)
     - `src/metaworld/ranking.ts` — personalized feed (follow/group/time/reaction
       weighted), recommended foxes (shared groups, followed-group activity),
       recommended groups (tag overlap, followed members, activity)
     - `world_follows`, `world_subscriptions`, `world_search_index` schema tables
-    - CLI commands: follow, unfollow, following, followers, search, recommended,
-      personalized-feed
-    - 20 tests covering follows, subscriptions, search, ranking, recommendations
+    - CLI commands: follow, unfollow, following, followers, subscribe,
+      subscriptions, unsubscribe, search, recommended, personalized-feed
+    - `--subscribed-only` filtering for `openfox world feed` and
+      `openfox world notifications`
+    - 22 targeted tests covering follows, subscriptions, search, ranking,
+      recommendations, and subscription-aware feed/notification filtering
 - [ ] Task 106: Add packaged multi-node metaWorld demos and validation
   - Status: Proposed
   - Goal: Let operators launch and validate a real local multi-node Fox world
@@ -1561,43 +1566,43 @@ building OpenFox into a TOS-native agent platform.
 
 ## Task 101 Breakdown
 
-- [ ] Add Group event catch-up over peer, gateway, relay, or storage-backed
+- [x] Add Group event catch-up over peer, gateway, relay, or storage-backed
   paths.
-- [ ] Add snapshot pull/replay and cursor tracking for Group replication.
-- [ ] Add replay-safe multi-node tests for invite, join request, leave, remove,
+- [x] Add snapshot pull/replay and cursor tracking for Group replication.
+- [x] Add replay-safe multi-node tests for invite, join request, leave, remove,
   and moderation propagation.
-- [ ] Prove world pages can render from synchronized Group state across at
+- [x] Prove world pages can render from synchronized Group state across at
   least two OpenFox nodes.
 
 ## Task 102 Breakdown
 
-- [ ] Add an interactive web router on top of the current world shell and page
+- [x] Add an interactive web router on top of the current world shell and page
   exporters.
-- [ ] Add live refresh/navigation between shell, directory, Fox, Group, feed,
+- [x] Add live refresh/navigation between shell, directory, Fox, Group, feed,
   notification, and board views.
-- [ ] Add action entry points for common world operations from the web shell.
-- [ ] Add end-to-end product tests for routed metaWorld navigation.
+- [x] Add action entry points for common world operations from the web shell.
+- [x] Add end-to-end product tests for routed metaWorld navigation.
 
 ## Task 103 Breakdown
 
-- [ ] Add Group warning events and warning projections.
-- [ ] Add report, review, and appeal flows for community moderation.
-- [ ] Add anti-spam and rate-limit policy surfaces for community safety.
-- [ ] Add moderator-visible queue and audit views.
+- [x] Add Group warning events and warning projections.
+- [x] Add report, review, and appeal flows for community moderation.
+- [x] Add anti-spam and rate-limit policy surfaces for community safety.
+- [x] Add moderator-visible queue and audit views.
 
 ## Task 104 Breakdown
 
-- [ ] Add public profile publishing/edit flows for Foxes and Groups.
-- [ ] Add avatar/media/profile metadata fields to world identity.
-- [ ] Add reputation and trust summary projections to profile surfaces.
-- [ ] Add tests for publishing, updating, and re-rendering world identity.
+- [x] Add public profile publishing/edit flows for Foxes and Groups.
+- [x] Add avatar/media/profile metadata fields to world identity.
+- [x] Add reputation and trust summary projections to profile surfaces.
+- [x] Add tests for publishing, updating, and re-rendering world identity.
 
 ## Task 105 Breakdown
 
-- [ ] Add follow and subscription state for Foxes and Groups.
-- [ ] Add world search over Foxes, Groups, tags, identities, and boards.
-- [ ] Add ranking/recommendation inputs over activity, presence, and follows.
-- [ ] Add subscription-aware feed and notification filtering.
+- [x] Add follow and subscription state for Foxes and Groups.
+- [x] Add world search over Foxes, Groups, tags, identities, and boards.
+- [x] Add ranking/recommendation inputs over activity, presence, and follows.
+- [x] Add subscription-aware feed and notification filtering.
 
 ## Task 106 Breakdown
 

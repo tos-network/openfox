@@ -810,6 +810,16 @@ function applySyncEventSideEffects(
   }
 }
 
+function shouldReplaySnapshotProjection(eventKind: string): boolean {
+  return (
+    eventKind === "message.posted" ||
+    eventKind === "message.reply.posted" ||
+    eventKind === "message.edited" ||
+    eventKind === "message.redacted" ||
+    eventKind === "message.reaction.added"
+  );
+}
+
 // ─── Snapshot ───────────────────────────────────────────────────
 
 /**
@@ -1065,6 +1075,16 @@ export function applyGroupSnapshot(
         sourceKind: "snapshot",
         receivedAt: nowIso(),
       });
+    }
+
+    // Replay message-side projections that are not otherwise materialized
+    // by the snapshot payload itself. This restores `group_messages` and
+    // `group_message_reactions` on a fresh node without mutating member or
+    // announcement rows that were already inserted from the snapshot.
+    for (const event of snapshot.events) {
+      if (shouldReplaySnapshotProjection(event.kind)) {
+        applySyncEventSideEffects(db, groupId, event);
+      }
     }
 
     // Record the snapshot

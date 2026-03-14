@@ -4,6 +4,7 @@ import type {
   OpenFoxDatabase,
   SettlementRecord,
 } from "../types.js";
+import { hasMatchingSubscriptionForActivity } from "./subscriptions.js";
 import {
   listGroupAnnouncements,
   listGroupEvents,
@@ -249,11 +250,72 @@ function sortItems(items: WorldFeedItem[], limit: number): WorldFeedItem[] {
     .slice(0, Math.max(1, limit));
 }
 
+function buildSubscriptionTarget(item: WorldFeedItem): {
+  eventKind: "announcement" | "message" | "bounty" | "artifact" | "settlement" | null;
+  actorAddress?: string | null;
+  groupId?: string | null;
+  boardId?: string | null;
+} {
+  switch (item.kind) {
+    case "group_announcement":
+      return {
+        eventKind: "announcement",
+        actorAddress: item.actorAddress ?? null,
+        groupId: item.groupId ?? null,
+      };
+    case "group_message":
+      return {
+        eventKind: "message",
+        actorAddress: item.actorAddress ?? null,
+        groupId: item.groupId ?? null,
+      };
+    case "bounty_opened":
+      return {
+        eventKind: "bounty",
+        actorAddress: item.actorAddress ?? null,
+        boardId: "work",
+      };
+    case "artifact_published":
+      return {
+        eventKind: "artifact",
+        actorAddress: item.actorAddress ?? null,
+        boardId: "artifact",
+      };
+    case "settlement_completed":
+      return {
+        eventKind: "settlement",
+        boardId: "settlement",
+      };
+    default:
+      return {
+        eventKind: null,
+        actorAddress: item.actorAddress ?? null,
+        groupId: item.groupId ?? null,
+      };
+  }
+}
+
+function filterBySubscriptions(
+  db: OpenFoxDatabase,
+  items: WorldFeedItem[],
+  subscriberAddress: string,
+): WorldFeedItem[] {
+  return items.filter((item) =>
+    hasMatchingSubscriptionForActivity(
+      db,
+      subscriberAddress,
+      buildSubscriptionTarget(item),
+    ),
+  );
+}
+
 export function listWorldFeedItems(
   db: OpenFoxDatabase,
   options?: {
     groupId?: string;
     limit?: number;
+    subscriberAddress?: string;
+    subscribedOnly?: boolean;
   },
 ): WorldFeedItem[] {
   const limit = Math.max(1, options?.limit ?? 50);
@@ -298,7 +360,12 @@ export function listWorldFeedItems(
     }
   }
 
-  return sortItems(items, limit);
+  const filteredItems =
+    options?.subscribedOnly && options.subscriberAddress
+      ? filterBySubscriptions(db, items, options.subscriberAddress)
+      : items;
+
+  return sortItems(filteredItems, limit);
 }
 
 export function buildWorldFeedSnapshot(
@@ -306,16 +373,19 @@ export function buildWorldFeedSnapshot(
   options?: {
     groupId?: string;
     limit?: number;
+    subscriberAddress?: string;
+    subscribedOnly?: boolean;
   },
 ): WorldFeedSnapshot {
   const items = listWorldFeedItems(db, options);
   const generatedAt = new Date().toISOString();
   const groupScope = options?.groupId ? ` for ${options.groupId}` : "";
+  const subscriptionScope = options?.subscribedOnly ? " matching subscriptions" : "";
   return {
     generatedAt,
     items,
     summary: items.length
-      ? `World feed${groupScope} contains ${items.length} recent activity items.`
-      : `World feed${groupScope} is currently empty.`,
+      ? `World feed${groupScope}${subscriptionScope} contains ${items.length} recent activity items.`
+      : `World feed${groupScope}${subscriptionScope} is currently empty.`,
   };
 }

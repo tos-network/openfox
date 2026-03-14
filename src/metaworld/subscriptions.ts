@@ -26,6 +26,13 @@ export interface WorldSubscriptionRecord {
   createdAt: string;
 }
 
+export interface SubscriptionActivityTarget {
+  eventKind: SubscriptionEventKind | null;
+  actorAddress?: string | null;
+  groupId?: string | null;
+  boardId?: string | null;
+}
+
 function normalizeAddressLike(value: string): string {
   const trimmed = value.trim().toLowerCase();
   if (!trimmed.startsWith("0x")) {
@@ -192,4 +199,41 @@ export function getSubscriptionMatches(
   return rows
     .map(mapSubscriptionRow)
     .filter((sub) => sub.notifyOn.includes(eventKind));
+}
+
+export function listMatchingSubscriptionsForActivity(
+  db: OpenFoxDatabase,
+  address: string,
+  activity: SubscriptionActivityTarget,
+): WorldSubscriptionRecord[] {
+  const subscriberAddress = normalizeAddressLike(address);
+  if (!activity.eventKind) {
+    return [];
+  }
+  const actorAddress = activity.actorAddress
+    ? normalizeAddressLike(activity.actorAddress)
+    : null;
+  const groupId = activity.groupId?.trim() || null;
+  const boardId = activity.boardId?.trim() || null;
+
+  return listSubscriptions(db, subscriberAddress).filter((subscription) => {
+    if (!subscription.notifyOn.includes(activity.eventKind!)) {
+      return false;
+    }
+    if (subscription.feedKind === "fox") {
+      return Boolean(actorAddress && subscription.targetId.toLowerCase() === actorAddress);
+    }
+    if (subscription.feedKind === "group") {
+      return Boolean(groupId && subscription.targetId === groupId);
+    }
+    return Boolean(boardId && subscription.targetId === boardId);
+  });
+}
+
+export function hasMatchingSubscriptionForActivity(
+  db: OpenFoxDatabase,
+  address: string,
+  activity: SubscriptionActivityTarget,
+): boolean {
+  return listMatchingSubscriptionsForActivity(db, address, activity).length > 0;
 }

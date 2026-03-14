@@ -20,6 +20,7 @@ import {
   listWorldNotifications,
   markWorldNotificationRead,
 } from "../metaworld/notifications.js";
+import { subscribeToFeed } from "../metaworld/subscriptions.js";
 import type { OpenFoxDatabase } from "../types.js";
 
 const ADMIN_PRIVATE_KEY =
@@ -244,6 +245,129 @@ describe("metaWorld notifications", () => {
     );
     expect(memberSnapshot.items.map((item) => item.kind)).toContain(
       "group_moderation_notice",
+    );
+  });
+
+  it("filters notifications by subscriptions while keeping direct action items", async () => {
+    const admin = privateKeyToAccount(ADMIN_PRIVATE_KEY);
+    const member = privateKeyToAccount(MEMBER_PRIVATE_KEY);
+    const applicant = privateKeyToAccount(APPLICANT_PRIVATE_KEY);
+    const outsider = privateKeyToAccount(
+      "0x2222222222222222222222222222222222222222222222222222222222222222",
+    );
+
+    const created = await createGroup({
+      db,
+      account: admin,
+      input: {
+        name: "Subscribed Notifications",
+        actorAddress: admin.address,
+      },
+    });
+
+    const invite = await sendGroupInvite({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        targetAddress: member.address,
+        targetRoles: ["member"],
+        actorAddress: admin.address,
+      },
+    });
+    await acceptGroupInvite({
+      db,
+      account: member,
+      input: {
+        groupId: created.group.groupId,
+        proposalId: invite.proposal.proposalId,
+        actorAddress: member.address,
+        displayName: "Subscribed Member",
+      },
+    });
+
+    const coAdminInvite = await sendGroupInvite({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        targetAddress: applicant.address,
+        targetRoles: ["admin"],
+        actorAddress: admin.address,
+      },
+    });
+    await acceptGroupInvite({
+      db,
+      account: applicant,
+      input: {
+        groupId: created.group.groupId,
+        proposalId: coAdminInvite.proposal.proposalId,
+        actorAddress: applicant.address,
+        displayName: "Co Admin",
+      },
+    });
+
+    await requestToJoinGroup({
+      db,
+      account: outsider,
+      input: {
+        groupId: created.group.groupId,
+        actorAddress: outsider.address,
+        message: "Let me in.",
+      },
+    });
+
+    const seedMessage = await postGroupMessage({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        text: "Seed message",
+        actorAddress: admin.address,
+      },
+    });
+    await postGroupMessage({
+      db,
+      account: member,
+      input: {
+        groupId: created.group.groupId,
+        text: "Reply that should be filtered out",
+        replyToMessageId: seedMessage.message.messageId,
+        actorAddress: member.address,
+      },
+    });
+    await postGroupAnnouncement({
+      db,
+      account: applicant,
+      input: {
+        groupId: created.group.groupId,
+        title: "Subscribed announcement",
+        bodyText: "This should remain after filtering.",
+        actorAddress: applicant.address,
+      },
+    });
+
+    subscribeToFeed(db, {
+      address: admin.address,
+      feedKind: "group",
+      targetId: created.group.groupId,
+      notifyOn: ["announcement"],
+    });
+
+    const snapshot = buildWorldNotificationsSnapshot(db, {
+      actorAddress: admin.address,
+      limit: 20,
+      subscribedOnly: true,
+    });
+    expect(snapshot.summary).toContain("matching subscriptions");
+    expect(snapshot.items.map((item) => item.kind)).toContain(
+      "group_join_request_pending",
+    );
+    expect(snapshot.items.map((item) => item.kind)).toContain(
+      "group_announcement_posted",
+    );
+    expect(snapshot.items.map((item) => item.kind)).not.toContain(
+      "group_message_reply",
     );
   });
 });

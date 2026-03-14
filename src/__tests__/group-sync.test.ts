@@ -27,6 +27,7 @@ import {
   upsertSyncPeer,
   listSyncPeers,
 } from "../group/sync.js";
+import { buildGroupPageSnapshot } from "../metaworld/group-page.js";
 import type { OpenFoxDatabase } from "../types.js";
 import type { GroupEventRecord } from "../group/store.js";
 
@@ -756,6 +757,81 @@ describe("Group Sync", () => {
       const targetEvents = listGroupEvents(targetDb, groupId, 1000);
       const sourceEvents = listGroupEvents(db, groupId, 1000);
       expect(targetEvents.length).toBe(sourceEvents.length);
+    } finally {
+      targetDb.close();
+    }
+  });
+
+  it("renders a group page from synchronized state on a second node", async () => {
+    const admin = privateKeyToAccount(TEST_PRIVATE_KEY);
+    const member = privateKeyToAccount(SECOND_PRIVATE_KEY);
+
+    const created = await createGroup({
+      db,
+      account: admin,
+      input: {
+        name: "Synced Render Group",
+        actorAddress: admin.address,
+      },
+    });
+    const invite = await sendGroupInvite({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        targetAddress: member.address,
+        targetRoles: ["member"],
+        actorAddress: admin.address,
+      },
+    });
+    await acceptGroupInvite({
+      db,
+      account: member,
+      input: {
+        groupId: created.group.groupId,
+        proposalId: invite.proposal.proposalId,
+        actorAddress: member.address,
+        displayName: "Synced Member",
+      },
+    });
+    await postGroupMessage({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        text: "Rendered from synchronized state",
+        actorAddress: admin.address,
+      },
+    });
+
+    const targetPath = makeTmpDbPath();
+    const targetDb = createDatabase(targetPath);
+    try {
+      const snapshot = buildGroupSnapshot(db, created.group.groupId);
+      applyGroupSnapshot(targetDb, created.group.groupId, snapshot);
+      const lastSnapshotEventId =
+        snapshot.events.length > 0
+          ? snapshot.events[snapshot.events.length - 1].eventId
+          : null;
+      const bundle = buildGroupSyncBundle(
+        db,
+        created.group.groupId,
+        lastSnapshotEventId,
+      );
+      applyGroupSyncBundle(targetDb, created.group.groupId, bundle);
+
+      const page = buildGroupPageSnapshot(targetDb, {
+        groupId: created.group.groupId,
+        messageLimit: 10,
+        announcementLimit: 10,
+        eventLimit: 20,
+      });
+      expect(page.group.name).toBe("Synced Render Group");
+      expect(page.stats.activeMemberCount).toBe(2);
+      expect(page.stats.messageCount).toBeGreaterThan(0);
+      expect(page.recentMessages.some((item) => item.latestEventId.length > 0)).toBe(true);
+      expect(page.activityFeed.items.length).toBeGreaterThan(0);
+      expect(page.activityFeed.items.some((item) => item.kind === "group_message")).toBe(true);
     } finally {
       targetDb.close();
     }
