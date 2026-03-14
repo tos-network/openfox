@@ -3,6 +3,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { readOption } from "../cli/parse.js";
 import { createLogger } from "../observability/logger.js";
+import { exportMetaWorldDemoBundle } from "../metaworld/demo.js";
 
 const logger = createLogger("templates");
 
@@ -56,21 +57,32 @@ export function readBundledTemplateReadme(name: string): string {
   return fs.readFileSync(readmePath, "utf8");
 }
 
-export function exportBundledTemplate(params: {
+export async function exportBundledTemplate(params: {
   name: string;
   outputPath: string;
   force?: boolean;
-}): {
+}): Promise<{
   name: string;
   sourcePath: string;
   outputPath: string;
-} {
+}> {
   const root = getTemplateRoot();
   const sourcePath = path.join(root, params.name);
   if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isDirectory()) {
     throw new Error(`Unknown bundled template: ${params.name}`);
   }
   const outputPath = path.resolve(params.outputPath);
+  if (params.name === "metaworld-local-demo") {
+    await exportMetaWorldDemoBundle({
+      outputDir: outputPath,
+      force: params.force,
+    });
+    return {
+      name: params.name,
+      sourcePath,
+      outputPath,
+    };
+  }
   if (fs.existsSync(outputPath)) {
     if (!params.force) {
       throw new Error(
@@ -138,7 +150,7 @@ Usage:
     if (!name || !outputPath) {
       throw new Error("Usage: openfox templates export <name> --output <path> [--force] [--json]");
     }
-    const result = exportBundledTemplate({
+    const result = await exportBundledTemplate({
       name,
       outputPath,
       force: args.includes("--force"),

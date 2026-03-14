@@ -799,7 +799,7 @@ The current core roadmap phases are complete.
 
 ### Phase 14: OpenFox MetaWorld v1
 
-Status: largely completed (Tasks 101-105 done, Task 106 proposed)
+Status: completed (Tasks 101-106 done)
 
 Goal:
 

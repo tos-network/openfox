@@ -47,11 +47,11 @@ describe("evidence and oracle market packaging", () => {
     expect(packs.some((item) => item.name === "verification-market-v1")).toBe(true);
   });
 
-  it("exports packaged evidence and oracle flows for operator deployment", () => {
+  it("exports packaged evidence and oracle flows for operator deployment", async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-evidence-oracle-pack-"));
 
     const evidenceOutput = path.join(tempDir, "evidence-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "evidence-market-flow",
       outputPath: evidenceOutput,
     });
@@ -61,7 +61,7 @@ describe("evidence and oracle market packaging", () => {
     );
 
     const oracleOutput = path.join(tempDir, "oracle-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "oracle-market-flow",
       outputPath: oracleOutput,
     });
@@ -83,7 +83,7 @@ describe("evidence and oracle market packaging", () => {
     );
 
     const proofOutput = path.join(tempDir, "proof-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "proof-market-flow",
       outputPath: proofOutput,
     });
@@ -93,7 +93,7 @@ describe("evidence and oracle market packaging", () => {
     );
 
     const verificationOutput = path.join(tempDir, "verification-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "verification-market-flow",
       outputPath: verificationOutput,
     });

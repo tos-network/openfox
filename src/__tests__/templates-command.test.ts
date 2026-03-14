@@ -23,6 +23,7 @@ describe("bundled templates", () => {
     const items = listBundledTemplates();
     expect(items.some((item) => item.name === "third-party-quickstart")).toBe(true);
     expect(items.some((item) => item.name === "local-marketplace")).toBe(true);
+    expect(items.some((item) => item.name === "metaworld-local-demo")).toBe(true);
     expect(items.some((item) => item.name === "public-fleet-operator")).toBe(true);
     expect(items.some((item) => item.name === "evidence-market-flow")).toBe(true);
     expect(items.some((item) => item.name === "oracle-market-flow")).toBe(true);
@@ -35,10 +36,10 @@ describe("bundled templates", () => {
     expect(text).toContain("Local Marketplace");
   });
 
-  it("exports bundled templates to a target directory", () => {
+  it("exports bundled templates to a target directory", async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-template-"));
     const outputPath = path.join(tempDir, "local-marketplace");
-    const result = exportBundledTemplate({
+    const result = await exportBundledTemplate({
       name: "local-marketplace",
       outputPath,
     });
@@ -48,10 +49,10 @@ describe("bundled templates", () => {
     expect(fs.existsSync(path.join(outputPath, "solver.openfox.json"))).toBe(true);
   });
 
-  it("exports the public fleet operator bundle", () => {
+  it("exports the public fleet operator bundle", async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-template-"));
     const outputPath = path.join(tempDir, "public-fleet-operator");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "public-fleet-operator",
       outputPath,
     });
@@ -63,38 +64,64 @@ describe("bundled templates", () => {
     ).toBe(true);
   });
 
-  it("exports packaged evidence and oracle market templates", () => {
+  it("exports packaged evidence and oracle market templates", async () => {
     tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-template-"));
 
     const evidenceOutput = path.join(tempDir, "evidence-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "evidence-market-flow",
       outputPath: evidenceOutput,
     });
     expect(fs.existsSync(path.join(evidenceOutput, "operator.openfox.json"))).toBe(true);
 
     const oracleOutput = path.join(tempDir, "oracle-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "oracle-market-flow",
       outputPath: oracleOutput,
     });
     expect(fs.existsSync(path.join(oracleOutput, "operator.openfox.json"))).toBe(true);
 
     const proofOutput = path.join(tempDir, "proof-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "proof-market-flow",
       outputPath: proofOutput,
     });
     expect(fs.existsSync(path.join(proofOutput, "operator.openfox.json"))).toBe(true);
 
     const verificationOutput = path.join(tempDir, "verification-market-flow");
-    exportBundledTemplate({
+    await exportBundledTemplate({
       name: "verification-market-flow",
       outputPath: verificationOutput,
     });
     expect(
       fs.existsSync(path.join(verificationOutput, "operator.openfox.json")),
     ).toBe(true);
+  });
+
+  it("exports the generated metaWorld local demo bundle", async () => {
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "openfox-template-"));
+    const outputPath = path.join(tempDir, "metaworld-local-demo");
+    await exportBundledTemplate({
+      name: "metaworld-local-demo",
+      outputPath,
+      force: true,
+    });
+
+    expect(fs.existsSync(path.join(outputPath, "metaworld-demo.json"))).toBe(true);
+    expect(fs.existsSync(path.join(outputPath, "scripts", "serve-node.sh"))).toBe(
+      true,
+    );
+    expect(fs.existsSync(path.join(outputPath, "scripts", "validate.sh"))).toBe(
+      true,
+    );
+    expect(
+      fs.existsSync(
+        path.join(outputPath, "nodes", "alpha", ".openfox", "metaworld.db"),
+      ),
+    ).toBe(true);
+    expect(fs.existsSync(path.join(outputPath, "sites", "alpha", "index.html"))).toBe(
+      true,
+    );
   });
 
   it("rejects proof packs with legacy verifier classes", () => {
