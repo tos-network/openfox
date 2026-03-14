@@ -35,6 +35,7 @@ export interface MetaWorldSiteManifest {
   groupDirectoryPath: string;
   contentIndexPath: string;
   routesPath: string;
+  searchIndexPath: string;
   foxPages: MetaWorldSitePageRef[];
   groupPages: MetaWorldSitePageRef[];
 }
@@ -101,6 +102,30 @@ export interface MetaWorldSiteRoutesIndex {
         title: string;
       }
   >;
+}
+
+export interface MetaWorldSiteSearchIndex {
+  generatedAt: string;
+  foxes: Array<{
+    address: string;
+    title: string;
+    path: string;
+    searchableText: string[];
+    roles: string[];
+    presenceStatus: string | null;
+    activeGroupCount: number;
+  }>;
+  groups: Array<{
+    groupId: string;
+    title: string;
+    path: string;
+    searchableText: string[];
+    visibility: "private" | "listed" | "public";
+    joinMode: "invite_only" | "request_approval";
+    activeMemberCount: number;
+    tags: string[];
+    roleNames: string[];
+  }>;
 }
 
 function renderDirectoryPage(params: {
@@ -405,6 +430,50 @@ export async function exportMetaWorldSite(params: {
     "utf8",
   );
 
+  const searchIndex: MetaWorldSiteSearchIndex = {
+    generatedAt,
+    foxes: foxDirectory.items.map((item) => ({
+      address: item.address,
+      title: item.displayName,
+      path: `foxes/${item.address}.html`,
+      searchableText: [
+        item.displayName,
+        item.address,
+        item.tnsName ?? "",
+        item.agentId ?? "",
+        ...item.roles,
+        ...item.capabilityNames,
+      ].filter((value) => value.trim().length > 0),
+      roles: item.roles,
+      presenceStatus: item.presenceStatus,
+      activeGroupCount: item.activeGroupCount,
+    })),
+    groups: groupDirectory.items.map((item) => ({
+      groupId: item.groupId,
+      title: item.name,
+      path: `groups/${item.groupId}.html`,
+      searchableText: [
+        item.name,
+        item.description,
+        item.groupId,
+        item.visibility,
+        item.joinMode,
+        ...item.tags,
+        ...Object.keys(item.roleSummary),
+      ].filter((value) => value.trim().length > 0),
+      visibility: item.visibility,
+      joinMode: item.joinMode,
+      activeMemberCount: item.activeMemberCount,
+      tags: item.tags,
+      roleNames: Object.keys(item.roleSummary),
+    })),
+  };
+  await fs.writeFile(
+    path.join(outputDir, "search-index.json"),
+    `${JSON.stringify(searchIndex, null, 2)}\n`,
+    "utf8",
+  );
+
   const manifest: MetaWorldSiteManifest = {
     generatedAt,
     shellPath: "index.html",
@@ -412,6 +481,7 @@ export async function exportMetaWorldSite(params: {
     groupDirectoryPath: "groups/index.html",
     contentIndexPath: "content-index.json",
     routesPath: "routes.json",
+    searchIndexPath: "search-index.json",
     foxPages,
     groupPages,
   };

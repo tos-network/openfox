@@ -136,6 +136,7 @@ describe("metaWorld site export", () => {
     expect(fs.existsSync(path.join(outputDir, "manifest.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "content-index.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "routes.json"))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, "search-index.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "foxes", "index.html"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "groups", "index.html"))).toBe(true);
     expect(
@@ -150,6 +151,7 @@ describe("metaWorld site export", () => {
     ) as {
       contentIndexPath: string;
       routesPath: string;
+      searchIndexPath: string;
       foxPages: Array<{ title: string }>;
       groupPages: Array<{ title: string }>;
     };
@@ -157,6 +159,7 @@ describe("metaWorld site export", () => {
     expect(manifest.groupPages[0].title).toBe("Site Group");
     expect(manifest.contentIndexPath).toBe("content-index.json");
     expect(manifest.routesPath).toBe("routes.json");
+    expect(manifest.searchIndexPath).toBe("search-index.json");
 
     const contentIndex = JSON.parse(
       fs.readFileSync(path.join(outputDir, "content-index.json"), "utf8"),
@@ -191,8 +194,20 @@ describe("metaWorld site export", () => {
           route.kind === "group_page" &&
           route.title === "Site Group" &&
           route.path === result.groupPages[0].path,
-      ),
+        ),
     ).toBe(true);
+
+    const searchIndex = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "search-index.json"), "utf8"),
+    ) as {
+      foxes: Array<{ title: string; searchableText: string[] }>;
+      groups: Array<{ title: string; searchableText: string[]; roleNames: string[] }>;
+    };
+    expect(searchIndex.foxes[0].title).toBe("Site Fox");
+    expect(searchIndex.foxes[0].searchableText).toContain(admin.address.toLowerCase());
+    expect(searchIndex.groups[0].title).toBe("Site Group");
+    expect(searchIndex.groups[0].searchableText).toContain("site");
+    expect(searchIndex.groups[0].roleNames).toContain("owner");
 
     const shellHtml = fs.readFileSync(path.join(outputDir, "index.html"), "utf8");
     const foxHtml = fs.readFileSync(
