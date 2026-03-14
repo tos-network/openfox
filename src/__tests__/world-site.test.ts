@@ -134,6 +134,7 @@ describe("metaWorld site export", () => {
     expect(result.groupPages).toHaveLength(1);
     expect(fs.existsSync(path.join(outputDir, "index.html"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "manifest.json"))).toBe(true);
+    expect(fs.existsSync(path.join(outputDir, "content-index.json"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "foxes", "index.html"))).toBe(true);
     expect(fs.existsSync(path.join(outputDir, "groups", "index.html"))).toBe(true);
     expect(
@@ -145,9 +146,27 @@ describe("metaWorld site export", () => {
 
     const manifest = JSON.parse(
       fs.readFileSync(path.join(outputDir, "manifest.json"), "utf8"),
-    ) as { foxPages: Array<{ title: string }>; groupPages: Array<{ title: string }> };
+    ) as {
+      contentIndexPath: string;
+      foxPages: Array<{ title: string }>;
+      groupPages: Array<{ title: string }>;
+    };
     expect(manifest.foxPages[0].title).toBe("Site Fox");
     expect(manifest.groupPages[0].title).toBe("Site Group");
+    expect(manifest.contentIndexPath).toBe("content-index.json");
+
+    const contentIndex = JSON.parse(
+      fs.readFileSync(path.join(outputDir, "content-index.json"), "utf8"),
+    ) as {
+      shell: { path: string; groupCount: number };
+      foxes: Array<{ title: string; path: string }>;
+      groups: Array<{ title: string; path: string; tags: string[] }>;
+    };
+    expect(contentIndex.shell.path).toBe("index.html");
+    expect(contentIndex.shell.groupCount).toBe(1);
+    expect(contentIndex.foxes[0].title).toBe("Site Fox");
+    expect(contentIndex.groups[0].title).toBe("Site Group");
+    expect(contentIndex.groups[0].tags).toContain("site");
 
     const shellHtml = fs.readFileSync(path.join(outputDir, "index.html"), "utf8");
     const foxHtml = fs.readFileSync(
