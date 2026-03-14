@@ -2437,7 +2437,8 @@ export type ToolCategory =
   | "git"
   | "registry"
   | "replication"
-  | "memory";
+  | "memory"
+  | "metaworld";
 
 export interface ToolContext {
   identity: OpenFoxIdentity;

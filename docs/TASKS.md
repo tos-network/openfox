@@ -728,6 +728,73 @@ building OpenFox into a TOS-native agent platform.
       proposal.update, intent.update, treasury.update, reputation.update
     - `src/__tests__/world-push.test.ts`
 
+## MetaWorld Reactor and Economic Orchestration (Tasks 119-123)
+
+Design reference: `docs/OpenFox-MetaWorld-Reactor-Design.md`
+
+- [ ] Task 119: MetaWorld Reactor — Event Bus Wiring
+  - Status: Not started
+  - Goal: Wire `worldEventBus.publish()` calls into all existing state-changing
+    operations so the real-time push infrastructure becomes functional.
+  - Scope:
+    - add `worldEventBus.publish()` calls at every state change point in
+      governance, treasury, intents, reputation, and messaging
+    - verify SSE endpoint delivers events to connected clients
+    - verify web shell receives and renders real-time updates
+    - `src/__tests__/reactor-events.test.ts`
+- [ ] Task 120: MetaWorld Reactor — Cross-Module Consequences
+  - Status: Not started
+  - Depends on: Task 119
+  - Goal: Implement the reactor core that fires deterministic consequences
+    when state changes occur, wiring isolated modules into a continuous
+    pipeline.
+  - Scope:
+    - `src/metaworld/reactor.ts` — reactor context, hook functions,
+      orchestrated operations
+    - intent completed → auto-create settlement spend proposal in governance
+    - intent completed → emit reputation events for solver and publisher
+    - treasury spend executed → emit economic reputation events
+    - settlement recorded → queue chain anchor commitment
+    - governance vote cast → auto-resolve if quorum + threshold met
+    - `src/__tests__/reactor-consequences.test.ts`
+- [ ] Task 121: MetaWorld Reactor — Heartbeat Automation
+  - Status: Not started
+  - Depends on: Task 120
+  - Goal: Connect the reactor's periodic tasks to the heartbeat daemon so
+    time-driven operations run automatically.
+  - Scope:
+    - add reactor heartbeat function to existing heartbeat task registry
+    - expire stale governance proposals on schedule
+    - reset expired budget periods on schedule
+    - sync treasury balances from on-chain on schedule
+    - run federation sync cycle on schedule
+    - publish pending chain state commitments on schedule
+    - `src/__tests__/reactor-heartbeat.test.ts`
+- [ ] Task 122: MetaWorld Reactor — Federation Broadcasting
+  - Status: Not started
+  - Depends on: Task 121
+  - Goal: Connect local state changes to federation outbound broadcasting so
+    other nodes receive world events automatically.
+  - Scope:
+    - local reputation events → federation broadcast queue
+    - local intent lifecycle events → federation broadcast queue
+    - local settlement events → federation broadcast queue
+    - heartbeat-driven federation outbound flush
+    - `src/__tests__/reactor-federation.test.ts`
+- [ ] Task 123: MetaWorld Agent Skills — Economic Decision Layer
+  - Status: Not started
+  - Depends on: Task 122
+  - Goal: Add agent skills that observe reactor-produced events and make
+    economic decisions through the agent loop.
+  - Scope:
+    - skill: observe opportunities and decide whether to publish intents
+    - skill: observe open intents and decide whether to respond
+    - skill: observe submitted artifacts and decide whether to approve
+    - skill: observe approved spend proposals and decide whether to execute
+    - skill: observe vote requests and decide voting stance
+    - integration with agent system prompt for economic reasoning
+    - `src/__tests__/agent-economic-skills.test.ts`
+
 ## Task 111 Breakdown
 
 - [ ] Add `group_governance_proposals`, `group_governance_votes`, and `group_governance_policy` tables to schema.ts (SCHEMA_VERSION → 45).

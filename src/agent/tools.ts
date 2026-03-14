@@ -30,6 +30,7 @@ import {
   syncHeartbeatToDb,
   upsertHeartbeatConfigEntry,
 } from "../heartbeat/config.js";
+import { createMetaWorldEconomicTools } from "../metaworld/economic-tools.js";
 
 const logger = createLogger("tools");
 
@@ -3624,6 +3625,9 @@ Rate Limit: ${provider.matchedCapability.rate_limit || "n/a"}`,
         return lines.join("\n");
       },
     },
+
+    // ── MetaWorld Economic Tools ──
+    ...createMetaWorldEconomicTools(),
   ];
 
   if (options?.enableRemoteRuntime !== false) {

@@ -9,6 +9,7 @@
 import type { OpenFoxDatabase } from "../types.js";
 import { keccak256, toHex } from "tosdk";
 import { createLogger } from "../observability/logger.js";
+import { worldEventBus } from "./event-bus.js";
 
 const logger = createLogger("reputation");
 
@@ -220,6 +221,12 @@ export function emitReputationEvent(
 
   // Recalculate score after inserting the event
   recalculateReputationScore(db, input.targetAddress, input.dimension, input.targetType);
+
+  worldEventBus.publish({
+    kind: "reputation.update",
+    payload: { address: input.targetAddress, dimension: input.dimension, delta: input.delta, sourceType: input.sourceType, sourceRef: input.sourceRef },
+    timestamp: new Date().toISOString(),
+  });
 
   return record;
 }

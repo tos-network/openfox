@@ -955,9 +955,9 @@ Delivered surface:
   proving publication and federation surfaces are rendered from real local and
   remote state
 
-### Phase 47: OpenFox MetaWorld v2 Economic Layer
+### Phase 47: OpenFox MetaWorld v2 Economic Layer ✅
 
-Status: complete
+Status: completed (Tasks 111-115 done)
 
 Goal:
 
@@ -970,7 +970,7 @@ Design references:
 - `OpenFox-MetaWorld-v2-Product-Blueprint.md`
 - `OpenFox-MetaWorld-Future-State.md`
 
-#### Phase 47a: Full Group Governance System (Task 111)
+#### Phase 47a: Full Group Governance System (Task 111) ✅
 
 Scope:
 
@@ -985,7 +985,7 @@ Scope:
 - 4 new event kinds: proposal.created, proposal.voted, proposal.resolved,
   proposal.executed
 
-#### Phase 47b: Group Treasury and Budget System (Task 112)
+#### Phase 47b: Group Treasury and Budget System (Task 112) ✅
 
 Scope:
 
@@ -1000,7 +1000,7 @@ Scope:
   treasury.inflow.detected, treasury.frozen, treasury.unfrozen,
   treasury.budget.updated
 
-#### Phase 47c: Generalized Intent System (Task 113)
+#### Phase 47c: Generalized Intent System (Task 113) ✅
 
 Scope:
 
@@ -1011,7 +1011,7 @@ Scope:
 - world-level and Group-level intent boards
 - `world_intents`, `world_intent_responses` schema tables
 
-#### Phase 47d: Global Reputation Graph (Task 114)
+#### Phase 47d: Global Reputation Graph (Task 114) ✅
 
 Scope:
 
@@ -1025,7 +1025,7 @@ Scope:
 - reputation-weighted search ranking
 - `world_reputation_scores`, `world_reputation_events` schema tables
 
-#### Phase 47e: Real-Time Push Infrastructure (Task 115)
+#### Phase 47e: Real-Time Push Infrastructure (Task 115) ✅
 
 Scope:
 
@@ -1047,7 +1047,7 @@ Acceptance criteria for Phase 47:
 - all v2 features compose with v1: a Group with treasury, governance, and
   intent boards works end-to-end
 
-#### Phase 47f: Nested Channels and Subgroups (Task 116)
+#### Phase 47f: Nested Channels and Subgroups (Task 116) ✅
 
 Scope:
 
@@ -1057,7 +1057,7 @@ Scope:
 - subgroup policy inheritance
 - nested channel tree rendering in world shell
 
-#### Phase 47g: On-Chain Group Anchoring (Task 117)
+#### Phase 47g: On-Chain Group Anchoring (Task 117) ✅
 
 Scope:
 
@@ -1068,7 +1068,7 @@ Scope:
 - group_chain_commitments schema table
 - periodic commitment publishing via heartbeat
 
-#### Phase 47h: World Federation (Task 118)
+#### Phase 47h: World Federation (Task 118) ✅
 
 Scope:
 
@@ -2410,10 +2410,167 @@ Acceptance criteria:
   durable proof-backed results without inventing a parallel storage or
   verification plane
 
+### Phase 48: MetaWorld Reactor and Economic Orchestration
+
+Status: not started
+
+Goal:
+
+- wire all `metaWorld v2` economic components into a continuous pipeline where
+  state changes in one module automatically trigger deterministic consequences
+  in others, and agent skills make economic decisions on top
+
+Design reference:
+
+- `OpenFox-MetaWorld-Reactor-Design.md`
+
+The reactor separates two concerns:
+
+- **Protocol layer (reactor)**: deterministic consequences that must always
+  happen — event bus publishing, proposal auto-resolution, reputation emission,
+  chain anchor queuing, federation broadcasting
+- **Participant layer (agent skills)**: AI-driven economic decisions — which
+  opportunities to pursue, which intents to respond to, whether to approve
+  artifacts, when to execute spends
+
+#### Phase 48a: Event Bus Wiring (Task 119)
+
+Scope:
+
+- add `worldEventBus.publish()` calls at every state change point in
+  governance, treasury, intents, reputation, and messaging
+- verify SSE endpoint delivers events to connected clients
+- verify web shell receives and renders real-time updates
+- `src/__tests__/reactor-events.test.ts`
+
+#### Phase 48b: Cross-Module Consequences (Task 120)
+
+Scope:
+
+- `src/metaworld/reactor.ts` — reactor context, hook functions, orchestrated
+  operations
+- intent completed → auto-create settlement spend proposal in governance
+- intent completed → emit reputation events for solver and publisher
+- treasury spend executed → emit economic reputation events
+- settlement recorded → queue chain anchor commitment
+- governance vote cast → auto-resolve if quorum + threshold met
+- `src/__tests__/reactor-consequences.test.ts`
+
+#### Phase 48c: Heartbeat Automation (Task 121)
+
+Scope:
+
+- add reactor heartbeat function to existing heartbeat task registry
+- expire stale governance proposals on schedule
+- reset expired budget periods on schedule
+- sync treasury balances from on-chain on schedule
+- run federation sync cycle on schedule
+- publish pending chain state commitments on schedule
+- `src/__tests__/reactor-heartbeat.test.ts`
+
+#### Phase 48d: Federation Broadcasting (Task 122)
+
+Scope:
+
+- local reputation events → federation broadcast queue
+- local intent lifecycle events → federation broadcast queue
+- local settlement events → federation broadcast queue
+- heartbeat-driven federation outbound flush
+- `src/__tests__/reactor-federation.test.ts`
+
+#### Phase 48e: Agent Economic Skills (Task 123)
+
+Scope:
+
+- skill: observe opportunities and decide whether to publish intents
+- skill: observe open intents and decide whether to respond
+- skill: observe submitted artifacts and decide whether to approve
+- skill: observe approved spend proposals and decide whether to execute
+- skill: observe vote requests and decide voting stance
+- integration with agent system prompt for economic reasoning
+- `src/__tests__/agent-economic-skills.test.ts`
+
+Acceptance criteria for Phase 48:
+
+- intent completion → spend proposal automatically appears in Group governance
+- spend proposal reaches quorum → auto-resolves without manual intervention
+- treasury spend executed → reputation events emitted and scores update
+- any state change → web shell updates in real time via SSE
+- any world-relevant event → federation peers receive it in next sync cycle
+- chain state commitments published automatically on schedule
+- a Fox autonomously discovers opportunities, evaluates, and publishes intents
+- a solver Fox autonomously finds matching intents and submits proposals
+- the full "Day in MetaWorld" flow runs with minimal human intervention
+
+### Phase 49: MetaWorld Production Hardening and Public Deployment
+
+Status: not started (blocked on Phase 48)
+
+Goal:
+
+- harden the completed `metaWorld v1 + v2` stack for production use,
+  large-scale operation, and public-network hosting
+
+#### Phase 49a: Production Environment Hardening
+
+Scope:
+
+- configuration hardening for public-facing deployments (TLS, rate limiting,
+  authentication, CORS, request size limits)
+- SQLite WAL mode tuning, connection pooling, and backup strategy for
+  high-throughput nodes
+- graceful shutdown and restart with in-flight request draining
+- structured logging with log levels, rotation, and external sink support
+- health check and readiness probe endpoints for container orchestration
+- environment-specific configuration profiles (development, staging, production)
+- secret management best practices (wallet keys, API keys, provider credentials)
+
+#### Phase 49b: Large-Scale Stress Testing
+
+Scope:
+
+- multi-node stress test harness simulating 50+ concurrent Group members
+  with sustained event throughput
+- sync protocol load testing: measure replication lag, conflict rate, and
+  bandwidth consumption under sustained write pressure
+- governance and treasury stress tests: concurrent proposal creation, voting
+  races, and parallel spend execution
+- intent lifecycle load tests: high-volume intent creation, solver matching,
+  and settlement throughput
+- reputation graph performance: verify decay recalculation and cross-Group
+  flow at scale (1000+ reputation events)
+- SSE/WebSocket connection scaling: measure max concurrent connections and
+  event fan-out latency
+- memory and CPU profiling under sustained load with leak detection
+- documented performance baselines and regression thresholds
+
+#### Phase 49c: Public Network Hosting and Deployment
+
+Scope:
+
+- containerized deployment packaging (Dockerfile, docker-compose) with
+  multi-stage builds and minimal image size
+- systemd service hardening for bare-metal and VM deployments
+- reverse proxy configuration templates (nginx, Caddy) with TLS termination
+  and WebSocket proxying
+- multi-node federation deployment playbook: bootstrapping peer networks,
+  DNS discovery, and certificate management
+- static site hosting pipeline: automated export and deployment to CDN or
+  object storage (S3, Cloudflare R2)
+- monitoring and alerting stack integration (Prometheus metrics export,
+  Grafana dashboard templates)
+- automated backup and disaster recovery procedures for SQLite state and
+  wallet keys
+- operator runbook covering common operational scenarios (node migration,
+  Group recovery, treasury key rotation, federation peer management)
+
 MetaWorld roadmap alignment note:
 
 - the canonical `metaWorld v1` roadmap is `Phase 14` above
-- `Tasks 101-106` are complete, so the older duplicate planning placeholders
-  for `Phase 46` and `Phase 47` were removed
+- `metaWorld v2` organization layer is `Phase 46` (Tasks 107-110, complete)
+- `metaWorld v2` economic layer is `Phase 47` (Tasks 111-115, complete)
+- `metaWorld` reactor and orchestration is `Phase 48` (Tasks 119-123, not started)
+- `metaWorld` production hardening is `Phase 49` (not started, blocked on Phase 48)
+- the reactor design is documented in `docs/OpenFox-MetaWorld-Reactor-Design.md`
 - the current implementation status is tracked in
   `docs/OpenFox-MetaWorld-Completion-Status.md`

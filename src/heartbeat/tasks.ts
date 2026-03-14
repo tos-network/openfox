@@ -45,6 +45,7 @@ import {
   renewTrackedLease,
 } from "../storage/lifecycle.js";
 import { runOperatorAutopilot } from "../operator/autopilot.js";
+import { REACTOR_TASKS } from "./reactor-tasks.js";
 import { ulid } from "ulid";
 
 const logger = createLogger("heartbeat.tasks");
@@ -1352,6 +1353,9 @@ export const BUILTIN_TASKS: Record<string, HeartbeatTaskFn> = {
       return { shouldWake: false };
     }
   },
+
+  // ─── MetaWorld Reactor Tasks ────────────────────────────────────
+  ...REACTOR_TASKS,
 };
 
 function tierToInt(tier: SurvivalTier): number {

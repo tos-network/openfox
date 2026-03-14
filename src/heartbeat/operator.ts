@@ -92,6 +92,11 @@ const TASK_DESCRIPTIONS: Record<string, string> = {
   agent_pool_optimize: "Review the local agent pool and optimize idle workers.",
   knowledge_store_prune: "Prune stale knowledge entries.",
   dead_agent_cleanup: "Prune dead child agents and lifecycle leftovers.",
+  reactor_expire_proposals: "Expire stale governance proposals that have passed their deadline.",
+  reactor_reset_budgets: "Reset expired budget period spent counters for group treasuries.",
+  reactor_sync_treasury: "Sync group treasury balances from on-chain via RPC.",
+  reactor_chain_commitments: "Publish pending chain state commitments for anchored groups.",
+  reactor_federation_sync: "Pull events from federation peers and flush outbound broadcast queue.",
 };
 
 function formatIso(value: string | null | undefined): string {

@@ -987,6 +987,11 @@ export async function startMetaWorldServer(
             groupId: typeof body.groupId === "string" ? body.groupId : undefined,
             ttlSeconds: typeof body.ttlSeconds === "number" ? body.ttlSeconds : 120,
           });
+          worldEventBus.publish({
+            kind: "presence.update",
+            payload: { actorAddress: config.walletAddress, status, groupId: typeof body.groupId === "string" ? body.groupId : undefined },
+            timestamp: new Date().toISOString(),
+          });
           jsonResponse(res, 200, record);
           return;
         }
@@ -995,6 +1000,11 @@ export async function startMetaWorldServer(
           const notificationId = decodeURIComponent(pathname.split("/")[4]);
           try {
             const state = markWorldNotificationRead(db, notificationId);
+            worldEventBus.publish({
+              kind: "notification.new",
+              payload: { notificationId, action: "read" },
+              timestamp: new Date().toISOString(),
+            });
             jsonResponse(res, 200, state);
           } catch (err) {
             jsonResponse(res, 404, { error: err instanceof Error ? err.message : "not found" });
@@ -1006,6 +1016,11 @@ export async function startMetaWorldServer(
           const notificationId = decodeURIComponent(pathname.split("/")[4]);
           try {
             const state = dismissWorldNotification(db, notificationId);
+            worldEventBus.publish({
+              kind: "notification.new",
+              payload: { notificationId, action: "dismissed" },
+              timestamp: new Date().toISOString(),
+            });
             jsonResponse(res, 200, state);
           } catch (err) {
             jsonResponse(res, 404, { error: err instanceof Error ? err.message : "not found" });

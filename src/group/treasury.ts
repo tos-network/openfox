@@ -11,6 +11,7 @@ import { createLogger } from "../observability/logger.js";
 import { deriveAddressFromPrivateKey, type ChainAddress, type HexString } from "../chain/address.js";
 import { ulid } from "ulid";
 import type { OpenFoxDatabase } from "../types.js";
+import { worldEventBus } from "../metaworld/event-bus.js";
 
 const logger = createLogger("group-treasury");
 
@@ -364,6 +365,12 @@ export function recordTreasuryInflow(
 
   logger.info("Treasury inflow recorded", { groupId, amountWei, logId });
 
+  worldEventBus.publish({
+    kind: "treasury.update",
+    payload: { groupId, action: "inflow", amountWei, fromAddress, newBalance: newBalance },
+    timestamp: now,
+  });
+
   return {
     logId,
     groupId,
@@ -492,6 +499,12 @@ export function recordTreasuryOutflow(
 
   logger.info("Treasury outflow recorded", { groupId, amountWei, budgetLine, logId });
 
+  worldEventBus.publish({
+    kind: "treasury.update",
+    payload: { groupId, action: "outflow", amountWei, recipient, budgetLine, newBalance: newBalance },
+    timestamp: now,
+  });
+
   return {
     logId,
     groupId,
@@ -552,6 +565,11 @@ export function freezeGroupTreasury(
     .run(now, groupId);
 
   logger.info("Treasury frozen", { groupId });
+  worldEventBus.publish({
+    kind: "treasury.update",
+    payload: { groupId, action: "frozen" },
+    timestamp: now,
+  });
   return getGroupTreasury(db, groupId)!;
 }
 
@@ -572,6 +590,11 @@ export function unfreezeGroupTreasury(
     .run(now, groupId);
 
   logger.info("Treasury unfrozen", { groupId });
+  worldEventBus.publish({
+    kind: "treasury.update",
+    payload: { groupId, action: "unfrozen" },
+    timestamp: now,
+  });
   return getGroupTreasury(db, groupId)!;
 }
 

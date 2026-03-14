@@ -9,6 +9,7 @@
 import { ulid } from "ulid";
 import type { OpenFoxDatabase } from "../types.js";
 import { createLogger } from "../observability/logger.js";
+import { worldEventBus } from "./event-bus.js";
 
 const logger = createLogger("intents");
 
@@ -225,6 +226,11 @@ export function createIntent(
     );
 
   logger.info(`Intent created: ${intentId} (${options.kind}) by ${options.publisherAddress}`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId, action: "created", intentKind: options.kind, publisherAddress: options.publisherAddress, groupId: options.groupId },
+    timestamp: new Date().toISOString(),
+  });
   return getIntent(db, intentId)!;
 }
 
@@ -324,6 +330,11 @@ export function respondToIntent(
   }
 
   logger.info(`Response ${responseId} from ${options.solverAddress} on intent ${options.intentId}`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId: options.intentId, action: "response_submitted", responseId, solverAddress: options.solverAddress },
+    timestamp: new Date().toISOString(),
+  });
   return getIntentResponse(db, responseId)!;
 }
 
@@ -393,6 +404,11 @@ export function acceptIntentResponse(
     .run(options.solverAddress, now, now, options.intentId);
 
   logger.info(`Intent ${options.intentId} matched to solver ${options.solverAddress}`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId: options.intentId, previousStatus: intent.status, newStatus: "matched", solverAddress: options.solverAddress },
+    timestamp: new Date().toISOString(),
+  });
   return getIntent(db, options.intentId)!;
 }
 
@@ -418,6 +434,11 @@ export function startIntentExecution(
     .run(now, intentId);
 
   logger.info(`Intent ${intentId} execution started by ${solverAddress}`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId, previousStatus: intent.status, newStatus: "in_progress", solverAddress },
+    timestamp: new Date().toISOString(),
+  });
   return getIntent(db, intentId)!;
 }
 
@@ -457,6 +478,11 @@ export function submitIntentArtifacts(
     .run(now, options.intentId);
 
   logger.info(`Intent ${options.intentId} artifacts submitted, moved to review`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId: options.intentId, previousStatus: intent.status, newStatus: "review", solverAddress: options.solverAddress },
+    timestamp: new Date().toISOString(),
+  });
   return getIntent(db, options.intentId)!;
 }
 
@@ -498,6 +524,11 @@ export function approveIntentCompletion(
     .run(now, settlementProposalId ?? null, now, options.intentId);
 
   logger.info(`Intent ${options.intentId} completed`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId: options.intentId, action: "completed", previousStatus: intent.status, newStatus: "completed", solverAddress: intent.matchedSolverAddress, settlementProposalId },
+    timestamp: new Date().toISOString(),
+  });
   return {
     intent: getIntent(db, options.intentId)!,
     settlementProposalId,
@@ -540,6 +571,11 @@ export function requestIntentRevision(
     .run(now, options.intentId);
 
   logger.info(`Intent ${options.intentId} revision requested`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId: options.intentId, previousStatus: intent.status, newStatus: "in_progress", action: "revision_requested" },
+    timestamp: new Date().toISOString(),
+  });
   return getIntent(db, options.intentId)!;
 }
 
@@ -578,6 +614,11 @@ export function cancelIntent(
     .run(now, options.intentId);
 
   logger.info(`Intent ${options.intentId} cancelled by ${options.actorAddress}`);
+  worldEventBus.publish({
+    kind: "intent.update",
+    payload: { intentId: options.intentId, previousStatus: intent.status, newStatus: "cancelled" },
+    timestamp: new Date().toISOString(),
+  });
   return getIntent(db, options.intentId)!;
 }
 
@@ -605,6 +646,11 @@ export function expireStaleIntents(db: OpenFoxDatabase, now?: string): number {
       .run(cutoff);
 
     logger.info(`Expired ${count} stale intent(s)`);
+    worldEventBus.publish({
+      kind: "intent.update",
+      payload: { action: "batch_expired", expiredCount: count },
+      timestamp: new Date().toISOString(),
+    });
   }
   return count;
 }

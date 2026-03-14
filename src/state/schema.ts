@@ -5,7 +5,7 @@
  * The database IS the openfox's memory.
  */
 
-export const SCHEMA_VERSION = 46;
+export const SCHEMA_VERSION = 47;
 
 export const CREATE_TABLES = `
   -- Schema version tracking
@@ -1907,4 +1907,15 @@ export const CREATE_TABLES = `
     received_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_fed_events_type ON world_federation_events(event_type, received_at);
+
+  -- World federation outbound queue: local events pending broadcast to peers
+  CREATE TABLE IF NOT EXISTS world_federation_outbound (
+    outbound_id TEXT PRIMARY KEY,
+    event_type TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','sent','failed')),
+    created_at TEXT NOT NULL,
+    sent_at TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_fed_outbound_status ON world_federation_outbound(status, created_at);
 `;

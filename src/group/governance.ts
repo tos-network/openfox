@@ -11,6 +11,7 @@ import { keccak256, toHex, type Hex, type PrivateKeyAccount } from "tosdk";
 import { createLogger } from "../observability/logger.js";
 import type { OpenFoxDatabase } from "../types.js";
 import { getGroup, listGroupMembers, type GroupMemberRecord } from "./store.js";
+import { worldEventBus } from "../metaworld/event-bus.js";
 
 const logger = createLogger("group-governance");
 
@@ -533,6 +534,11 @@ export async function createGovernanceProposal(
   logger.info(
     `governance proposal created: ${proposalId} (${params.proposalType}) in ${params.groupId}`,
   );
+  worldEventBus.publish({
+    kind: "proposal.update",
+    payload: { groupId: params.groupId, proposalId, action: "created", proposalType: params.proposalType },
+    timestamp: new Date().toISOString(),
+  });
   return record;
 }
 
@@ -684,6 +690,12 @@ export async function voteOnProposal(
     `governance vote recorded: ${voteId} (${params.vote}) on ${params.proposalId}`,
   );
 
+  worldEventBus.publish({
+    kind: "proposal.update",
+    payload: { groupId: updatedProposal.groupId, proposalId: params.proposalId, action: "vote_cast", vote: params.vote },
+    timestamp: new Date().toISOString(),
+  });
+
   return { vote: voteRecord, proposal: updatedProposal };
 }
 
@@ -822,6 +834,12 @@ async function resolveProposal(
     `governance proposal resolved: ${params.proposal.proposalId} -> ${params.newStatus}`,
   );
 
+  worldEventBus.publish({
+    kind: "proposal.update",
+    payload: { groupId: params.proposal.groupId, proposalId: params.proposal.proposalId, outcome: params.newStatus },
+    timestamp: new Date().toISOString(),
+  });
+
   return getGovernanceProposal(db, params.proposal.proposalId)!;
 }
 
@@ -954,6 +972,12 @@ export async function executeApprovedProposal(
   logger.info(
     `governance proposal executed: ${params.proposalId}`,
   );
+
+  worldEventBus.publish({
+    kind: "proposal.update",
+    payload: { groupId: proposal.groupId, proposalId: params.proposalId, action: "executed", proposalType: proposal.proposalType },
+    timestamp: new Date().toISOString(),
+  });
 
   return getGovernanceProposal(db, params.proposalId)!;
 }
