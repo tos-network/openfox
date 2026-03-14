@@ -38,6 +38,14 @@ import {
 import { buildFoxProfile } from "./profile.js";
 import { buildSearchResultSnapshot } from "./search.js";
 import {
+  buildGroupGovernanceHtml,
+  buildGroupGovernanceSnapshot,
+} from "./governance.js";
+import {
+  buildGroupTreasuryHtml,
+  buildGroupTreasurySnapshot,
+} from "./treasury.js";
+import {
   buildPersonalizedFeedSnapshot,
   buildRecommendedFoxes,
   buildRecommendedGroups,
@@ -626,6 +634,37 @@ export async function startMetaWorldServer(
           return;
         }
 
+        if (req.method === "GET" && /^\/api\/v1\/group\/[^/]+\/governance$/.test(pathname)) {
+          const groupId = decodeURIComponent(pathname.split("/")[4]);
+          try {
+            const snapshot = buildGroupGovernanceSnapshot(db, {
+              groupId,
+              proposalLimit: parseIntParam(url.searchParams.get("proposals"), 20),
+              joinRequestLimit: parseIntParam(url.searchParams.get("requests"), 20),
+            });
+            jsonResponse(res, 200, snapshot);
+          } catch (err) {
+            jsonResponse(res, 404, { error: err instanceof Error ? err.message : "not found" });
+          }
+          return;
+        }
+
+        if (req.method === "GET" && /^\/api\/v1\/group\/[^/]+\/treasury$/.test(pathname)) {
+          const groupId = decodeURIComponent(pathname.split("/")[4]);
+          try {
+            const snapshot = buildGroupTreasurySnapshot(db, {
+              groupId,
+              campaignLimit: parseIntParam(url.searchParams.get("campaigns"), 12),
+              bountyLimit: parseIntParam(url.searchParams.get("bounties"), 12),
+              settlementLimit: parseIntParam(url.searchParams.get("settlements"), 12),
+            });
+            jsonResponse(res, 200, snapshot);
+          } catch (err) {
+            jsonResponse(res, 404, { error: err instanceof Error ? err.message : "not found" });
+          }
+          return;
+        }
+
         if (req.method === "GET" && pathname === "/api/v1/directory/foxes") {
           const query = url.searchParams.get("query") || undefined;
           const role = url.searchParams.get("role") || undefined;
@@ -903,9 +942,55 @@ export async function startMetaWorldServer(
               homeHref: "/",
               foxDirectoryHref: "/directory/foxes",
               groupDirectoryHref: "/directory/groups",
+              searchHref: "/search",
               foxHrefsByAddress: Object.fromEntries(
                 snapshot.members.map((m) => [m.memberAddress, `/fox/${encodeURIComponent(m.memberAddress)}`]),
               ),
+            });
+            htmlResponse(res, 200, html);
+          } catch (err) {
+            htmlResponse(res, 404, wrapInLayout("Not Found", `<p class="mw-empty">${escapeHtml(err instanceof Error ? err.message : "Group not found")}</p>`));
+          }
+          return;
+        }
+
+        if (req.method === "GET" && /^\/group\/[^/]+\/governance$/.test(pathname)) {
+          const groupId = decodeURIComponent(pathname.split("/")[2]);
+          try {
+            const snapshot = buildGroupGovernanceSnapshot(db, {
+              groupId,
+              proposalLimit: parseIntParam(url.searchParams.get("proposals"), 20),
+              joinRequestLimit: parseIntParam(url.searchParams.get("requests"), 20),
+            });
+            const html = buildGroupGovernanceHtml(snapshot, {
+              homeHref: "/",
+              groupPageHref: `/group/${encodeURIComponent(groupId)}`,
+              foxDirectoryHref: "/directory/foxes",
+              groupDirectoryHref: "/directory/groups",
+              searchHref: "/search",
+            });
+            htmlResponse(res, 200, html);
+          } catch (err) {
+            htmlResponse(res, 404, wrapInLayout("Not Found", `<p class="mw-empty">${escapeHtml(err instanceof Error ? err.message : "Group not found")}</p>`));
+          }
+          return;
+        }
+
+        if (req.method === "GET" && /^\/group\/[^/]+\/treasury$/.test(pathname)) {
+          const groupId = decodeURIComponent(pathname.split("/")[2]);
+          try {
+            const snapshot = buildGroupTreasurySnapshot(db, {
+              groupId,
+              campaignLimit: parseIntParam(url.searchParams.get("campaigns"), 12),
+              bountyLimit: parseIntParam(url.searchParams.get("bounties"), 12),
+              settlementLimit: parseIntParam(url.searchParams.get("settlements"), 12),
+            });
+            const html = buildGroupTreasuryHtml(snapshot, {
+              homeHref: "/",
+              groupPageHref: `/group/${encodeURIComponent(groupId)}`,
+              foxDirectoryHref: "/directory/foxes",
+              groupDirectoryHref: "/directory/groups",
+              searchHref: "/search",
             });
             htmlResponse(res, 200, html);
           } catch (err) {

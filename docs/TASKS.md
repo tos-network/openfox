@@ -553,6 +553,49 @@ building OpenFox into a TOS-native agent platform.
       export, serving, and validation
     - targeted `world-demo` tests covering bundle export and end-to-end
       validation
+- [x] Task 107: Add Group governance surfaces across metaWorld
+  - Status: Complete
+  - Goal: Turn Groups into visible operating organizations by exposing
+    proposals, join requests, and approval state through world pages, CLI, and
+    live web routes.
+  - Delivered:
+    - `src/metaworld/governance.ts` — governance snapshots over open and recent
+      Group proposals plus join requests
+    - `src/metaworld/group-page.ts` — Group pages now expose embedded
+      governance sections and governance summary metrics
+    - `openfox world governance --group <group-id>` and
+      `openfox world governance export --group <group-id> --output ...` — CLI
+      inspection and HTML export surfaces
+    - `src/metaworld/server.ts` — live JSON and HTML routes at
+      `/api/v1/group/:groupId/governance` and `/group/:groupId/governance`
+    - targeted `world-group-page` and `metaworld-server` tests proving the
+      views are rendered from real local Group state
+- [x] Task 108: Add Group treasury and budget surfaces
+  - Status: Complete
+  - Goal: Add shared economic context so Groups can expose treasury, budget,
+    and policy state instead of only social state.
+  - Delivered:
+    - `src/metaworld/treasury.ts` — derived Group treasury and budget
+      snapshots over active-member-attributed campaigns, bounties, and bounty
+      settlement receipts
+    - `src/metaworld/group-page.ts` — Group pages now include embedded
+      treasury and budget sections alongside governance and social state
+    - `openfox world treasury --group <group-id>` and
+      `openfox world treasury export --group <group-id> --output ...` — CLI
+      inspection and HTML export surfaces
+    - `src/metaworld/server.ts` — live JSON and HTML routes at
+      `/api/v1/group/:groupId/treasury` and `/group/:groupId/treasury`
+    - targeted `world-group-page` and `metaworld-server` tests proving the
+      views are rendered from real campaign, bounty, result, and settlement
+      state
+- [ ] Task 109: Add artifact and settlement trail pages
+  - Status: Proposed
+  - Goal: Make artifacts, evidence, and settlement outcomes first-class
+    navigable world objects with deeper trails and references.
+- [ ] Task 110: Add hosted publication and federation surfaces
+  - Status: Proposed
+  - Goal: Extend the local-first world into broader published and federated
+    surfaces without breaking the current runtime model.
 
 ## Task 53 Breakdown
 
@@ -1626,3 +1669,21 @@ building OpenFox into a TOS-native agent platform.
 - [x] Add end-to-end validation that proves world pages and feeds are backed by
   synchronized multi-node state.
 - [x] Add operator docs for launching and validating a local Fox world bundle.
+
+## Task 107 Breakdown
+
+- [x] Add governance snapshots over Group proposals and join requests.
+- [x] Add governance sections to Group page snapshots and HTML output.
+- [x] Add CLI and live server routes for Group governance inspection.
+- [x] Add tests proving governance views are rendered from real local Group
+  state.
+
+## Task 108 Breakdown
+
+- [x] Add derived Group treasury and budget snapshots over campaigns, hosted
+  bounty commitments, solver earnings, and attributed settlement receipts.
+- [x] Add treasury and budget sections to Group page snapshots and HTML output.
+- [x] Add CLI and live server routes for Group treasury inspection and HTML
+  export.
+- [x] Add tests proving treasury views are rendered from real campaign,
+  bounty, result, and settlement state.

@@ -258,6 +258,50 @@ Its differentiation is that it is a real world of:
 - settlement
 - reputation
 
+## 9. The Next Build Wave
+
+The next implementation wave should not try to jump directly from
+`metaWorld v1` into every imaginable end-state feature at once.
+
+The correct path is to extend the current local-first world into a richer
+organizational layer.
+
+That means building the missing surfaces that make Groups feel less like
+community containers and more like durable operating organizations.
+
+The next set of world-native capabilities should be:
+
+- governance surfaces for proposals, join requests, and approvals
+- treasury and budget surfaces for shared economic state
+- richer artifact and settlement trails that make outputs inspectable and
+  navigable
+- stronger federation and publication paths so a Fox world can be exported,
+  shared, and hosted more broadly
+
+## 10. Immediate Implementation Priorities
+
+The first implementation slice should focus on Group governance.
+
+Why this comes first:
+
+- the current codebase already persists proposals and join requests
+- those objects are organizationally important but still underexposed in the
+  world shell
+- surfacing governance turns a Group page into a real operating page
+
+The first concrete deliverables should be:
+
+- Group governance snapshots over proposals and join requests
+- governance sections on Group pages and world-facing views
+- CLI and server routes for inspecting Group governance state
+- tests proving governance state renders from real local data
+
+After governance, the next slices should be:
+
+- Group treasury and budget views
+- artifact and settlement deep-link trails
+- hosted and federated world publication surfaces
+
 ## 9. Final One-Line Description
 
 When complete, `OpenFox MetaWorld` should be:

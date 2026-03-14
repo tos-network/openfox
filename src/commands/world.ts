@@ -67,6 +67,14 @@ import {
   buildSearchResultSnapshot,
 } from "../metaworld/search.js";
 import {
+  buildGroupGovernanceHtml,
+  buildGroupGovernanceSnapshot,
+} from "../metaworld/governance.js";
+import {
+  buildGroupTreasuryHtml,
+  buildGroupTreasurySnapshot,
+} from "../metaworld/treasury.js";
+import {
   buildPersonalizedFeedSnapshot,
   buildRecommendedFoxes,
   buildRecommendedGroups,
@@ -173,6 +181,10 @@ Usage:
   openfox world profile publish [--json]
   openfox world profile show [--address <addr>] [--json]
   openfox world group profile publish --group <id> [--json]
+  openfox world governance [--group <group-id>] [--proposals N] [--requests N] [--json]
+  openfox world governance export --group <group-id> --output <path> [--proposals N] [--requests N] [--json]
+  openfox world treasury [--group <group-id>] [--campaigns N] [--bounties N] [--settlements N] [--json]
+  openfox world treasury export --group <group-id> --output <path> [--campaigns N] [--bounties N] [--settlements N] [--json]
   openfox world reputation [--address <addr>] [--json]
 `);
     return;
@@ -508,6 +520,152 @@ Usage:
       logger.info(
         `join=${snapshot.group.joinMode} presence=${snapshot.stats.presenceCount} messages=${snapshot.stats.messageCount}`,
       );
+      return;
+    }
+
+    if (command === "governance") {
+      const groupId = readOption(args, "--group");
+      if (!groupId) {
+        throw new Error(
+          "Usage: openfox world governance --group <group-id> [--proposals N] [--requests N]",
+        );
+      }
+      const snapshot = buildGroupGovernanceSnapshot(db, {
+        groupId,
+        proposalLimit: readNumberOption(args, "--proposals", 20),
+        joinRequestLimit: readNumberOption(args, "--requests", 20),
+      });
+      const subcommand =
+        args[1] && !args[1].startsWith("--") ? args[1] : "snapshot";
+      if (subcommand === "export") {
+        const output = readOption(args, "--output");
+        if (!output) {
+          throw new Error(
+            "Usage: openfox world governance export --group <group-id> --output <path>",
+          );
+        }
+        const outputPath = resolvePath(output);
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(
+          outputPath,
+          buildGroupGovernanceHtml(snapshot, {
+            groupPageHref: `./${groupId}.html`,
+          }),
+          "utf8",
+        );
+        if (asJson) {
+          logger.info(
+            JSON.stringify(
+              {
+                outputPath,
+                generatedAt: snapshot.generatedAt,
+                groupId: snapshot.groupId,
+                openProposalCount: snapshot.counts.openProposalCount,
+                openJoinRequestCount: snapshot.counts.openJoinRequestCount,
+              },
+              null,
+              2,
+            ),
+          );
+          return;
+        }
+        logger.info(`group governance exported: ${outputPath}`);
+        return;
+      }
+      if (asJson) {
+        logger.info(JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      logger.info("=== OPENFOX GROUP GOVERNANCE ===");
+      logger.info(`${snapshot.groupName}  ${snapshot.groupId}`);
+      logger.info(snapshot.summary);
+      for (const proposal of snapshot.openProposals.slice(0, 10)) {
+        logger.info(
+          `  proposal ${proposal.proposalKind}  approvals=${proposal.approvalCount}/${proposal.requiredApprovals}`,
+        );
+      }
+      for (const request of snapshot.openJoinRequests.slice(0, 10)) {
+        logger.info(
+          `  join-request ${request.applicantAgentId || request.applicantTnsName || request.applicantAddress}  approvals=${request.approvalCount}/${request.requiredApprovals}`,
+        );
+      }
+      return;
+    }
+
+    if (command === "treasury") {
+      const groupId = readOption(args, "--group");
+      if (!groupId) {
+        throw new Error(
+          "Usage: openfox world treasury --group <group-id> [--campaigns N] [--bounties N] [--settlements N]",
+        );
+      }
+      const snapshot = buildGroupTreasurySnapshot(db, {
+        groupId,
+        campaignLimit: readNumberOption(args, "--campaigns", 12),
+        bountyLimit: readNumberOption(args, "--bounties", 12),
+        settlementLimit: readNumberOption(args, "--settlements", 12),
+      });
+      const subcommand =
+        args[1] && !args[1].startsWith("--") ? args[1] : "snapshot";
+      if (subcommand === "export") {
+        const output = readOption(args, "--output");
+        if (!output) {
+          throw new Error(
+            "Usage: openfox world treasury export --group <group-id> --output <path>",
+          );
+        }
+        const outputPath = resolvePath(output);
+        await fs.mkdir(path.dirname(outputPath), { recursive: true });
+        await fs.writeFile(
+          outputPath,
+          buildGroupTreasuryHtml(snapshot, {
+            groupPageHref: `./${groupId}.html`,
+          }),
+          "utf8",
+        );
+        if (asJson) {
+          logger.info(
+            JSON.stringify(
+              {
+                outputPath,
+                generatedAt: snapshot.generatedAt,
+                groupId: snapshot.groupId,
+                campaignCount: snapshot.counts.campaignCount,
+                settlementCount: snapshot.counts.settlementCount,
+              },
+              null,
+              2,
+            ),
+          );
+          return;
+        }
+        logger.info(`group treasury exported: ${outputPath}`);
+        return;
+      }
+      if (asJson) {
+        logger.info(JSON.stringify(snapshot, null, 2));
+        return;
+      }
+      logger.info("=== OPENFOX GROUP TREASURY ===");
+      logger.info(`${snapshot.groupName}  ${snapshot.groupId}`);
+      logger.info(snapshot.summary);
+      logger.info(snapshot.attributionSummary);
+      logger.info(
+        `  budget=${snapshot.totals.totalBudgetWei} wei allocated=${snapshot.totals.allocatedBudgetWei} wei remaining=${snapshot.totals.remainingBudgetWei} wei`,
+      );
+      logger.info(
+        `  payables=${snapshot.totals.pendingPayablesWei} wei receivables=${snapshot.totals.pendingReceivablesWei} wei host_payouts=${snapshot.totals.realizedHostPayoutsWei} wei solver_earnings=${snapshot.totals.realizedSolverEarningsWei} wei`,
+      );
+      for (const campaign of snapshot.campaigns.slice(0, 8)) {
+        logger.info(
+          `  campaign ${campaign.title}  status=${campaign.status} budget=${campaign.budgetWei} remaining=${campaign.remainingWei}`,
+        );
+      }
+      for (const settlement of snapshot.recentSettlements.slice(0, 8)) {
+        logger.info(
+          `  settlement ${settlement.kind}  relation=${settlement.relation} subject=${settlement.subjectId}`,
+        );
+      }
       return;
     }
 

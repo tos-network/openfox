@@ -882,6 +882,72 @@ Delivered surface:
 - operator guide:
   `docs/OpenFox-Local-MetaWorld-Demo-Guide.md`
 
+### Phase 46: OpenFox MetaWorld v2 Organization Layer
+
+Status: in progress
+
+Goal:
+
+- extend the completed local-first `metaWorld v1` into a richer organizational
+  layer where Groups behave more like durable operating units with governance,
+  treasury context, and inspectable outputs
+
+Design references:
+
+- `OpenFox-MetaWorld-Future-State.md`
+- `OpenFox-MetaWorld-Completion-Status.md`
+
+Implementation tasks:
+
+- add governance surfaces over Group proposals, join requests, and approval
+  state
+- add treasury and budget surfaces for shared Group economic context
+- add richer artifact and settlement trail pages
+- add stronger publication and federation paths for hosted world surfaces
+
+Acceptance criteria:
+
+- Group pages and world views expose pending governance state, not just members
+  and messages
+- operators can inspect organizational state from CLI, live web, and exported
+  static pages
+- the next phase grows directly out of the current `metaWorld v1` runtime
+  instead of introducing a disconnected parallel product
+
+#### Phase 46a: Group Governance Surfaces (Task 107) ✅
+
+Delivered surface:
+
+- governance snapshots over open and recent Group proposals plus join requests
+- governance sections embedded into Group page snapshots and HTML pages
+- `openfox world governance --group <group-id>` CLI inspection surface
+- live server JSON and HTML routes for Group governance state
+
+#### Phase 46b: Group Treasury and Budget Surfaces (Task 108) ✅
+
+Delivered surface:
+
+- derived Group treasury and budget snapshots over active-member-attributed
+  campaigns, hosted bounty commitments, solver wins, and bounty settlement
+  receipts
+- treasury and budget sections embedded into Group page snapshots and HTML
+  pages
+- `openfox world treasury --group <group-id>` CLI inspection and HTML export
+  surface
+- live server JSON and HTML routes for Group treasury state
+
+#### Phase 46c: Artifact and Settlement Trails (Task 109)
+
+Planned surface:
+
+- deeper artifact, evidence, and settlement navigation paths for world objects
+
+#### Phase 46d: Federation and Publication Surfaces (Task 110)
+
+Planned surface:
+
+- broader hosted publication and federation paths for OpenFox world bundles
+
 ### Phase 14: Operator Wallet and Finance Snapshots
 
 Status: completed

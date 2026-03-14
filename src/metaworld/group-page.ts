@@ -24,6 +24,14 @@ import {
   type WorldPresenceRecord,
 } from "./presence.js";
 import {
+  buildGroupGovernanceSnapshot,
+  type GroupGovernanceSnapshot,
+} from "./governance.js";
+import {
+  buildGroupTreasurySnapshot,
+  type GroupTreasurySnapshot,
+} from "./treasury.js";
+import {
   escapeHtml,
   renderMetaWorldPageFrame,
 } from "./render.js";
@@ -38,6 +46,8 @@ export interface GroupPageSnapshot {
   recentEvents: GroupEventRecord[];
   presence: WorldPresenceRecord[];
   activityFeed: WorldFeedSnapshot;
+  governance: GroupGovernanceSnapshot;
+  treasury: GroupTreasurySnapshot;
   roleSummary: Record<string, number>;
   stats: {
     channelCount: number;
@@ -46,6 +56,10 @@ export interface GroupPageSnapshot {
     announcementCount: number;
     presenceCount: number;
     messageCount: number;
+    openProposalCount: number;
+    openJoinRequestCount: number;
+    campaignCount: number;
+    settlementCount: number;
   };
 }
 
@@ -84,6 +98,17 @@ export function buildGroupPageSnapshot(
     groupId: group.groupId,
     limit: Math.max(1, options.presenceLimit ?? 20),
   });
+  const governance = buildGroupGovernanceSnapshot(db, {
+    groupId: group.groupId,
+    proposalLimit: Math.max(1, options.eventLimit ?? 20),
+    joinRequestLimit: Math.max(1, options.eventLimit ?? 20),
+  });
+  const treasury = buildGroupTreasurySnapshot(db, {
+    groupId: group.groupId,
+    campaignLimit: Math.max(1, options.eventLimit ?? 10),
+    bountyLimit: Math.max(1, options.messageLimit ?? 10),
+    settlementLimit: Math.max(1, options.activityLimit ?? 10),
+  });
   const activityFeed = buildWorldFeedSnapshot(db, {
     groupId: group.groupId,
     limit: Math.max(1, options.activityLimit ?? 20),
@@ -107,6 +132,8 @@ export function buildGroupPageSnapshot(
     recentEvents,
     presence,
     activityFeed,
+    governance,
+    treasury,
     roleSummary,
     stats: {
       channelCount: channels.length,
@@ -115,6 +142,10 @@ export function buildGroupPageSnapshot(
       announcementCount: announcements.length,
       presenceCount: presence.length,
       messageCount: recentMessages.length,
+      openProposalCount: governance.counts.openProposalCount,
+      openJoinRequestCount: governance.counts.openJoinRequestCount,
+      campaignCount: treasury.counts.campaignCount,
+      settlementCount: treasury.counts.settlementCount,
     },
   };
 }
@@ -200,6 +231,40 @@ export function buildGroupPageHtml(
   const roleSummary = Object.entries(snapshot.roleSummary)
     .map(([role, count]) => `${escapeHtml(role)}=${count}`)
     .join(", ");
+  const openProposalItems = snapshot.governance.openProposals
+    .slice(0, 8)
+    .map((proposal) => {
+      const target =
+        proposal.targetAgentId ||
+        proposal.targetTnsName ||
+        proposal.targetAddress ||
+        "group policy";
+      return `<li><strong>${escapeHtml(proposal.proposalKind)}</strong><span>${escapeHtml(target)} · approvals ${proposal.approvalCount}/${proposal.requiredApprovals}</span></li>`;
+    })
+    .join("");
+  const openJoinRequestItems = snapshot.governance.openJoinRequests
+    .slice(0, 8)
+    .map((request) => {
+      const applicant =
+        request.applicantAgentId ||
+        request.applicantTnsName ||
+        request.applicantAddress;
+      const requestedRoles = request.requestedRoles.join(", ") || "member";
+      return `<li><strong>${escapeHtml(applicant)}</strong><span>${escapeHtml(requestedRoles)} · approvals ${request.approvalCount}/${request.requiredApprovals}</span></li>`;
+    })
+    .join("");
+  const treasuryCampaignItems = snapshot.treasury.campaigns
+    .slice(0, 8)
+    .map(
+      (campaign) => `<li><strong>${escapeHtml(campaign.title)}</strong><span>${escapeHtml(campaign.status)} · budget ${escapeHtml(campaign.budgetWei)} wei · remaining ${escapeHtml(campaign.remainingWei)} wei</span></li>`,
+    )
+    .join("");
+  const treasurySettlementItems = snapshot.treasury.recentSettlements
+    .slice(0, 8)
+    .map(
+      (settlement) => `<li><strong>${escapeHtml(settlement.kind)}</strong><span>${escapeHtml(settlement.relation)} · ${escapeHtml(settlement.subjectId)} · ${escapeHtml(settlement.createdAt)}</span></li>`,
+    )
+    .join("");
 
   const sections = [
     `<section class="grid">
@@ -219,6 +284,8 @@ export function buildGroupPageHtml(
             <div class="meta-row"><span>Status</span><span>${escapeHtml(snapshot.group.status)}</span></div>
             <div class="meta-row"><span>Epoch</span><span>${snapshot.group.currentEpoch}</span></div>
             <div class="meta-row"><span>Roles</span><span>${escapeHtml(roleSummary || "none")}</span></div>
+            <div class="meta-row"><span>Governance</span><span>${snapshot.stats.openProposalCount} proposal(s), ${snapshot.stats.openJoinRequestCount} join request(s)</span></div>
+            <div class="meta-row"><span>Treasury</span><span>${snapshot.stats.campaignCount} campaign(s), ${snapshot.stats.settlementCount} settlement(s)</span></div>
           </article>
         </div>
       </section>
@@ -249,11 +316,67 @@ export function buildGroupPageHtml(
     `<section class="grid">
       <section class="panel">
         <div class="section-head">
+          <h3>Governance</h3>
+          <span>${snapshot.stats.openProposalCount + snapshot.stats.openJoinRequestCount} open item(s)</span>
+        </div>
+        <p class="lede">${escapeHtml(snapshot.governance.summary)}</p>
+        <div class="split">
+          <div>
+            <h4>Open Proposals</h4>
+            <ul class="directory-list">${openProposalItems || '<li class="empty">No open proposals.</li>'}</ul>
+          </div>
+          <div>
+            <h4>Open Join Requests</h4>
+            <ul class="directory-list">${openJoinRequestItems || '<li class="empty">No open join requests.</li>'}</ul>
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-head">
           <h3>Presence</h3>
           <span>${snapshot.stats.presenceCount} visible</span>
         </div>
         <ul class="directory-list">${presenceItems || '<li class="empty">No live presence.</li>'}</ul>
       </section>
+    </section>`,
+    `<section class="grid">
+      <section class="panel">
+        <div class="section-head">
+          <h3>Treasury &amp; Budget</h3>
+          <span>${snapshot.stats.campaignCount} campaign(s)</span>
+        </div>
+        <p class="lede">${escapeHtml(snapshot.treasury.summary)}</p>
+        <div class="list-grid">
+          <article class="list-card">
+            <div class="meta-row"><span>Total budget</span><span>${escapeHtml(snapshot.treasury.totals.totalBudgetWei)} wei</span></div>
+            <div class="meta-row"><span>Allocated</span><span>${escapeHtml(snapshot.treasury.totals.allocatedBudgetWei)} wei</span></div>
+            <div class="meta-row"><span>Remaining</span><span>${escapeHtml(snapshot.treasury.totals.remainingBudgetWei)} wei</span></div>
+          </article>
+          <article class="list-card">
+            <div class="meta-row"><span>Pending payables</span><span>${escapeHtml(snapshot.treasury.totals.pendingPayablesWei)} wei</span></div>
+            <div class="meta-row"><span>Pending receivables</span><span>${escapeHtml(snapshot.treasury.totals.pendingReceivablesWei)} wei</span></div>
+            <div class="meta-row"><span>Realized host payouts</span><span>${escapeHtml(snapshot.treasury.totals.realizedHostPayoutsWei)} wei</span></div>
+          </article>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-head">
+          <h3>Settlement Trails</h3>
+          <span>${snapshot.stats.settlementCount}</span>
+        </div>
+        <ul class="directory-list">${treasurySettlementItems || '<li class="empty">No attributed settlements.</li>'}</ul>
+      </section>
+    </section>`,
+    `<section class="grid">
+      <section class="panel">
+        <div class="section-head">
+          <h3>Campaign Budgets</h3>
+          <span>${snapshot.treasury.campaigns.length}</span>
+        </div>
+        <ul class="directory-list">${treasuryCampaignItems || '<li class="empty">No attributed campaigns.</li>'}</ul>
+      </section>
+    </section>`,
+    `<section class="grid">
       <section class="panel">
         <div class="section-head">
           <h3>Recent Messages</h3>

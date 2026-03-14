@@ -6,7 +6,12 @@ import http from "http";
 import { privateKeyToAccount } from "tosdk/accounts";
 import { createDatabase } from "../state/database.js";
 import { startMetaWorldServer, type MetaWorldServer } from "../metaworld/server.js";
-import { createGroup } from "../group/store.js";
+import {
+  createGroup,
+  requestToJoinGroup,
+  approveGroupJoinRequest,
+  sendGroupInvite,
+} from "../group/store.js";
 import { followFox, followGroup } from "../metaworld/follows.js";
 import type { OpenFoxConfig, OpenFoxDatabase } from "../types.js";
 
@@ -14,12 +19,214 @@ const TEST_ADDRESS = "0xabcdef0123456789abcdef0123456789abcdef01";
 const FOLLOWER_ADDRESS = "0xabcdef0123456789abcdef0123456789abcdef02";
 const GROUP_FOLLOWER_PRIVATE_KEY =
   "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdea" as const;
+const GROUP_ADMIN_PRIVATE_KEY =
+  "0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcd12" as const;
+const GROUP_APPLICANT_PRIVATE_KEY =
+  "0x2222222222222222222222222222222222222222222222222222222222222222" as const;
+const GROUP_MEMBER_PRIVATE_KEY =
+  "0x4444444444444444444444444444444444444444444444444444444444444444" as const;
+const GROUP_OUTSIDER_PRIVATE_KEY =
+  "0x5555555555555555555555555555555555555555555555555555555555555555" as const;
+const TOS = 10n ** 18n;
 
 function makeTmpDbPath(): string {
   const tmpDir = fs.mkdtempSync(
     path.join(os.tmpdir(), "openfox-mw-server-test-"),
   );
   return path.join(tmpDir, "test.db");
+}
+
+function makeHexPair(seed: string): { hash: `0x${string}`; txHash: `0x${string}` } {
+  return {
+    hash: (`0x${seed.repeat(64)}`.slice(0, 66)) as `0x${string}`,
+    txHash: (`0x${(seed + seed.toUpperCase()).repeat(32)}`.slice(0, 66)) as `0x${string}`,
+  };
+}
+
+function seedGroupEconomics(params: {
+  db: OpenFoxDatabase;
+  adminAddress: string;
+  memberAddress: string;
+  outsiderAddress: string;
+}): void {
+  const now = "2026-03-14T12:00:00.000Z";
+  const later = "2026-03-14T12:10:00.000Z";
+  const latest = "2026-03-14T12:20:00.000Z";
+  const paidHashes = makeHexPair("c");
+  const solverHashes = makeHexPair("d");
+
+  params.db.insertCampaign({
+    campaignId: "camp_server_group_budget",
+    hostAgentId: "group-admin",
+    hostAddress: params.adminAddress,
+    title: "Server Group Budget",
+    description: "Budget for server route tests.",
+    budgetWei: (10n * TOS).toString(),
+    maxOpenBounties: 8,
+    allowedKinds: ["question"],
+    metadata: {},
+    status: "open",
+    createdAt: now,
+    updatedAt: latest,
+  });
+  params.db.insertBounty({
+    bountyId: "bnt_server_group_open",
+    campaignId: "camp_server_group_budget",
+    hostAgentId: "group-admin",
+    hostAddress: params.adminAddress,
+    kind: "question",
+    title: "Server Open Task",
+    taskPrompt: "Open task",
+    referenceOutput: "Expected",
+    rewardWei: (1n * TOS).toString(),
+    submissionDeadline: "2026-03-15T00:00:00.000Z",
+    judgeMode: "local_model",
+    status: "open",
+    createdAt: now,
+    updatedAt: now,
+  });
+  params.db.insertBounty({
+    bountyId: "bnt_server_group_approved",
+    campaignId: "camp_server_group_budget",
+    hostAgentId: "group-admin",
+    hostAddress: params.adminAddress,
+    kind: "question",
+    title: "Server Approved Task",
+    taskPrompt: "Approved task",
+    referenceOutput: "Expected",
+    rewardWei: (2n * TOS).toString(),
+    submissionDeadline: "2026-03-15T00:00:00.000Z",
+    judgeMode: "local_model",
+    status: "approved",
+    createdAt: now,
+    updatedAt: later,
+  });
+  params.db.insertBounty({
+    bountyId: "bnt_server_group_paid",
+    campaignId: "camp_server_group_budget",
+    hostAgentId: "group-admin",
+    hostAddress: params.adminAddress,
+    kind: "question",
+    title: "Server Paid Task",
+    taskPrompt: "Paid task",
+    referenceOutput: "Expected",
+    rewardWei: (3n * TOS).toString(),
+    submissionDeadline: "2026-03-15T00:00:00.000Z",
+    judgeMode: "local_model",
+    status: "paid",
+    createdAt: now,
+    updatedAt: latest,
+  });
+  params.db.insertBountySubmission({
+    submissionId: "sub_server_group_paid",
+    bountyId: "bnt_server_group_paid",
+    solverAgentId: "outsider",
+    solverAddress: params.outsiderAddress,
+    submissionText: "Done",
+    status: "accepted",
+    submittedAt: later,
+    updatedAt: latest,
+  });
+  params.db.upsertBountyResult({
+    bountyId: "bnt_server_group_paid",
+    winningSubmissionId: "sub_server_group_paid",
+    decision: "accepted",
+    confidence: 0.98,
+    judgeReason: "Correct",
+    payoutTxHash: paidHashes.txHash,
+    createdAt: later,
+    updatedAt: latest,
+  });
+  params.db.upsertSettlementReceipt({
+    receiptId: "rcpt_server_group_paid",
+    kind: "bounty",
+    subjectId: "bnt_server_group_paid",
+    receipt: {} as any,
+    receiptHash: paidHashes.hash,
+    payoutTxHash: paidHashes.txHash,
+    createdAt: latest,
+    updatedAt: latest,
+  });
+  params.db.insertBounty({
+    bountyId: "bnt_server_solver_paid",
+    hostAgentId: "outsider-host",
+    hostAddress: params.outsiderAddress,
+    kind: "question",
+    title: "Server External Paid Solver Task",
+    taskPrompt: "Solve external task",
+    referenceOutput: "Expected",
+    rewardWei: (4n * TOS).toString(),
+    submissionDeadline: "2026-03-15T00:00:00.000Z",
+    judgeMode: "local_model",
+    status: "paid",
+    createdAt: now,
+    updatedAt: latest,
+  });
+  params.db.insertBountySubmission({
+    submissionId: "sub_server_solver_paid",
+    bountyId: "bnt_server_solver_paid",
+    solverAgentId: "member-fox",
+    solverAddress: params.memberAddress,
+    submissionText: "Solved",
+    status: "accepted",
+    submittedAt: later,
+    updatedAt: latest,
+  });
+  params.db.upsertBountyResult({
+    bountyId: "bnt_server_solver_paid",
+    winningSubmissionId: "sub_server_solver_paid",
+    decision: "accepted",
+    confidence: 0.99,
+    judgeReason: "Accepted",
+    payoutTxHash: solverHashes.txHash,
+    createdAt: later,
+    updatedAt: latest,
+  });
+  params.db.upsertSettlementReceipt({
+    receiptId: "rcpt_server_solver_paid",
+    kind: "bounty",
+    subjectId: "bnt_server_solver_paid",
+    receipt: {} as any,
+    receiptHash: solverHashes.hash,
+    payoutTxHash: solverHashes.txHash,
+    createdAt: latest,
+    updatedAt: latest,
+  });
+  params.db.insertBounty({
+    bountyId: "bnt_server_solver_pending",
+    hostAgentId: "outsider-host",
+    hostAddress: params.outsiderAddress,
+    kind: "question",
+    title: "Server External Pending Solver Task",
+    taskPrompt: "Pending external task",
+    referenceOutput: "Expected",
+    rewardWei: (5n * TOS).toString(),
+    submissionDeadline: "2026-03-15T00:00:00.000Z",
+    judgeMode: "local_model",
+    status: "approved",
+    createdAt: now,
+    updatedAt: latest,
+  });
+  params.db.insertBountySubmission({
+    submissionId: "sub_server_solver_pending",
+    bountyId: "bnt_server_solver_pending",
+    solverAgentId: "member-fox",
+    solverAddress: params.memberAddress,
+    submissionText: "Solved pending",
+    status: "accepted",
+    submittedAt: later,
+    updatedAt: latest,
+  });
+  params.db.upsertBountyResult({
+    bountyId: "bnt_server_solver_pending",
+    winningSubmissionId: "sub_server_solver_pending",
+    decision: "accepted",
+    confidence: 0.92,
+    judgeReason: "Accepted but unpaid",
+    payoutTxHash: null,
+    createdAt: later,
+    updatedAt: latest,
+  });
 }
 
 function makeConfig(): OpenFoxConfig {
@@ -175,6 +382,116 @@ describe("metaWorld server", () => {
     const res = await httpGet(server.url + "/directory/groups");
     expect(res.status).toBe(200);
     expect(res.body).toContain("Group Directory");
+  });
+
+  it("serves group governance HTML and JSON routes", async () => {
+    const admin = privateKeyToAccount(GROUP_ADMIN_PRIVATE_KEY);
+    const applicant = privateKeyToAccount(GROUP_APPLICANT_PRIVATE_KEY);
+    const created = await createGroup({
+      db,
+      account: admin,
+      input: {
+        name: "Governance Group",
+        actorAddress: admin.address,
+      },
+    });
+    await sendGroupInvite({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        targetAddress: applicant.address,
+        targetAgentId: "applicant-fox",
+        targetRoles: ["member"],
+        actorAddress: admin.address,
+      },
+    });
+    await requestToJoinGroup({
+      db,
+      account: applicant,
+      input: {
+        groupId: created.group.groupId,
+        actorAddress: applicant.address,
+        actorAgentId: "applicant-fox",
+        requestedRoles: ["member"],
+      },
+    });
+
+    const html = await httpGet(
+      `${server.url}/group/${encodeURIComponent(created.group.groupId)}/governance`,
+    );
+    expect(html.status).toBe(200);
+    expect(html.body).toContain("Group Governance");
+    expect(html.body).toContain("Open Proposals");
+    expect(html.body).toContain("Open Join Requests");
+
+    const json = await httpGet(
+      `${server.url}/api/v1/group/${encodeURIComponent(created.group.groupId)}/governance`,
+    );
+    expect(json.status).toBe(200);
+    const data = JSON.parse(json.body);
+    expect(data.groupName).toBe("Governance Group");
+    expect(data.counts.openProposalCount).toBe(1);
+    expect(data.counts.openJoinRequestCount).toBe(1);
+  });
+
+  it("serves group treasury HTML and JSON routes", async () => {
+    const admin = privateKeyToAccount(GROUP_ADMIN_PRIVATE_KEY);
+    const member = privateKeyToAccount(GROUP_MEMBER_PRIVATE_KEY);
+    const outsider = privateKeyToAccount(GROUP_OUTSIDER_PRIVATE_KEY);
+    const created = await createGroup({
+      db,
+      account: admin,
+      input: {
+        name: "Treasury Group",
+        actorAddress: admin.address,
+      },
+    });
+    const joinRequest = await requestToJoinGroup({
+      db,
+      account: member,
+      input: {
+        groupId: created.group.groupId,
+        actorAddress: member.address,
+        actorAgentId: "member-fox",
+        requestedRoles: ["member"],
+      },
+    });
+    await approveGroupJoinRequest({
+      db,
+      account: admin,
+      input: {
+        groupId: created.group.groupId,
+        requestId: joinRequest.request.requestId,
+        actorAddress: admin.address,
+        displayName: "Member Fox",
+      },
+    });
+    seedGroupEconomics({
+      db,
+      adminAddress: admin.address,
+      memberAddress: member.address,
+      outsiderAddress: outsider.address,
+    });
+
+    const html = await httpGet(
+      `${server.url}/group/${encodeURIComponent(created.group.groupId)}/treasury`,
+    );
+    expect(html.status).toBe(200);
+    expect(html.body).toContain("Treasury &amp; Budget");
+    expect(html.body).toContain("Budget State");
+    expect(html.body).toContain("Settlement Trails");
+
+    const json = await httpGet(
+      `${server.url}/api/v1/group/${encodeURIComponent(created.group.groupId)}/treasury`,
+    );
+    expect(json.status).toBe(200);
+    const data = JSON.parse(json.body);
+    expect(data.groupName).toBe("Treasury Group");
+    expect(data.counts.campaignCount).toBe(1);
+    expect(data.counts.settlementCount).toBe(2);
+    expect(data.totals.pendingPayablesWei).toBe((2n * TOS).toString());
+    expect(data.totals.pendingReceivablesWei).toBe((5n * TOS).toString());
   });
 
   it("serves a board page", async () => {
