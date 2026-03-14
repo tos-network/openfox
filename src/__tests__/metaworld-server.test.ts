@@ -3,11 +3,17 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import http from "http";
+import { privateKeyToAccount } from "tosdk/accounts";
 import { createDatabase } from "../state/database.js";
 import { startMetaWorldServer, type MetaWorldServer } from "../metaworld/server.js";
+import { createGroup } from "../group/store.js";
+import { followFox, followGroup } from "../metaworld/follows.js";
 import type { OpenFoxConfig, OpenFoxDatabase } from "../types.js";
 
 const TEST_ADDRESS = "0xabcdef0123456789abcdef0123456789abcdef01";
+const FOLLOWER_ADDRESS = "0xabcdef0123456789abcdef0123456789abcdef02";
+const GROUP_FOLLOWER_PRIVATE_KEY =
+  "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdea" as const;
 
 function makeTmpDbPath(): string {
   const tmpDir = fs.mkdtempSync(
@@ -135,6 +141,18 @@ describe("metaWorld server", () => {
     expect(res.body).toContain("Search");
   });
 
+  it("serves the following page", async () => {
+    const res = await httpGet(server.url + "/following");
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("Following");
+  });
+
+  it("serves the followers page", async () => {
+    const res = await httpGet(server.url + "/followers");
+    expect(res.status).toBe(200);
+    expect(res.body).toContain("Followers");
+  });
+
   it("serves the recommended foxes page", async () => {
     const res = await httpGet(server.url + "/recommended/foxes");
     expect(res.status).toBe(200);
@@ -220,6 +238,62 @@ describe("metaWorld server", () => {
     const data = JSON.parse(res.body);
     expect(data).toHaveProperty("results");
     expect(data).toHaveProperty("query", "test");
+  });
+
+  it("returns JSON following data", async () => {
+    const res = await httpGet(server.url + "/api/v1/following");
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data).toHaveProperty("counts");
+    expect(data).toHaveProperty("followedFoxes");
+    expect(data).toHaveProperty("followedGroups");
+  });
+
+  it("returns JSON followers data", async () => {
+    const res = await httpGet(server.url + "/api/v1/followers");
+    expect(res.status).toBe(200);
+    const data = JSON.parse(res.body);
+    expect(data).toHaveProperty("foxFollowers");
+    expect(data).toHaveProperty("groupFollowers");
+  });
+
+  it("returns populated follow graph snapshots", async () => {
+    const owner = privateKeyToAccount(GROUP_FOLLOWER_PRIVATE_KEY);
+    const created = await createGroup({
+      db,
+      account: owner,
+      input: {
+        name: "Follow Graph Group",
+        actorAddress: owner.address,
+      },
+    });
+
+    followFox(db, {
+      followerAddress: TEST_ADDRESS,
+      targetAddress: FOLLOWER_ADDRESS,
+    });
+    followFox(db, {
+      followerAddress: FOLLOWER_ADDRESS,
+      targetAddress: TEST_ADDRESS,
+    });
+    followGroup(db, {
+      followerAddress: TEST_ADDRESS,
+      groupId: created.group.groupId,
+    });
+    followGroup(db, {
+      followerAddress: FOLLOWER_ADDRESS,
+      groupId: created.group.groupId,
+    });
+
+    const following = await httpGet(server.url + "/api/v1/following");
+    const followingData = JSON.parse(following.body);
+    expect(followingData.followedFoxes.length).toBe(1);
+    expect(followingData.followedGroups.length).toBe(1);
+    expect(followingData.followedGroups[0].followerCount).toBe(2);
+
+    const followers = await httpGet(server.url + "/api/v1/followers");
+    const followersData = JSON.parse(followers.body);
+    expect(followersData.foxFollowers.length).toBe(1);
   });
 
   it("returns JSON recommendations", async () => {
@@ -330,6 +404,7 @@ describe("metaWorld server", () => {
     expect(res.body).toContain("For You");
     expect(res.body).toContain("Search");
     expect(res.body).toContain("Directory");
+    expect(res.body).toContain("Following");
     expect(res.body).toContain("Recommended");
     expect(res.body).toContain("Boards");
     expect(res.body).toContain("Presence");

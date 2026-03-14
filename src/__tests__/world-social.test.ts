@@ -19,6 +19,8 @@ import {
   listFollowedFoxes,
   listFollowedGroups,
   listFoxFollowers,
+  listGroupFollowers,
+  getGroupFollowerCount,
   getFollowCounts,
   isFollowing,
 } from "../metaworld/follows.js";
@@ -140,6 +142,11 @@ describe("world social: follows", () => {
 
     const groups = listFollowedGroups(db, admin.address);
     expect(groups.length).toBe(1);
+    expect(getGroupFollowerCount(db, created.group.groupId)).toBe(1);
+
+    const groupFollowers = listGroupFollowers(db, created.group.groupId);
+    expect(groupFollowers.length).toBe(1);
+    expect(groupFollowers[0].followerAddress).toBe(admin.address.toLowerCase());
 
     const removed = unfollowGroup(db, {
       followerAddress: admin.address,
@@ -149,6 +156,7 @@ describe("world social: follows", () => {
 
     const groupsAfter = listFollowedGroups(db, admin.address);
     expect(groupsAfter.length).toBe(0);
+    expect(getGroupFollowerCount(db, created.group.groupId)).toBe(0);
   });
 
   it("returns correct follow counts", () => {

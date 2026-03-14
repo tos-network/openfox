@@ -43,6 +43,14 @@ import {
   buildRecommendedGroups,
 } from "./ranking.js";
 import { listSubscriptions } from "./subscriptions.js";
+import {
+  getFollowCounts,
+  getGroupFollowerCount,
+  listFollowedFoxes,
+  listFollowedGroups,
+  listFoxFollowers,
+  listGroupFollowers,
+} from "./follows.js";
 
 const logger = createLogger("metaworld-server");
 
@@ -302,6 +310,189 @@ function renderSubscriptionsHtml(
   return wrapInLayout("Subscriptions", content, "/subscriptions");
 }
 
+function getGroupDisplayName(db: OpenFoxDatabase, groupId: string): string {
+  const row = db.raw
+    .prepare(
+      `SELECT name
+       FROM groups
+       WHERE group_id = ?
+       LIMIT 1`,
+    )
+    .get(groupId) as { name: string } | undefined;
+  return row?.name || groupId;
+}
+
+function getFoxDisplayName(
+  db: OpenFoxDatabase,
+  config: OpenFoxConfig,
+  address: string,
+): string {
+  try {
+    return buildFoxProfile({ db, config, address }).displayName;
+  } catch {
+    return address;
+  }
+}
+
+function buildFollowingSnapshot(
+  db: OpenFoxDatabase,
+  config: OpenFoxConfig,
+  limit = 50,
+): {
+  generatedAt: string;
+  summary: string;
+  counts: ReturnType<typeof getFollowCounts>;
+  followedFoxes: Array<{
+    targetAddress: string;
+    displayName: string;
+    createdAt: string;
+    followerCount: number;
+  }>;
+  followedGroups: Array<{
+    groupId: string;
+    name: string;
+    createdAt: string;
+    followerCount: number;
+  }>;
+} {
+  const counts = getFollowCounts(db, config.walletAddress);
+  const followedFoxes = listFollowedFoxes(db, config.walletAddress, { limit }).map((record) => ({
+    targetAddress: record.targetAddress || "",
+    displayName: getFoxDisplayName(db, config, record.targetAddress || ""),
+    createdAt: record.createdAt,
+    followerCount: record.targetAddress ? getFollowCounts(db, record.targetAddress).followers : 0,
+  }));
+  const followedGroups = listFollowedGroups(db, config.walletAddress, { limit }).map((record) => ({
+    groupId: record.targetGroupId || "",
+    name: getGroupDisplayName(db, record.targetGroupId || ""),
+    createdAt: record.createdAt,
+    followerCount: record.targetGroupId ? getGroupFollowerCount(db, record.targetGroupId) : 0,
+  }));
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: `Following ${counts.followingFoxes} fox(es) and ${counts.followingGroups} group(s).`,
+    counts,
+    followedFoxes,
+    followedGroups,
+  };
+}
+
+function buildFollowersSnapshot(
+  db: OpenFoxDatabase,
+  config: OpenFoxConfig,
+  limit = 50,
+): {
+  generatedAt: string;
+  summary: string;
+  foxFollowers: Array<{
+    followerAddress: string;
+    displayName: string;
+    createdAt: string;
+  }>;
+  groupFollowers: Array<{
+    groupId: string;
+    name: string;
+    followerCount: number;
+    followers: Array<{
+      followerAddress: string;
+      displayName: string;
+      createdAt: string;
+    }>;
+  }>;
+} {
+  const profile = buildFoxProfile({ db, config, address: config.walletAddress });
+  const foxFollowers = listFoxFollowers(db, config.walletAddress, { limit }).map((record) => ({
+    followerAddress: record.followerAddress,
+    displayName: getFoxDisplayName(db, config, record.followerAddress),
+    createdAt: record.createdAt,
+  }));
+  const groupFollowers = profile.groups
+    .filter((group) => group.membershipState === "active")
+    .slice(0, limit)
+    .map((group) => ({
+      groupId: group.groupId,
+      name: group.name,
+      followerCount: getGroupFollowerCount(db, group.groupId),
+      followers: listGroupFollowers(db, group.groupId, { limit }).map((record) => ({
+        followerAddress: record.followerAddress,
+        displayName: getFoxDisplayName(db, config, record.followerAddress),
+        createdAt: record.createdAt,
+      })),
+    }));
+  return {
+    generatedAt: new Date().toISOString(),
+    summary: `${foxFollowers.length} fox follower(s), ${groupFollowers.reduce((sum, group) => sum + group.followerCount, 0)} group follower(s) across ${groupFollowers.length} active group(s).`,
+    foxFollowers,
+    groupFollowers,
+  };
+}
+
+function renderFollowingHtml(
+  db: OpenFoxDatabase,
+  config: OpenFoxConfig,
+  limit = 50,
+): string {
+  const snapshot = buildFollowingSnapshot(db, config, limit);
+  const foxItems = snapshot.followedFoxes
+    .map(
+      (item) =>
+        `<li><span class="mw-li-label"><a href="/fox/${encodeURIComponent(item.targetAddress)}">${escapeHtml(item.displayName)}</a></span><span class="mw-li-value">${item.followerCount} follower(s) · ${escapeHtml(item.createdAt)}</span></li>`,
+    )
+    .join("");
+  const groupItems = snapshot.followedGroups
+    .map(
+      (item) =>
+        `<li><span class="mw-li-label"><a href="/group/${encodeURIComponent(item.groupId)}">${escapeHtml(item.name)}</a></span><span class="mw-li-value">${item.followerCount} follower(s) · ${escapeHtml(item.createdAt)}</span></li>`,
+    )
+    .join("");
+  const content = `<h2 class="mw-title">Following</h2>
+<p style="margin-bottom:12px;"><a href="/following">Following</a> | <a href="/followers">Followers</a> | <a href="/subscriptions">Subscriptions</a></p>
+<p style="color:var(--text-muted);margin-bottom:16px;">${escapeHtml(snapshot.summary)}</p>
+<div class="mw-metrics">
+  <div class="mw-metric"><strong>${snapshot.counts.followingFoxes}</strong><span>Foxes</span></div>
+  <div class="mw-metric"><strong>${snapshot.counts.followingGroups}</strong><span>Groups</span></div>
+  <div class="mw-metric"><strong>${snapshot.counts.followers}</strong><span>Followers</span></div>
+</div>
+<div class="mw-grid">
+  <div class="mw-panel"><h3>Followed Foxes</h3><ul class="mw-list">${foxItems || '<li class="mw-empty">No followed foxes.</li>'}</ul></div>
+  <div class="mw-panel"><h3>Followed Groups</h3><ul class="mw-list">${groupItems || '<li class="mw-empty">No followed groups.</li>'}</ul></div>
+</div>`;
+  return wrapInLayout("Following", content, "/following");
+}
+
+function renderFollowersHtml(
+  db: OpenFoxDatabase,
+  config: OpenFoxConfig,
+  limit = 50,
+): string {
+  const snapshot = buildFollowersSnapshot(db, config, limit);
+  const foxItems = snapshot.foxFollowers
+    .map(
+      (item) =>
+        `<li><span class="mw-li-label"><a href="/fox/${encodeURIComponent(item.followerAddress)}">${escapeHtml(item.displayName)}</a></span><span class="mw-li-value">${escapeHtml(item.createdAt)}</span></li>`,
+    )
+    .join("");
+  const groupSections = snapshot.groupFollowers
+    .map((group) => {
+      const followers = group.followers
+        .map(
+          (item) =>
+            `<li><span class="mw-li-label"><a href="/fox/${encodeURIComponent(item.followerAddress)}">${escapeHtml(item.displayName)}</a></span><span class="mw-li-value">${escapeHtml(item.createdAt)}</span></li>`,
+        )
+        .join("");
+      return `<div class="mw-panel"><h3><a href="/group/${encodeURIComponent(group.groupId)}">${escapeHtml(group.name)}</a></h3><p style="color:var(--text-muted);margin-bottom:12px;">${group.followerCount} follower(s)</p><ul class="mw-list">${followers || '<li class="mw-empty">No followers for this group.</li>'}</ul></div>`;
+    })
+    .join("");
+  const content = `<h2 class="mw-title">Followers</h2>
+<p style="margin-bottom:12px;"><a href="/following">Following</a> | <a href="/followers">Followers</a> | <a href="/subscriptions">Subscriptions</a></p>
+<p style="color:var(--text-muted);margin-bottom:16px;">${escapeHtml(snapshot.summary)}</p>
+<div class="mw-grid">
+  <div class="mw-panel"><h3>Fox Followers</h3><ul class="mw-list">${foxItems || '<li class="mw-empty">No fox followers yet.</li>'}</ul></div>
+  <div>${groupSections || '<div class="mw-panel"><h3>Group Followers</h3><p class="mw-empty">No active groups or no followers yet.</p></div>'}</div>
+</div>`;
+  return wrapInLayout("Followers", content, "/following");
+}
+
 function renderShellHtml(db: OpenFoxDatabase, config: OpenFoxConfig): string {
   const snapshot = buildMetaWorldShellSnapshot({ db, config });
   const feedItems = snapshot.feed.items
@@ -376,6 +567,18 @@ export async function startMetaWorldServer(
         if (req.method === "GET" && pathname === "/api/v1/personalized-feed") {
           const limit = parseIntParam(url.searchParams.get("limit"), 25);
           jsonResponse(res, 200, buildPersonalizedFeedSnapshot(db, config, { limit }));
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/api/v1/following") {
+          const limit = parseIntParam(url.searchParams.get("limit"), 50);
+          jsonResponse(res, 200, buildFollowingSnapshot(db, config, limit));
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/api/v1/followers") {
+          const limit = parseIntParam(url.searchParams.get("limit"), 50);
+          jsonResponse(res, 200, buildFollowersSnapshot(db, config, limit));
           return;
         }
 
@@ -594,6 +797,18 @@ export async function startMetaWorldServer(
               : undefined;
           const limit = parseIntParam(url.searchParams.get("limit"), 25);
           htmlResponse(res, 200, renderSearchHtml(db, config, query, kind, limit));
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/following") {
+          const limit = parseIntParam(url.searchParams.get("limit"), 50);
+          htmlResponse(res, 200, renderFollowingHtml(db, config, limit));
+          return;
+        }
+
+        if (req.method === "GET" && pathname === "/followers") {
+          const limit = parseIntParam(url.searchParams.get("limit"), 50);
+          htmlResponse(res, 200, renderFollowersHtml(db, config, limit));
           return;
         }
 

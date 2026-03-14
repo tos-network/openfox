@@ -219,6 +219,50 @@ export function listFoxFollowers(
   return rows.map(mapFollowRow);
 }
 
+export function listGroupFollowers(
+  db: OpenFoxDatabase,
+  groupId: string,
+  options?: { limit?: number },
+): WorldFollowRecord[] {
+  const normalizedGroupId = groupId.trim();
+  if (!normalizedGroupId) {
+    throw new Error("groupId cannot be empty");
+  }
+  const limit = Math.max(1, options?.limit ?? 50);
+  const rows = db.raw
+    .prepare(
+      `SELECT * FROM world_follows
+       WHERE target_group_id = ? AND follow_kind = 'group'
+       ORDER BY created_at DESC
+       LIMIT ?`,
+    )
+    .all(normalizedGroupId, limit) as Array<{
+    follower_address: string;
+    target_address: string | null;
+    target_group_id: string | null;
+    follow_kind: string;
+    created_at: string;
+  }>;
+  return rows.map(mapFollowRow);
+}
+
+export function getGroupFollowerCount(
+  db: OpenFoxDatabase,
+  groupId: string,
+): number {
+  const normalizedGroupId = groupId.trim();
+  if (!normalizedGroupId) {
+    throw new Error("groupId cannot be empty");
+  }
+  const row = db.raw
+    .prepare(
+      `SELECT COUNT(*) AS count FROM world_follows
+       WHERE target_group_id = ? AND follow_kind = 'group'`,
+    )
+    .get(normalizedGroupId) as { count: number };
+  return row.count;
+}
+
 export function getFollowCounts(
   db: OpenFoxDatabase,
   address: string,

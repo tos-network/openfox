@@ -19,6 +19,8 @@ export function buildMetaWorldRouterScript(): string {
     "/feed": "/api/v1/feed",
     "/personalized-feed": "/api/v1/personalized-feed",
     "/search": "/api/v1/search",
+    "/following": "/api/v1/following",
+    "/followers": "/api/v1/followers",
     "/recommended/foxes": "/api/v1/recommended/foxes",
     "/recommended/groups": "/api/v1/recommended/groups",
     "/subscriptions": "/api/v1/subscriptions",
@@ -121,12 +123,91 @@ export function buildMetaWorldRouterScript(): string {
 
   function renderSubscriptions(data) {
     var h = '<h2 class="mw-title">Subscriptions</h2>';
+    h += '<p style="margin-bottom:12px;"><a href="/following" data-nav>Following</a> | <a href="/followers" data-nav>Followers</a> | <a href="/subscriptions" data-nav>Subscriptions</a></p>';
     if (!data.subscriptions || !data.subscriptions.length) return h + '<p class="mw-empty">No subscriptions configured.</p>';
     h += '<ul class="mw-list">';
     data.subscriptions.forEach(function(item) {
       h += renderListItem(item.feedKind + ':' + item.targetId, item.notifyOn.join(', '));
     });
     h += '</ul>';
+    return h;
+  }
+
+  function renderFollowing(data) {
+    var h = '<h2 class="mw-title">Following</h2>';
+    h += '<p style="margin-bottom:12px;"><a href="/following" data-nav>Following</a> | <a href="/followers" data-nav>Followers</a> | <a href="/subscriptions" data-nav>Subscriptions</a></p>';
+    if (data.counts) {
+      h += '<div class="mw-metrics">';
+      h += '<div class="mw-metric"><strong>' + (data.counts.followingFoxes || 0) + '</strong><span>Foxes</span></div>';
+      h += '<div class="mw-metric"><strong>' + (data.counts.followingGroups || 0) + '</strong><span>Groups</span></div>';
+      h += '<div class="mw-metric"><strong>' + (data.counts.followers || 0) + '</strong><span>Followers</span></div>';
+      h += '</div>';
+    }
+    h += '<div class="mw-grid">';
+    h += '<div class="mw-panel"><h3>Followed Foxes</h3>';
+    if (data.followedFoxes && data.followedFoxes.length) {
+      h += '<ul class="mw-list">';
+      data.followedFoxes.forEach(function(item) {
+        var label = '<a href="/fox/' + encodeURIComponent(item.targetAddress) + '" data-nav>' + escapeHtml(item.displayName || item.targetAddress) + '</a>';
+        h += '<li><span class="mw-li-label">' + label + '</span><span class="mw-li-value">' + escapeHtml((item.followerCount || 0) + ' follower(s)') + '</span></li>';
+      });
+      h += '</ul>';
+    } else {
+      h += '<p class="mw-empty">No followed foxes.</p>';
+    }
+    h += '</div>';
+    h += '<div class="mw-panel"><h3>Followed Groups</h3>';
+    if (data.followedGroups && data.followedGroups.length) {
+      h += '<ul class="mw-list">';
+      data.followedGroups.forEach(function(item) {
+        var label = '<a href="/group/' + encodeURIComponent(item.groupId) + '" data-nav>' + escapeHtml(item.name || item.groupId) + '</a>';
+        h += '<li><span class="mw-li-label">' + label + '</span><span class="mw-li-value">' + escapeHtml((item.followerCount || 0) + ' follower(s)') + '</span></li>';
+      });
+      h += '</ul>';
+    } else {
+      h += '<p class="mw-empty">No followed groups.</p>';
+    }
+    h += '</div>';
+    h += '</div>';
+    return h;
+  }
+
+  function renderFollowers(data) {
+    var h = '<h2 class="mw-title">Followers</h2>';
+    h += '<p style="margin-bottom:12px;"><a href="/following" data-nav>Following</a> | <a href="/followers" data-nav>Followers</a> | <a href="/subscriptions" data-nav>Subscriptions</a></p>';
+    h += '<div class="mw-grid">';
+    h += '<div class="mw-panel"><h3>Fox Followers</h3>';
+    if (data.foxFollowers && data.foxFollowers.length) {
+      h += '<ul class="mw-list">';
+      data.foxFollowers.forEach(function(item) {
+        var label = '<a href="/fox/' + encodeURIComponent(item.followerAddress) + '" data-nav>' + escapeHtml(item.displayName || item.followerAddress) + '</a>';
+        h += '<li><span class="mw-li-label">' + label + '</span><span class="mw-li-value">' + escapeHtml(item.createdAt || '') + '</span></li>';
+      });
+      h += '</ul>';
+    } else {
+      h += '<p class="mw-empty">No fox followers yet.</p>';
+    }
+    h += '</div>';
+    h += '<div class="mw-panel"><h3>Group Followers</h3>';
+    if (data.groupFollowers && data.groupFollowers.length) {
+      data.groupFollowers.forEach(function(group) {
+        h += '<h4 style="margin:8px 0 6px 0;"><a href="/group/' + encodeURIComponent(group.groupId) + '" data-nav>' + escapeHtml(group.name || group.groupId) + '</a></h4>';
+        if (group.followers && group.followers.length) {
+          h += '<ul class="mw-list">';
+          group.followers.forEach(function(item) {
+            var label = '<a href="/fox/' + encodeURIComponent(item.followerAddress) + '" data-nav>' + escapeHtml(item.displayName || item.followerAddress) + '</a>';
+            h += '<li><span class="mw-li-label">' + label + '</span><span class="mw-li-value">' + escapeHtml(item.createdAt || '') + '</span></li>';
+          });
+          h += '</ul>';
+        } else {
+          h += '<p class="mw-empty">No followers for this group.</p>';
+        }
+      });
+    } else {
+      h += '<p class="mw-empty">No group followers yet.</p>';
+    }
+    h += '</div>';
+    h += '</div>';
     return h;
   }
 
@@ -156,6 +237,8 @@ export function buildMetaWorldRouterScript(): string {
     if (path === "/feed") return renderFeed(data);
     if (path === "/personalized-feed") return renderFeed(data);
     if (path.indexOf("/search") === 0) return renderSearch(data);
+    if (path === "/following") return renderFollowing(data);
+    if (path === "/followers") return renderFollowers(data);
     if (path === "/recommended/foxes") return renderRecommended(data, "Recommended Foxes");
     if (path === "/recommended/groups") return renderRecommended(data, "Recommended Groups");
     if (path === "/subscriptions") return renderSubscriptions(data);
@@ -177,9 +260,16 @@ export function buildMetaWorldRouterScript(): string {
   }
 
   function updateActiveNav(path) {
+    var navAlias = {
+      "/directory/groups": "/directory/foxes",
+      "/recommended/groups": "/recommended/foxes",
+      "/followers": "/following",
+      "/subscriptions": "/following"
+    };
+    var effectivePath = navAlias[path] || path;
     navLinks.forEach(function(link) {
       var href = link.getAttribute("href");
-      if (path === href || (href !== "/" && path.indexOf(href) === 0)) {
+      if (effectivePath === href || (href !== "/" && effectivePath.indexOf(href) === 0)) {
         link.classList.add("nav-active");
       } else {
         link.classList.remove("nav-active");

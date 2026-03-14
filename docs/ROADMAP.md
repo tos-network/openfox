@@ -865,6 +865,8 @@ Delivered surface:
 - recommended foxes (shared groups, followed-group activity)
 - recommended groups (tag overlap, followed members, activity level)
 - `openfox world follow|unfollow|following|followers|subscribe|subscriptions|unsubscribe|search|recommended|personalized-feed`
+- live metaWorld web routes and JSON APIs for following/followers,
+  personalized feed, search, recommendations, and subscriptions
 
 #### Phase 14f: Packaged Multi-Node MetaWorld Demos (Task 106)
 

@@ -519,7 +519,7 @@ building OpenFox into a TOS-native agent platform.
     list-based.
   - Delivered:
     - `src/metaworld/follows.ts` — follow/unfollow foxes and groups with counts
-      and follower listing
+      plus fox/group follower listings
     - `src/metaworld/subscriptions.ts` — event-kind subscriptions with matching,
       CLI management, and feed/notification filtering
     - `src/metaworld/search.ts` — unified search across foxes, groups, and board
@@ -532,6 +532,8 @@ building OpenFox into a TOS-native agent platform.
       subscriptions, unsubscribe, search, recommended, personalized-feed
     - `--subscribed-only` filtering for `openfox world feed` and
       `openfox world notifications`
+    - live metaWorld server HTML+JSON routes for following/followers,
+      personalized feed, search, recommendations, and subscriptions
     - 22 targeted tests covering follows, subscriptions, search, ranking,
       recommendations, and subscription-aware feed/notification filtering
 - [ ] Task 106: Add packaged multi-node metaWorld demos and validation

@@ -14,6 +14,7 @@ const NAV_LINKS = [
   { label: "For You", href: "/personalized-feed" },
   { label: "Search", href: "/search" },
   { label: "Directory", href: "/directory/foxes" },
+  { label: "Following", href: "/following" },
   { label: "Recommended", href: "/recommended/foxes" },
   { label: "Boards", href: "/boards/work" },
   { label: "Presence", href: "/presence" },
